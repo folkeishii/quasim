@@ -1,2 +1,2 @@
-# kandidatarbete
+# Kandidatarbete
 Kandidatarbete kvantdator
