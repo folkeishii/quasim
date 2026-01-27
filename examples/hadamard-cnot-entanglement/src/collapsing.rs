@@ -17,14 +17,9 @@ If we ever see different results, then something is wrong! Are the qubits then n
 A 64-bit unsigned integer is probably enough to represent the measurement result of any circuit.
 
 ##  Questions:
-* What if we would like to input a different state, that cannot be represented as a classical bitstring?
 
-* No reading of the state vector is made. If we wanted to, would we not need a new datatype? Is there some other way?
-
-* Would a user want to see the algebraic representation of the state at any point? 
-There is an isomorphism between the state vector and algebraic representation after all.
-
-* A 64-bit unsigned integer can be the underlying representation for measured results, but maybe we should add convenience methods?
+* A 64-bit unsigned integer can be the underlying representation for measured results, 
+but maybe a pure integer is a little too crude? Or maybe it is exactly what we want?
 
 Please use this as a starting point for discussion, and not as a final specification of the product!
 
