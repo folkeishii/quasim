@@ -45,8 +45,8 @@ impl Gate {
 
 #[cfg(test)]
 mod tests {
-    use nalgebra::{dmatrix, dvector, ComplexField};
     use super::*;
+    use nalgebra::{ComplexField, dmatrix};
 
     fn is_unitary(gate: Gate) -> bool {
         let adjoint = gate.matrix.adjoint();
@@ -57,13 +57,13 @@ mod tests {
     fn is_equal_to(m1: DMatrix<Complex<f32>>, m2: DMatrix<Complex<f32>>) -> bool {
         m1.iter()
             .zip(m2.iter())
-            .all(|(a, b)|
-                Complex::abs(a - b) < 0.001
-            )
+            .all(|(a, b)| Complex::abs(a - b) < 0.001)
     }
 
     macro_rules! assert_is_matrix_equal {
-        ($m1: expr, $m2: expr) => { assert!(is_equal_to($m1, $m2)) };
+        ($m1: expr, $m2: expr) => {
+            assert!(is_equal_to($m1, $m2))
+        };
     }
 
     #[test]
