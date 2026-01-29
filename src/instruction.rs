@@ -60,7 +60,7 @@ impl Instruction {
         }
     }
 
-    pub fn hadamard(target: usize) -> Instruction{
+    pub fn hadamard(target: usize) -> Instruction {
         Self {
             matrix: DMatrix::from_row_slice(2, 2, &Self::HADAMARD_DATA),
             target: vec![target],
@@ -161,46 +161,53 @@ mod tests {
     }
 
     #[test]
-    fn test_is_hadamard_unitary(){
+    fn test_is_hadamard_unitary() {
         assert!(is_unitary(Instruction::hadamard(0), 2));
     }
 
     #[test]
-    fn test_hadamard_twice(){
+    fn test_hadamard_twice() {
         let qubit = dmatrix![Complex::new(0.0, 0.0); Complex::new(1.0, 0.0)];
-        let transform = Instruction::hadamard(0).matrix * Instruction::hadamard(0).matrix * qubit.clone();
+        let transform =
+            Instruction::hadamard(0).matrix * Instruction::hadamard(0).matrix * qubit.clone();
 
         assert_is_matrix_equal!(transform, qubit);
     }
 
     #[test]
     fn test_hzh() {
-        let transform = Instruction::hadamard(0).matrix * Instruction::z(0).matrix * Instruction::hadamard(0).matrix;
+        let transform = Instruction::hadamard(0).matrix
+            * Instruction::z(0).matrix
+            * Instruction::hadamard(0).matrix;
 
         assert_is_matrix_equal!(transform, Instruction::x(0).matrix);
     }
 
     #[test]
     fn test_hxh() {
-        let transform = Instruction::hadamard(0).matrix * Instruction::x(0).matrix * Instruction::hadamard(0).matrix;
+        let transform = Instruction::hadamard(0).matrix
+            * Instruction::x(0).matrix
+            * Instruction::hadamard(0).matrix;
 
         assert_is_matrix_equal!(transform, Instruction::z(0).matrix);
     }
 
     #[test]
     fn test_hyh() {
-        let transform = Instruction::hadamard(0).matrix * Instruction::y(0).matrix * Instruction::hadamard(0).matrix;
+        let transform = Instruction::hadamard(0).matrix
+            * Instruction::y(0).matrix
+            * Instruction::hadamard(0).matrix;
 
         assert_is_matrix_equal!(transform, -Instruction::y(0).matrix);
     }
 
     #[test]
-    fn test_hadamard_is_hermitian(){
+    fn test_hadamard_is_hermitian() {
         assert!(is_hermitian(Instruction::hadamard(0)));
     }
 
     #[test]
-    fn test_hadamard_value0(){
+    fn test_hadamard_value0() {
         let plus_state = dmatrix![Complex::new(f32::consts::FRAC_1_SQRT_2, 0.0); Complex::new(f32::consts::FRAC_1_SQRT_2, 0.0)];
         let zero_state = dmatrix![Complex::new(1.0, 0.0); Complex::new(0.0, 0.0)];
 
@@ -209,7 +216,7 @@ mod tests {
     }
 
     #[test]
-    fn test_hadamard_value1(){
+    fn test_hadamard_value1() {
         let minus_state = dmatrix![Complex::new(f32::consts::FRAC_1_SQRT_2, 0.0); Complex::new(-f32::consts::FRAC_1_SQRT_2, 0.0)];
         let one_state = dmatrix![Complex::new(0.0, 0.0); Complex::new(1.0, 0.0)];
 
