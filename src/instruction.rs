@@ -59,6 +59,8 @@ impl Instruction {
 
 #[cfg(test)]
 mod tests {
+    use core::f32;
+
     use super::*;
     use nalgebra::{ComplexField, dmatrix};
 
@@ -66,6 +68,11 @@ mod tests {
         let adjoint = instruction.matrix.adjoint();
         let identity = DMatrix::<Complex<f32>>::identity(2, 2);
         is_equal_to(instruction.matrix * adjoint, identity)
+    }
+
+    fn is_hermitian(instruction: Instruction) -> bool {
+        let conjugate = instruction.matrix.conjugate();
+        is_equal_to(instruction.matrix, conjugate)
     }
 
     fn is_equal_to(m1: DMatrix<Complex<f32>>, m2: DMatrix<Complex<f32>>) -> bool {
@@ -78,6 +85,63 @@ mod tests {
         ($m1: expr, $m2: expr) => {
             assert!(is_equal_to($m1, $m2))
         };
+    }
+
+    #[test]
+    fn test_is_hadamard_unitary(){
+        assert!(is_unitary(Instruction::hadamard(0)));
+    }
+
+    #[test]
+    fn test_hadamard_twice(){
+        let qubit = dmatrix![Complex::new(0.0, 0.0); Complex::new(1.0, 0.0)];
+        let transform = Instruction::hadamard(0).matrix * Instruction::hadamard(0).matrix * qubit.clone();
+
+        assert_is_matrix_equal!(transform, qubit);
+    }
+
+    #[test]
+    fn test_hzh() {
+        let transform = Instruction::hadamard(0).matrix * Instruction::z(0).matrix * Instruction::hadamard(0).matrix;
+
+        assert_is_matrix_equal!(transform, Instruction::x(0).matrix);
+    }
+
+    #[test]
+    fn test_hxh() {
+        let transform = Instruction::hadamard(0).matrix * Instruction::x(0).matrix * Instruction::hadamard(0).matrix;
+
+        assert_is_matrix_equal!(transform, Instruction::z(0).matrix);
+    }
+
+    #[test]
+    fn test_hyh() {
+        let transform = Instruction::hadamard(0).matrix * Instruction::y(0).matrix * Instruction::hadamard(0).matrix;
+
+        assert_is_matrix_equal!(transform, -Instruction::y(0).matrix);
+    }
+
+    #[test]
+    fn test_hadamard_is_hermitian(){
+        assert!(is_hermitian(Instruction::hadamard(0)));
+    }
+
+    #[test]
+    fn test_hadamard_value0(){
+        let plus_state = dmatrix![Complex::new(f32::consts::FRAC_1_SQRT_2, 0.0); Complex::new(f32::consts::FRAC_1_SQRT_2, 0.0)];
+        let zero_state = dmatrix![Complex::new(1.0, 0.0); Complex::new(0.0, 0.0)];
+
+        let transform = Instruction::hadamard(0).matrix * zero_state;
+        assert_is_matrix_equal!(transform, plus_state);
+    }
+
+    #[test]
+    fn test_hadamard_value1(){
+        let minus_state = dmatrix![Complex::new(f32::consts::FRAC_1_SQRT_2, 0.0); Complex::new(-f32::consts::FRAC_1_SQRT_2, 0.0)];
+        let one_state = dmatrix![Complex::new(0.0, 0.0); Complex::new(1.0, 0.0)];
+
+        let transform = Instruction::hadamard(0).matrix * one_state;
+        assert_is_matrix_equal!(transform, minus_state);
     }
 
     #[test]
