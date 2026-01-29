@@ -73,7 +73,7 @@ impl Circuit {
     pub fn t(mut self, target: usize) -> Self {
         self.extend_qubits(target);
 
-        todo!(); // Extend `gates` with the T gate
+        self.push_instruction(Instruction::t(target));
 
         self
     }
@@ -82,8 +82,7 @@ impl Circuit {
         self.extend_qubits(control);
         self.extend_qubits(target);
 
-        todo!(); // Extend `gates` with the cnot gate
-        // ex. self.push_gate(Gate::cnot(control, target))
+        self.push_instruction(Instruction::cnot(control, target));
 
         self
     }
@@ -91,7 +90,7 @@ impl Circuit {
     pub fn hadamard(mut self, target: usize) -> Self {
         self.extend_qubits(target);
 
-        todo!(); // Extend `gates` with the hadamard gate
+        self.push_instruction(Instruction::hadamard(target));
 
         self
     }
