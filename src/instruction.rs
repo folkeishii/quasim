@@ -1,4 +1,5 @@
-use nalgebra::{Complex, DMatrix};
+use nalgebra::{Complex, DMatrix, dmatrix};
+use std::f32::consts::PI;
 
 pub struct Instruction {
     pub matrix: DMatrix<Complex<f32>>,
@@ -6,21 +7,25 @@ pub struct Instruction {
 }
 
 impl Instruction {
+    #[rustfmt::skip]
     const PAULI_X_DATA: [Complex<f32>; 4] = [
         Complex::new(0.0, 0.0), Complex::new(1.0, 0.0),
         Complex::new(1.0, 0.0), Complex::new(0.0, 0.0),
     ];
 
+    #[rustfmt::skip]
     const PAULI_Y_DATA: [Complex<f32>; 4] = [
         Complex::new(0.0, 0.0), Complex::new(0.0, -1.0),
         Complex::new(0.0, 1.0), Complex::new(0.0, 0.0),
     ];
 
+    #[rustfmt::skip]
     const PAULI_Z_DATA: [Complex<f32>; 4] = [
         Complex::new(1.0, 0.0), Complex::new(0.0, 0.0),
         Complex::new(0.0, 0.0), Complex::new(-1.0, 0.0),
     ];
 
+    #[rustfmt::skip]
     const CNOT_DATA: [Complex<f32>; 16] = [
         Complex::ONE, Complex::ZERO, Complex::ZERO, Complex::ZERO,
         Complex::ZERO, Complex::ONE, Complex::ZERO, Complex::ZERO,
@@ -45,6 +50,16 @@ impl Instruction {
     pub fn z(target: usize) -> Instruction {
         Self {
             matrix: DMatrix::from_row_slice(2, 2, &Self::PAULI_Z_DATA),
+            target: vec![target],
+        }
+    }
+
+    pub fn t(target: usize) -> Instruction {
+        Self {
+            matrix: dmatrix![
+                Complex::new(1.0, 0.0), Complex::new(0.0, 0.0);
+                Complex::new(0.0, 0.0), Complex::exp(Complex::new(0.0,  PI / 8.0));
+            ],
             target: vec![target],
         }
     }
@@ -121,6 +136,24 @@ mod tests {
         let qubit = dmatrix![Complex::new(0.0, 0.0); Complex::new(1.0, 0.0)];
         let qubit_target = dmatrix![Complex::new(0.0, 0.0); Complex::new(-1.0, 0.0)];
         let transform = Instruction::z(0).matrix * qubit;
+
+        assert_is_matrix_equal!(transform, qubit_target);
+    }
+
+    #[test]
+    fn test_is_t_unitary() {
+        assert!(is_unitary(Instruction::t(0), 2))
+    }
+
+    #[test]
+    fn test_t_value() {
+        let inverse_2_radical = 1.0f32 / Complex::sqrt(Complex::new(2.0, 0.0));
+        let qubit = dmatrix![inverse_2_radical; inverse_2_radical];
+        let qubit_target = dmatrix![
+            inverse_2_radical;
+            inverse_2_radical * Complex::exp(Complex::new(0.0,  PI / 8.0))
+        ];
+        let transform = Instruction::t(0).matrix * qubit;
 
         assert_is_matrix_equal!(transform, qubit_target);
     }
