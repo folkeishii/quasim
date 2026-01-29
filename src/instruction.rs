@@ -21,6 +21,13 @@ impl Instruction {
         Complex::new(0.0, 0.0), Complex::new(-1.0, 0.0),
     ];
 
+    const CNOT_DATA: [Complex<f32>; 16] = [
+        Complex::ONE, Complex::ZERO, Complex::ZERO, Complex::ZERO,
+        Complex::ZERO, Complex::ONE, Complex::ZERO, Complex::ZERO,
+        Complex::ZERO, Complex::ZERO, Complex::ZERO, Complex::ONE,
+        Complex::ZERO, Complex::ZERO, Complex::ONE, Complex::ZERO
+    ];
+
     pub fn x(target: usize) -> Instruction {
         Self {
             matrix: DMatrix::from_row_slice(2, 2, &Self::PAULI_X_DATA),
@@ -39,6 +46,13 @@ impl Instruction {
         Self {
             matrix: DMatrix::from_row_slice(2, 2, &Self::PAULI_Z_DATA),
             target: vec![target],
+        }
+    }
+
+    pub fn cnot(control: usize, target: usize) -> Instruction {
+        Self {
+            matrix: DMatrix::from_row_slice(4, 4, &Self::CNOT_DATA),
+            target: vec![control, target],
         }
     }
 }
