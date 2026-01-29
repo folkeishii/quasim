@@ -1,6 +1,6 @@
 use nalgebra::{Complex, DMatrix};
 
-pub struct Gate {
+pub struct Instruction {
     pub matrix: DMatrix<Complex<f32>>,
     pub target: Vec<usize>,
 }
