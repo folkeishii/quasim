@@ -107,6 +107,8 @@ impl Circuit {
             targets
                 .iter()
                 .for_each(|target| self.push_measurement(*target));
+        } else {
+            (0..self.n_qubits()).for_each(|target| self.push_measurement(target));
         }
 
         self
