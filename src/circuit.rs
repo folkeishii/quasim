@@ -1,3 +1,5 @@
+use std::{slice, vec};
+
 use crate::Instruction;
 
 /// # Circuit
@@ -23,7 +25,7 @@ use crate::Instruction;
 #[derive(Debug, Clone, Default)]
 pub struct Circuit {
     instructions: Vec<Instruction>,
-    n_qbits: usize,
+    n_qubits: usize,
 }
 
 impl Circuit {
@@ -31,13 +33,21 @@ impl Circuit {
         Self::default()
     }
 
-    pub fn push_gate(mut self, gate: Instruction) {
-        self.extend_qbits_by_iter(gate.target.iter());
-        self.instructions.push(gate);
+    pub const fn n_qubits(&self) -> usize {
+        self.n_qubits
+    }
+
+    pub fn iter(&self) -> slice::Iter<'_, Instruction> {
+        self.instructions.iter()
+    }
+
+    pub fn push_instruction(mut self, instruction: Instruction) {
+        self.extend_qubits_by_iter(instruction.target.iter());
+        self.instructions.push(instruction);
     }
 
     pub fn x(mut self, target: usize) -> Self {
-        self.extend_qbits(target);
+        self.extend_qubits(target);
 
         todo!(); // Extend `gates` with the X gate
         // ex. self.push_gate(Gate::x(target))
@@ -46,7 +56,7 @@ impl Circuit {
     }
 
     pub fn y(mut self, target: usize) -> Self {
-        self.extend_qbits(target);
+        self.extend_qubits(target);
 
         todo!(); // Extend `gates` with the Y gate
 
@@ -54,7 +64,7 @@ impl Circuit {
     }
 
     pub fn z(mut self, target: usize) -> Self {
-        self.extend_qbits(target);
+        self.extend_qubits(target);
 
         todo!(); // Extend `gates` with the Z gate
 
@@ -62,7 +72,7 @@ impl Circuit {
     }
 
     pub fn t(mut self, target: usize) -> Self {
-        self.extend_qbits(target);
+        self.extend_qubits(target);
 
         todo!(); // Extend `gates` with the T gate
 
@@ -70,8 +80,8 @@ impl Circuit {
     }
 
     pub fn cnot(mut self, control: usize, target: usize) -> Self {
-        self.extend_qbits(control);
-        self.extend_qbits(target);
+        self.extend_qubits(control);
+        self.extend_qubits(target);
 
         todo!(); // Extend `gates` with the cnot gate
         // ex. self.push_gate(Gate::cnot(control, target))
@@ -80,7 +90,7 @@ impl Circuit {
     }
 
     pub fn hadamard(mut self, target: usize) -> Self {
-        self.extend_qbits(target);
+        self.extend_qubits(target);
 
         todo!(); // Extend `gates` with the hadamard gate
 
@@ -90,7 +100,7 @@ impl Circuit {
     /// If targets is `None`, measure all qubits
     pub fn measure(mut self, targets: Option<Vec<usize>>) -> Self {
         if let Some(targets) = targets {
-            self.extend_qbits_by_iter(targets.iter());
+            self.extend_qubits_by_iter(targets.iter());
         }
 
         todo!(); // Extend `gates` with the hadamard gate
@@ -98,16 +108,25 @@ impl Circuit {
         self
     }
 
-    fn extend_qbits(&mut self, include: usize) {
-        self.n_qbits = self.n_qbits.max(include + 1)
+    fn extend_qubits(&mut self, include: usize) {
+        self.n_qubits = self.n_qubits.max(include + 1)
     }
 
-    fn extend_qbits_by_iter<'a, I>(&mut self, include: I)
+    fn extend_qubits_by_iter<'a, I>(&mut self, include: I)
     where
         I: Iterator<Item = &'a usize>,
     {
         if let Some(mx) = include.max() {
-            self.n_qbits = *mx + 1;
+            self.n_qubits = *mx + 1;
         }
+    }
+}
+
+impl IntoIterator for Circuit {
+    type Item = Instruction;
+    type IntoIter = vec::IntoIter<Instruction>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.instructions.into_iter()
     }
 }
