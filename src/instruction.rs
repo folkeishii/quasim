@@ -1,4 +1,4 @@
-use crate::macros::{imag, real};
+use crate::macros::{cexp, imag, real};
 use nalgebra::{Complex, DMatrix, dmatrix};
 use std::f32::consts::{FRAC_1_SQRT_2, PI};
 
@@ -72,7 +72,7 @@ impl Instruction {
         Self {
             matrix: dmatrix![
                 real!(1.0), real!(0.0);
-                real!(0.0), Complex::exp(imag!(PI / 8.0));
+                real!(0.0), cexp!(imag!(PI / 8.0));
             ],
             target: vec![target],
         }
@@ -91,7 +91,7 @@ mod tests {
     use core::f32;
 
     use super::*;
-    use crate::macros::complex;
+    use crate::macros::cartesian;
     use nalgebra::{ComplexField, dmatrix};
 
     fn is_unitary(instruction: Instruction, size: usize) -> bool {
@@ -124,8 +124,8 @@ mod tests {
 
     #[test]
     fn test_x_value() {
-        let a = complex!(0.7, 2.3);
-        let b = complex!(9.2, 0.0);
+        let a = cartesian!(0.7, 2.3);
+        let b = cartesian!(9.2, 0.0);
 
         let qubit = dmatrix![a; b];
         let target_qubit = dmatrix![b; a];
@@ -236,7 +236,7 @@ mod tests {
         let qubit = dmatrix![real!(FRAC_1_SQRT_2); real!(FRAC_1_SQRT_2)];
         let qubit_target = dmatrix![
             real!(FRAC_1_SQRT_2);
-            real!(FRAC_1_SQRT_2) * Complex::exp(imag!(PI / 8.0))
+            real!(FRAC_1_SQRT_2) * cexp!(imag!(PI / 8.0))
         ];
         let transform = Instruction::t(0).matrix * qubit;
 
@@ -250,10 +250,10 @@ mod tests {
 
     #[test]
     fn test_cnot_value() {
-        let a = complex!(0.7, 2.3);
-        let b = complex!(9.2, 0.0);
-        let c = complex!(2.2, 0.8);
-        let d = complex!(5.1, 1.9);
+        let a = cartesian!(0.7, 2.3);
+        let b = cartesian!(9.2, 0.0);
+        let c = cartesian!(2.2, 0.8);
+        let d = cartesian!(5.1, 1.9);
 
         let qubit = dmatrix![a; b; c; d];
         let qubit_target = dmatrix![a; b; d; c];

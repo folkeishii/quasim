@@ -1,9 +1,16 @@
-macro_rules! complex {
+macro_rules! cartesian {
     ($real: expr, $imag: expr) => {
         Complex::new($real, $imag)
     };
 }
-pub(super) use complex;
+pub(super) use cartesian;
+
+macro_rules! polar {
+    ($r: expr, $theta: expr) => {
+        Complex::from_polar($r, $theta)
+    };
+}
+pub(super) use polar;
 
 macro_rules! real {
     ($real: expr) => {
@@ -18,3 +25,10 @@ macro_rules! imag {
     };
 }
 pub(super) use imag;
+
+macro_rules! cexp {
+    ($exp: expr) => {
+        Complex::exp($exp)
+    };
+}
+pub(super) use cexp;
