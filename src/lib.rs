@@ -1,7 +1,7 @@
 mod circuit;
-mod gate;
+mod instruction;
 mod simulator;
 
 pub use circuit::*;
-pub use gate::*;
+pub use instruction::*;
 pub use simulator::*;

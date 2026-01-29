@@ -1,4 +1,4 @@
-use crate::Gate;
+use crate::Instruction;
 
 /// # Circuit
 /// Based on OpenQASM. All qubits are initialized to the zero state.
@@ -22,7 +22,7 @@ use crate::Gate;
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct Circuit {
-    gates: Vec<Gate>,
+    instructions: Vec<Instruction>,
     n_qbits: usize,
 }
 
@@ -31,9 +31,9 @@ impl Circuit {
         Self::default()
     }
 
-    pub fn push_gate(mut self, gate: Gate) {
+    pub fn push_gate(mut self, gate: Instruction) {
         self.extend_qbits_by_iter(gate.target.iter());
-        self.gates.push(gate);
+        self.instructions.push(gate);
     }
 
     pub fn x(mut self, target: usize) -> Self {
