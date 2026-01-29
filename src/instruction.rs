@@ -21,6 +21,13 @@ impl Instruction {
         Complex::new(0.0, 0.0), Complex::new(-1.0, 0.0),
     ];
 
+    const CNOT_DATA: [Complex<f32>; 16] = [
+        Complex::ONE, Complex::ZERO, Complex::ZERO, Complex::ZERO,
+        Complex::ZERO, Complex::ONE, Complex::ZERO, Complex::ZERO,
+        Complex::ZERO, Complex::ZERO, Complex::ZERO, Complex::ONE,
+        Complex::ZERO, Complex::ZERO, Complex::ONE, Complex::ZERO
+    ];
+
     pub fn x(target: usize) -> Instruction {
         Self {
             matrix: DMatrix::from_row_slice(2, 2, &Self::PAULI_X_DATA),
@@ -41,6 +48,13 @@ impl Instruction {
             target: vec![target],
         }
     }
+
+    pub fn cnot(control: usize, target: usize) -> Instruction {
+        Self {
+            matrix: DMatrix::from_row_slice(4, 4, &Self::CNOT_DATA),
+            target: vec![control, target],
+        }
+    }
 }
 
 #[cfg(test)]
@@ -48,9 +62,9 @@ mod tests {
     use super::*;
     use nalgebra::{ComplexField, dmatrix};
 
-    fn is_unitary(instruction: Instruction) -> bool {
+    fn is_unitary(instruction: Instruction, size: usize) -> bool {
         let adjoint = instruction.matrix.adjoint();
-        let identity = DMatrix::<Complex<f32>>::identity(2, 2);
+        let identity = DMatrix::<Complex<f32>>::identity(size, size);
         is_equal_to(instruction.matrix * adjoint, identity)
     }
 
@@ -68,7 +82,7 @@ mod tests {
 
     #[test]
     fn test_is_x_unitary() {
-        assert!(is_unitary(Instruction::x(0)));
+        assert!(is_unitary(Instruction::x(0), 2));
     }
 
     #[test]
@@ -85,7 +99,7 @@ mod tests {
 
     #[test]
     fn test_is_y_unitary() {
-        assert!(is_unitary(Instruction::y(0)));
+        assert!(is_unitary(Instruction::y(0), 2));
     }
 
     #[test]
@@ -99,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_is_z_unitary() {
-        assert!(is_unitary(Instruction::z(0)));
+        assert!(is_unitary(Instruction::z(0), 2));
     }
 
     #[test]
@@ -107,6 +121,25 @@ mod tests {
         let qubit = dmatrix![Complex::new(0.0, 0.0); Complex::new(1.0, 0.0)];
         let qubit_target = dmatrix![Complex::new(0.0, 0.0); Complex::new(-1.0, 0.0)];
         let transform = Instruction::z(0).matrix * qubit;
+
+        assert_is_matrix_equal!(transform, qubit_target);
+    }
+
+    #[test]
+    fn test_is_cnot_unitary() {
+        assert!(is_unitary(Instruction::cnot(0, 0), 4));
+    }
+
+    #[test]
+    fn test_cnot_value() {
+        let a = Complex::new(0.7, 2.3);
+        let b = Complex::new(9.2, 0.0);
+        let c = Complex::new(2.2, 0.8);
+        let d = Complex::new(5.1, 1.9);
+
+        let qubit = dmatrix![a; b; c; d];
+        let qubit_target = dmatrix![a; b; d; c];
+        let transform = Instruction::cnot(0, 0).matrix * qubit;
 
         assert_is_matrix_equal!(transform, qubit_target);
     }
