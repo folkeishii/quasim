@@ -41,7 +41,7 @@ impl Circuit {
         self.instructions.iter()
     }
 
-    pub fn push_instruction(mut self, instruction: Instruction) {
+    pub fn push_instruction(&mut self, instruction: Instruction) {
         self.extend_qubits_by_iter(instruction.target.iter());
         self.instructions.push(instruction);
     }
@@ -49,8 +49,7 @@ impl Circuit {
     pub fn x(mut self, target: usize) -> Self {
         self.extend_qubits(target);
 
-        todo!(); // Extend `gates` with the X gate
-        // ex. self.push_gate(Gate::x(target))
+        self.push_instruction(Instruction::x(target));
 
         self
     }
@@ -58,7 +57,7 @@ impl Circuit {
     pub fn y(mut self, target: usize) -> Self {
         self.extend_qubits(target);
 
-        todo!(); // Extend `gates` with the Y gate
+        self.push_instruction(Instruction::y(target));
 
         self
     }
@@ -66,7 +65,7 @@ impl Circuit {
     pub fn z(mut self, target: usize) -> Self {
         self.extend_qubits(target);
 
-        todo!(); // Extend `gates` with the Z gate
+        self.push_instruction(Instruction::z(target));
 
         self
     }
