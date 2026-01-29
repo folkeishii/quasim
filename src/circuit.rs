@@ -61,6 +61,14 @@ impl Circuit {
         self
     }
 
+    pub fn t(mut self, target: usize) -> Self {
+        self.extend_qbits(target);
+
+        todo!(); // Extend `gates` with the T gate
+
+        self
+    }
+
     pub fn cnot(mut self, control: usize, target: usize) -> Self {
         self.extend_qbits(control);
         self.extend_qbits(target);
