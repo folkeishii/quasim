@@ -24,7 +24,7 @@ use crate::Instruction;
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct Circuit {
-    instructions: Vec<Instruction>,
+    steps: Vec<Step>,
     n_qubits: usize,
 }
 
@@ -37,13 +37,18 @@ impl Circuit {
         self.n_qubits
     }
 
-    pub fn iter(&self) -> slice::Iter<'_, Instruction> {
-        self.instructions.iter()
+    pub fn iter(&self) -> slice::Iter<'_, Step> {
+        self.steps.iter()
     }
 
     pub fn push_instruction(&mut self, instruction: Instruction) {
         self.extend_qubits_by_iter(instruction.target.iter());
-        self.instructions.push(instruction);
+        self.steps.push(instruction.into());
+    }
+
+    pub fn push_measurement(&mut self, target: usize) {
+        self.extend_qubits(target);
+        self.steps.push(Step::Measurement(target));
     }
 
     pub fn x(mut self, target: usize) -> Self {
@@ -99,9 +104,10 @@ impl Circuit {
     pub fn measure(mut self, targets: Option<Vec<usize>>) -> Self {
         if let Some(targets) = targets {
             self.extend_qubits_by_iter(targets.iter());
+            targets
+                .iter()
+                .for_each(|target| self.push_measurement(*target));
         }
-
-        todo!(); // Extend `gates` with the hadamard gate
 
         self
     }
@@ -121,10 +127,21 @@ impl Circuit {
 }
 
 impl IntoIterator for Circuit {
-    type Item = Instruction;
-    type IntoIter = vec::IntoIter<Instruction>;
+    type Item = Step;
+    type IntoIter = vec::IntoIter<Step>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.instructions.into_iter()
+        self.steps.into_iter()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Step {
+    Instruction(Instruction),
+    Measurement(usize),
+}
+impl From<Instruction> for Step {
+    fn from(value: Instruction) -> Self {
+        Step::Instruction(value)
     }
 }
