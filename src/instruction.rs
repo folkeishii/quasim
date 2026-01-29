@@ -55,6 +55,27 @@ impl Instruction {
             target: vec![control, target],
         }
     }
+
+    pub fn u(target: usize, theta: f32, phi: f32, lambda: f32) -> Instruction {
+        // https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.UGate for definition
+        let theta_half = theta / 2.0;
+
+        let cos = Complex::new(theta_half.cos(), 0.0);
+        let sin = Complex::new(theta_half.sin(), 0.0);
+
+        let e_phi = Complex::new(0.0, phi).exp();
+        let e_lambda = Complex::new(0.0, lambda).exp();
+        let e_phi_lambda = Complex::new(0.0, phi + lambda).exp();
+
+        Self {
+            matrix: DMatrix::from_row_slice(
+                2,
+                2,
+                &[cos, -e_lambda * sin, e_phi * sin, e_phi_lambda * cos],
+            ),
+            target: vec![target],
+        }
+    }
 }
 
 #[cfg(test)]
@@ -142,5 +163,25 @@ mod tests {
         let transform = Instruction::cnot(0, 0).matrix * qubit;
 
         assert_is_matrix_equal!(transform, qubit_target);
+    }
+
+    #[test]
+    fn test_is_u_unitary() {
+        let pi = std::f32::consts::PI;
+        let pi_half = std::f32::consts::FRAC_PI_2;
+
+        assert!(is_unitary(Instruction::u(0, pi, 0., pi), 2)); // X gate
+        assert!(is_unitary(Instruction::u(0, pi_half, 0., pi), 2)); // H gate
+        assert!(is_unitary(Instruction::u(0, 0., 0., pi_half), 2)); // S gate
+    }
+
+    #[test]
+    fn test_u_value() {
+        let pi = std::f32::consts::PI;
+        let pi_half = std::f32::consts::FRAC_PI_2;
+
+        assert_is_matrix_equal!(Instruction::x(0).matrix, Instruction::u(0, pi, 0., pi).matrix); // X gate equality
+        assert_is_matrix_equal!(Instruction::y(0).matrix, Instruction::u(0, pi, pi_half, pi_half).matrix); // Y gate equality
+        assert_is_matrix_equal!(Instruction::z(0).matrix, Instruction::u(0, 0., 0., pi).matrix); // Z gate equality
     }
 }
