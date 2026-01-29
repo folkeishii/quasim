@@ -1,6 +1,6 @@
-use crate::Gate;
+use crate::Instruction;
 
 pub struct Circuit {
-    gates: Vec<Gate>,
+    instructions: Vec<Instruction>,
     n_qbits: usize,
 }
