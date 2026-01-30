@@ -99,8 +99,8 @@ mod tests {
     }
 
     fn is_hermitian(instruction: Instruction) -> bool {
-        let conjugate = instruction.matrix.conjugate();
-        is_equal_to(instruction.matrix, conjugate)
+        let adjoint = instruction.matrix.adjoint();
+        is_equal_to(instruction.matrix, adjoint)
     }
 
     fn is_equal_to(m1: DMatrix<Complex<f32>>, m2: DMatrix<Complex<f32>>) -> bool {
