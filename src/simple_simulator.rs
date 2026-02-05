@@ -8,7 +8,7 @@ pub struct SimpleSimpleSimulator {
 impl SimpleSimulator for SimpleSimpleSimulator {
     type E = SimpleError;
     
-    fn build(circuit: crate::Circuit) -> Result<Self, Self::E> {
+    fn build(circuit: Circuit) -> Result<Self, Self::E> {
 
         let k = circuit.n_qubits;
         let mut init_state_vector = vec![Complex::ZERO; 1 << k];
@@ -112,4 +112,29 @@ impl SimpleSimpleSimulator {
 #[derive(Debug, thiserror::Error)]
 pub enum SimpleError {
 
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::{Circuit, Instruction, SimpleSimpleSimulator, SimpleSimulator};
+
+    #[test]
+    fn foo() {
+        let instructions = vec![
+            Instruction::H(0),
+            Instruction::CNOT(0, 2),
+            Instruction::X(0),
+            Instruction::H(0),
+            Instruction::Y(1),
+        ];
+
+        let circ = Circuit {
+            instructions: instructions,
+            n_qubits: 3,
+        };
+
+        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        println!("{}", sim.final_state());
+    }
 }
