@@ -9,3 +9,7 @@ pub trait SimpleSimulator: Sized {
     fn run(&self) -> usize;
     fn final_state(&self) -> DVector<Complex<f32>>;
 }
+
+pub trait DebugSimulator: SimpleSimulator {
+    fn state_at(&self, time_step: usize) -> DVector<Complex<f32>>;
+}
