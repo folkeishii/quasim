@@ -8,6 +8,7 @@ pub enum Instruction {
     Y(usize),
     H(usize),
     S(usize),
+    ARBITRARY(usize, usize, DMatrix<Complex<f32>>),
 }
 
 impl Instruction {
@@ -52,6 +53,9 @@ impl Instruction {
             Instruction::H(_) => &Self::HADAMARD_DATA,
             Instruction::CNOT(_, _) => &Self::PAULI_X_DATA,
             Instruction::S(_) => &Self::S_GATE_DATA,
+            Instruction::ARBITRARY(_, _, gate_data) => {
+                return gate_data;
+            }
         };
 
         return DMatrix::from_row_slice(2, 2, data);
