@@ -10,32 +10,31 @@ impl SimpleSimulator for SimpleSimpleSimulator {
     
     fn build(circuit: crate::Circuit) -> Result<Self, Self::E> {
 
-        for i in 0..circuit.n_qubits {
+        let k = circuit.n_qubits;
+        let mut init_state_vector = vec![Complex::ZERO; 1 << k];
+        init_state_vector[0] = Complex::ONE;
 
-        }
+        let mut sim = SimpleSimpleSimulator {
+            state_vector: init_state_vector,
+        };
 
         for inst in circuit.instructions {
-
+            sim.apply_instruction(inst);
         }
-        todo!()
+
+        Ok(sim)
     }
     
     fn run(&self) -> usize {
         todo!()
     }
     
-    fn final_state(&self) -> nalgebra::DVector<nalgebra::Complex<f32>> {
-        todo!()
+    fn final_state(&self) -> DVector<Complex<f32>> {
+        return DVector::from_vec(self.state_vector.clone());
     }
 }
 
 impl SimpleSimpleSimulator {
-    // fn test() {
-    //     SimpleSimpleSimulator::apply_controlled_gate(self, vec![0], vec![1], Instruction::CNOT(0, 1).get_matrix())
-    // }
-
-
-
     fn controls_active(i: usize, controls: &[usize]) -> bool {
         controls.iter().all(|&c| ((i >> c) & 1) == 1)
     }
@@ -63,31 +62,26 @@ impl SimpleSimpleSimulator {
     
     }
 
-    fn apply_controlled_gate(
+    fn apply_gate(
         &mut self,
-        controls: Vec<usize>,
-        targets: Vec<usize>,
+        controls: &[usize],
+        targets: &[usize],
         u: DMatrix<Complex<f32>>
     )
     {
         // State vector is length 2^n , n=num qubits
         for i in 0..self.state_vector.len() {
-            if !SimpleSimpleSimulator::is_block_base(i, &targets) {
+            if !SimpleSimpleSimulator::is_block_base(i, targets) {
                 continue;
             }
 
-            if !SimpleSimpleSimulator::controls_active(i, &controls) {
+            if !SimpleSimpleSimulator::controls_active(i, controls) {
                 continue;
             }
 
-            let indices = SimpleSimpleSimulator::block_indices(i, &targets);
+            let indices = SimpleSimpleSimulator::block_indices(i, targets);
 
             // Read amplitudes
-            let mut v = Vec::with_capacity(indices.len());
-            for &idx in &indices {
-                v.push(self.state_vector[idx]);
-            }
-
             let v = DVector::from_iterator(
                 indices.len(),
                 indices.iter().map(|&idx| self.state_vector[idx])
@@ -102,6 +96,16 @@ impl SimpleSimpleSimulator {
             }
         }
 
+    }
+
+    fn apply_instruction(&mut self, inst: Instruction) {
+        match inst {
+            Instruction::X(t) => self.apply_gate(&[], &[t], inst.get_matrix()),
+            Instruction::Y(t) => self.apply_gate(&[], &[t], inst.get_matrix()),
+            Instruction::Z(t) => self.apply_gate(&[], &[t], inst.get_matrix()),
+            Instruction::H(t) => self.apply_gate(&[], &[t], inst.get_matrix()),
+            Instruction::CNOT(c, t) => self.apply_gate(&[c], &[t], inst.get_matrix()),
+        };
     }
 }
 
