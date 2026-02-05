@@ -1,5 +1,5 @@
+use crate::{Circuit, Instruction, SimpleSimulator};
 use nalgebra::{Complex, DMatrix, DVector};
-use crate::{SimpleSimulator, Circuit, Instruction};
 
 pub struct SimpleSimpleSimulator {
     state_vector: Vec<Complex<f32>>,
@@ -7,23 +7,18 @@ pub struct SimpleSimpleSimulator {
 
 impl SimpleSimulator for SimpleSimpleSimulator {
     type E = SimpleError;
-    
+
     fn build(circuit: crate::Circuit) -> Result<Self, Self::E> {
+        for i in 0..circuit.n_qubits {}
 
-        for i in 0..circuit.n_qubits {
-
-        }
-
-        for inst in circuit.instructions {
-
-        }
+        for inst in circuit.instructions {}
         todo!()
     }
-    
+
     fn run(&self) -> usize {
         todo!()
     }
-    
+
     fn final_state(&self) -> nalgebra::DVector<nalgebra::Complex<f32>> {
         todo!()
     }
@@ -33,8 +28,6 @@ impl SimpleSimpleSimulator {
     // fn test() {
     //     SimpleSimpleSimulator::apply_controlled_gate(self, vec![0], vec![1], Instruction::CNOT(0, 1).get_matrix())
     // }
-
-
 
     fn controls_active(i: usize, controls: &[usize]) -> bool {
         controls.iter().all(|&c| ((i >> c) & 1) == 1)
@@ -60,16 +53,14 @@ impl SimpleSimpleSimulator {
         }
 
         indices
-    
     }
 
     fn apply_controlled_gate(
         &mut self,
         controls: Vec<usize>,
         targets: Vec<usize>,
-        u: DMatrix<Complex<f32>>
-    )
-    {
+        u: DMatrix<Complex<f32>>,
+    ) {
         // State vector is length 2^n , n=num qubits
         for i in 0..self.state_vector.len() {
             if !SimpleSimpleSimulator::is_block_base(i, &targets) {
@@ -90,7 +81,7 @@ impl SimpleSimpleSimulator {
 
             let v = DVector::from_iterator(
                 indices.len(),
-                indices.iter().map(|&idx| self.state_vector[idx])
+                indices.iter().map(|&idx| self.state_vector[idx]),
             );
 
             // Apply gate matrix, assumes u matches size of v
@@ -101,11 +92,8 @@ impl SimpleSimpleSimulator {
                 self.state_vector[idx] = v2[j];
             }
         }
-
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum SimpleError {
-
-}
+pub enum SimpleError {}

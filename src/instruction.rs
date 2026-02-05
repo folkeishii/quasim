@@ -10,6 +10,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
+    #[rustfmt::skip]
     const PAULI_X_DATA: [Complex<f32>; 4] = [
         Complex::new(0.0, 0.0), Complex::new(1.0, 0.0),
         Complex::new(1.0, 0.0), Complex::new(0.0, 0.0),

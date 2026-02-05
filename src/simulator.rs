@@ -1,5 +1,5 @@
-use nalgebra::{Complex, DMatrix, DVector};
 use crate::{Circuit, Instruction};
+use nalgebra::{Complex, DMatrix, DVector};
 use rand::prelude::*;
 
 // pub struct Qubit {
@@ -13,8 +13,8 @@ use rand::prelude::*;
 //         Self {
 //             alfa: Complex::new(1.0, 0.0),
 //             beta: Complex::new(0.0, 0.0)
-//         } 
-//     } 
+//         }
+//     }
 // }
 
 pub trait SimpleSimulator: Sized {
