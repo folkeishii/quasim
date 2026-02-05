@@ -3,17 +3,20 @@ use crate::{SimpleSimulator, Circuit, Instruction};
 
 pub struct SimpleSimpleSimulator {
     state_vector: Vec<Complex<f32>>,
-    
-    /* For now, the *simple* simulator can hold an entire circuit,
-     * maybe there is a better way? 
-    */
-    circuit: Circuit,
 }
 
 impl SimpleSimulator for SimpleSimpleSimulator {
     type E = SimpleError;
     
     fn build(circuit: crate::Circuit) -> Result<Self, Self::E> {
+
+        for i in 0..circuit.n_qubits {
+
+        }
+
+        for inst in circuit.instructions {
+
+        }
         todo!()
     }
     
@@ -27,6 +30,12 @@ impl SimpleSimulator for SimpleSimpleSimulator {
 }
 
 impl SimpleSimpleSimulator {
+    // fn test() {
+    //     SimpleSimpleSimulator::apply_controlled_gate(self, vec![0], vec![1], Instruction::CNOT(0, 1).get_matrix())
+    // }
+
+
+
     fn controls_active(i: usize, controls: &[usize]) -> bool {
         controls.iter().all(|&c| ((i >> c) & 1) == 1)
     }
@@ -63,15 +72,15 @@ impl SimpleSimpleSimulator {
     {
         // State vector is length 2^n , n=num qubits
         for i in 0..self.state_vector.len() {
-            if !SimpleSimulator::is_block_base(i, &targets) {
+            if !SimpleSimpleSimulator::is_block_base(i, &targets) {
                 continue;
             }
 
-            if !SimpleSimulator::controls_active(i, &controls) {
+            if !SimpleSimpleSimulator::controls_active(i, &controls) {
                 continue;
             }
 
-            let indices = SimpleSimulator::block_indices(i, &targets);
+            let indices = SimpleSimpleSimulator::block_indices(i, &targets);
 
             // Read amplitudes
             let mut v = Vec::with_capacity(indices.len());
@@ -96,7 +105,7 @@ impl SimpleSimpleSimulator {
     }
 }
 
-#[derive(thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum SimpleError {
 
 }
