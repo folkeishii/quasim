@@ -17,7 +17,7 @@ use rand::prelude::*;
 //     } 
 // }
 
-pub trait Simulator: Sized {
+pub trait SimpleSimulator: Sized {
     type E: std::error::Error;
 
     fn build(circuit: Circuit) -> Result<Self, Self::E>;

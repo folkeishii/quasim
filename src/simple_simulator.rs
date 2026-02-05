@@ -1,6 +1,7 @@
-use crate::{Simulator};
+use nalgebra::{Complex, DMatrix, DVector};
+use crate::{SimpleSimulator, Circuit, Instruction};
 
-pub struct SimpleSimulator {
+pub struct SimpleSimpleSimulator {
     state_vector: Vec<Complex<f32>>,
     
     /* For now, the *simple* simulator can hold an entire circuit,
@@ -9,8 +10,23 @@ pub struct SimpleSimulator {
     circuit: Circuit,
 }
 
-impl SimpleSimulator {
+impl SimpleSimulator for SimpleSimpleSimulator {
+    type E = SimpleError;
+    
+    fn build(circuit: crate::Circuit) -> Result<Self, Self::E> {
+        todo!()
+    }
+    
+    fn run(&self) -> usize {
+        todo!()
+    }
+    
+    fn final_state(&self) -> nalgebra::DVector<nalgebra::Complex<f32>> {
+        todo!()
+    }
+}
 
+impl SimpleSimpleSimulator {
     fn controls_active(i: usize, controls: &[usize]) -> bool {
         controls.iter().all(|&c| ((i >> c) & 1) == 1)
     }
@@ -78,4 +94,9 @@ impl SimpleSimulator {
         }
 
     }
+}
+
+#[derive(thiserror::Error)]
+pub enum SimpleError {
+
 }
