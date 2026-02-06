@@ -1,4 +1,6 @@
 mod circuit;
+mod ext;
+mod gate_dsl;
 mod instruction;
 mod simulator;
 
