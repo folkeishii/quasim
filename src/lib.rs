@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod circuit;
 mod ext;
 mod gate_dsl;
