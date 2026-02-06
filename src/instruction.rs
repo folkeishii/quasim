@@ -1,5 +1,5 @@
 use nalgebra::{Complex, DMatrix, dmatrix};
-use std::f32::consts::{FRAC_1_SQRT_2, PI};
+use std::{f32::consts::{FRAC_1_SQRT_2, PI}, vec};
 
 pub enum Instruction {
     CNOT(usize, usize),
@@ -45,5 +45,22 @@ impl Instruction {
         };
 
         return DMatrix::from_row_slice(2, 2, data);
+    }
+
+    pub fn get_controls(&self) -> Vec<usize> {
+        match self {
+            Instruction::CNOT(c, _) => vec![*c],
+            _ => vec![],
+        }
+    }
+
+    pub fn get_targets(&self) -> Vec<usize> {
+        match self {
+            Instruction::CNOT(_, t)
+            | Instruction::X(t)
+            | Instruction::Y(t)
+            | Instruction::Z(t)
+            | Instruction::H(t) => vec![*t],
+        }
     }
 }

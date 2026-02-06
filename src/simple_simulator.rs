@@ -1,4 +1,5 @@
-use nalgebra::{Complex, DMatrix, DVector};
+use nalgebra::{Complex, DMatrix, DVector, Normed};
+use rand::{distr::weighted::WeightedIndex, prelude::*};
 use crate::{SimpleSimulator, Circuit, Instruction};
 
 pub struct SimpleSimpleSimulator {
@@ -26,7 +27,12 @@ impl SimpleSimulator for SimpleSimpleSimulator {
     }
     
     fn run(&self) -> usize {
-        todo!()
+        let probs: Vec<f32> = self.state_vector.iter().map(|&c| c.norm_sqr()).collect();
+
+        let dist = WeightedIndex::new(probs).unwrap();
+        let mut rng = rand::rng();
+
+        dist.sample(&mut rng)
     }
     
     fn final_state(&self) -> DVector<Complex<f32>> {
@@ -99,19 +105,14 @@ impl SimpleSimpleSimulator {
     }
 
     fn apply_instruction(&mut self, inst: Instruction) {
-        match inst {
-            Instruction::X(t) => self.apply_gate(&[], &[t], inst.get_matrix()),
-            Instruction::Y(t) => self.apply_gate(&[], &[t], inst.get_matrix()),
-            Instruction::Z(t) => self.apply_gate(&[], &[t], inst.get_matrix()),
-            Instruction::H(t) => self.apply_gate(&[], &[t], inst.get_matrix()),
-            Instruction::CNOT(c, t) => self.apply_gate(&[c], &[t], inst.get_matrix()),
-        };
+        self.apply_gate(&inst.get_controls(), &inst.get_targets(), inst.get_matrix());
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimpleError {
-
+    #[error("Measurement mid-circuit")]
+    MidCircuitMeasurement
 }
 
 
@@ -120,21 +121,34 @@ mod tests {
     use crate::{Circuit, Instruction, SimpleSimpleSimulator, SimpleSimulator};
 
     #[test]
-    fn foo() {
-        let instructions = vec![
-            Instruction::H(0),
-            Instruction::CNOT(0, 2),
-            Instruction::X(0),
-            Instruction::H(0),
-            Instruction::Y(1),
-        ];
-
+    fn state_vector_print() {
         let circ = Circuit {
-            instructions: instructions,
+            instructions: vec![
+                Instruction::H(0),
+                Instruction::CNOT(0, 2),
+                Instruction::X(0),
+                Instruction::H(0),
+                Instruction::Y(1),
+            ],
             n_qubits: 3,
         };
 
         let sim = SimpleSimpleSimulator::build(circ).unwrap();
         println!("{}", sim.final_state());
+        println!("{:03b}", sim.run());
+    }
+
+    #[test]
+    fn bell_state_test() {
+        let circ = Circuit {
+            instructions: vec![
+                Instruction::H(0),
+                Instruction::CNOT(0, 1),
+            ],
+            n_qubits: 2,
+        };
+
+        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        println!("{:02b}", sim.run());
     }
 }
