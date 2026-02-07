@@ -1,5 +1,6 @@
 use crate::{Circuit, Instruction, SimpleSimulator};
-use nalgebra::{Complex, DMatrix, DVector, MatrixN, dmatrix};
+use nalgebra::{Complex, DMatrix, DVector, dmatrix};
+use rand::{distr::weighted::WeightedIndex, prelude::*};
 
 pub struct DebugSimulator {
     pub states: Vec<DVector<Complex<f32>>>,
@@ -10,20 +11,17 @@ impl SimpleSimulator for DebugSimulator {
 
     fn build(circuit: Circuit) -> Result<Self, Self::E> {
         let k = circuit.n_qubits;
+
+        // Initial state assumed to be |000..>
         let mut init_state = vec![Complex::ZERO; 1 << k];
         init_state[0] = Complex::ONE;
-
         let mut sim = DebugSimulator {
             states: vec![DVector::from_vec(init_state)],
         };
 
         for inst in circuit.instructions {
             let mat = DebugSimulator::inst_to_big_matrix(inst, k);
-            let v = sim
-                .states
-                .last()
-                .expect("states should have at least the initial state")
-                .clone();
+            let v = sim.final_state();
             let w = mat * v;
             sim.states.push(w);
         }
@@ -35,12 +33,17 @@ impl SimpleSimulator for DebugSimulator {
         return self
             .states
             .last()
-            .expect("states should have at least the initial state")
+            .expect("states should, at least, contain the initial state")
             .clone();
     }
 
     fn run(&self) -> usize {
-        todo!()
+        let probs: Vec<f32> = self.final_state().iter().map(|&c| c.norm_sqr()).collect();
+
+        let dist = WeightedIndex::new(probs).unwrap();
+        let mut rng = rand::rng();
+
+        dist.sample(&mut rng)
     }
 }
 
@@ -49,23 +52,31 @@ impl DebugSimulator {
         match inst {
             Instruction::CNOT(control, target) => DebugSimulator::controlled(
                 Instruction::X(0).get_matrix(),
-                vec![control],
-                target,
+                &[control],
+                &[target],
                 n_qubits,
             ),
-            Instruction::X(target) => {
-                DebugSimulator::inflate_2x2(inst.get_matrix(), target, n_qubits)
-            }
-            Instruction::Y(target) => {
-                DebugSimulator::inflate_2x2(inst.get_matrix(), target, n_qubits)
-            }
-            Instruction::Z(target) => {
-                DebugSimulator::inflate_2x2(inst.get_matrix(), target, n_qubits)
-            }
-            Instruction::H(target) => {
+            /* TODO: usage of inflate_2x2 is pretty inefficient.
+             * Instead, apply the 2x2 gate on a signle qubit.
+             * */
+            Instruction::X(target)
+            | Instruction::Y(target)
+            | Instruction::Z(target)
+            | Instruction::H(target) => {
                 DebugSimulator::inflate_2x2(inst.get_matrix(), target, n_qubits)
             }
         }
+    }
+
+    fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f32>>> {
+        vec![DMatrix::<Complex<f32>>::identity(2, 2); n_factors]
+    }
+
+    fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f32>>>) -> DMatrix<Complex<f32>> {
+        tensor_factors.iter().fold(
+            DMatrix::<Complex<f32>>::identity(1, 1),
+            |product, factor| product.kronecker(factor),
+        )
     }
 
     fn inflate_2x2(
@@ -73,53 +84,45 @@ impl DebugSimulator {
         target: usize,
         n_qubits: usize,
     ) -> DMatrix<Complex<f32>> {
-        let mut tensor_factors = vec![DMatrix::<Complex<f32>>::identity(2, 2); n_qubits];
+        let mut tensor_factors = DebugSimulator::identity_tensor_factors(n_qubits);
         tensor_factors[target] = matrix_2x2;
-        tensor_factors
-            .iter()
-            .fold(DMatrix::<Complex<f32>>::identity(1, 1), |acc, x| {
-                acc.kronecker(x)
-            })
+        DebugSimulator::eval_tensor_product(tensor_factors)
     }
 
+    //TODO: Allow for neg_controls.
     fn controlled(
         matrix_2x2: DMatrix<Complex<f32>>,
-        controls: Vec<usize>,
-        target: usize,
+        controls: &[usize],
+        targets: &[usize],
         n_qubits: usize,
     ) -> DMatrix<Complex<f32>> {
-        let ketbra = vec![
-            DMatrix::<Complex<f32>>::from_row_slice(
-                2,
-                2,
-                &[Complex::ONE, Complex::ZERO, Complex::ZERO, Complex::ZERO],
-            ),
-            DMatrix::<Complex<f32>>::from_row_slice(
-                2,
-                2,
-                &[Complex::ZERO, Complex::ZERO, Complex::ZERO, Complex::ONE],
-            ),
+        let ketbra = [
+            dmatrix![Complex::ONE, Complex::ZERO; Complex::ZERO, Complex::ZERO], // |0><0|
+            dmatrix![Complex::ZERO, Complex::ZERO; Complex::ZERO, Complex::ONE], // |1><1|
         ];
         let n_controls = controls.len();
+
+        // one term for each entry in a 'classical truth-table'
         let n_terms = 1 << n_controls;
-        let mut terms = vec![vec![DMatrix::<Complex<f32>>::identity(2, 2); n_qubits]; n_terms];
+        let mut terms = vec![DebugSimulator::identity_tensor_factors(n_qubits); n_terms];
         for i in 0..n_terms {
-            let mut c: usize = 0;
-            for control in controls.clone() {
-                terms[i][control] = ketbra[(i >> c) & 1].clone();
-                c += 1;
+            let mut j: usize = 0;
+            for &control in controls {
+                terms[i][control] = ketbra[(i >> j) & 1].clone();
+                j += 1;
             }
         }
-        terms[n_terms - 1][target] = matrix_2x2;
+
+        // Several controls -> all controls == 1 for gates to be applied.
+        for &target in targets {
+            terms[n_terms - 1][target] = matrix_2x2.clone();
+        }
+
         let dim = 1 << n_qubits;
         terms
             .iter()
-            .fold(DMatrix::<Complex<f32>>::zeros(dim, dim), |acc1, x| {
-                acc1 + x
-                    .iter()
-                    .fold(DMatrix::<Complex<f32>>::identity(1, 1), |acc2, y| {
-                        acc2.kronecker(y)
-                    })
+            .fold(DMatrix::<Complex<f32>>::zeros(dim, dim), |sum, term| {
+                sum + DebugSimulator::eval_tensor_product(term.clone())
             })
     }
 }
@@ -130,54 +133,251 @@ pub enum SimpleError {}
 #[cfg(test)]
 mod tests {
     use crate::{Circuit, DebugSimulator, Instruction, SimpleSimulator};
+    use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
+    use std::f32::consts::FRAC_1_SQRT_2;
 
-    #[test]
-    fn H04x4() {
-        let mat4 = DebugSimulator::inflate_2x2(Instruction::H(0).get_matrix(), 0, 2);
-        println!("{}", mat4);
-        // OK
-    }
-    #[test]
-    fn H14x4() {
-        let mat4 = DebugSimulator::inflate_2x2(Instruction::H(0).get_matrix(), 1, 2);
-        println!("{}", mat4);
-        // OK
+    fn is_matrix_equal_to(m1: DMatrix<Complex<f32>>, m2: DMatrix<Complex<f32>>) -> bool {
+        m1.iter()
+            .zip(m2.iter())
+            .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
     }
 
-    #[test]
-    fn CNOT014x4() {
-        let mat4 = DebugSimulator::controlled(Instruction::X(0).get_matrix(), vec![0], 1, 2);
-        println!("{}", mat4);
-        // OK
+    fn is_vector_equal_to(v1: DVector<Complex<f32>>, v2: DVector<Complex<f32>>) -> bool {
+        let l = v1.len();
+        let m1 = DMatrix::<Complex<f32>>::from_row_slice(l, 1, v1.as_slice());
+        let m2 = DMatrix::<Complex<f32>>::from_row_slice(l, 1, v2.as_slice());
+        l == v2.len() && is_matrix_equal_to(m1, m2)
     }
 
-    #[test]
-    fn CNOT104x4() {
-        let mat4 = DebugSimulator::controlled(Instruction::X(0).get_matrix(), vec![1], 0, 2);
-        println!("{}", mat4);
-        // OK
+    macro_rules! assert_is_matrix_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_matrix_equal_to($m1, $m2))
+        };
     }
 
-    #[test]
-    fn TOFFOLLI8x8() {
-        let mat4 = DebugSimulator::controlled(Instruction::X(0).get_matrix(), vec![0, 1], 2, 3);
-        println!("{}", mat4);
-        // OK
+    macro_rules! assert_is_vector_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_vector_equal_to($m1, $m2))
+        };
     }
 
     #[test]
-    fn foo() {
-        let instructions = vec![Instruction::H(0), Instruction::CNOT(0, 1)];
-
+    fn bell_state_test() {
         let circ = Circuit {
-            instructions: instructions,
+            instructions: vec![
+                Instruction::H(0),
+                Instruction::CNOT(0, 1),
+            ],
             n_qubits: 2,
         };
 
         let sim = DebugSimulator::build(circ).unwrap();
-        for s in sim.states {
-            println!("{}", s);
-            // OK
-        }
+        let collapsed = sim.run();
+        println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
+        assert!(collapsed == 0b00 || collapsed == 0b11);
+    }
+
+    fn textbook_cnot() -> DMatrix<Complex<f32>> {
+        #[rustfmt::skip]
+        let textbook_cnot: DMatrix::<Complex<f32>> = dmatrix![
+            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
+            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+        ];
+        textbook_cnot
+    }
+
+    #[test]
+    fn test_textbook_cnot() {
+        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[0], &[1], 2);
+        assert_is_matrix_equal!(mat, textbook_cnot());
+    }
+
+    fn textbook_toffoli() -> DMatrix<Complex<f32>> {
+        #[rustfmt::skip]
+        let textbook_toffoli: DMatrix::<Complex<f32>> = dmatrix![
+            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+        ];
+        textbook_toffoli
+    }
+    #[test]
+    fn test_textbook_toffoli() {
+        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[0, 1], &[2], 3);
+        assert_is_matrix_equal!(mat, textbook_toffoli());
+    }
+
+    /* Following tests are based on 'ControlledGates.tex' */
+
+    fn cnot_01() -> DMatrix<Complex<f32>> {
+        #[rustfmt::skip]
+        let cnot_01: DMatrix::<Complex<f32>> = dmatrix![
+            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
+        ];
+        cnot_01
+    }
+
+    #[test]
+    fn test_cnot_01() {
+        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[0], &[1], 3);
+        assert_is_matrix_equal!(mat, cnot_01());
+    }
+
+    fn cnot_02() -> DMatrix<Complex<f32>> {
+        #[rustfmt::skip]
+        let cnot_02: DMatrix::<Complex<f32>> = dmatrix![
+            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+        ];
+        cnot_02
+    }
+
+    #[test]
+    fn test_cnot_02() {
+        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[0], &[2], 3);
+        assert_is_matrix_equal!(mat, cnot_02());
+    }
+
+    fn cnot_12() -> DMatrix<Complex<f32>> {
+        #[rustfmt::skip]
+        let cnot_12: DMatrix::<Complex<f32>> = dmatrix![
+            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+        ];
+        cnot_12
+    }
+
+    #[test]
+    fn test_cnot_12() {
+        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[1], &[2], 3);
+        assert_is_matrix_equal!(mat, cnot_12());
+    }
+
+    fn h_0() -> DMatrix<Complex<f32>> {
+        #[rustfmt::skip]
+        let h_0: DMatrix::<Complex<f32>> = dmatrix![
+            Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO,Complex::ZERO,Complex::ZERO, Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO, Complex::ZERO;
+            Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO,Complex::ZERO, Complex::ZERO, Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO, Complex::ZERO, Complex::ZERO, Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO, Complex::ZERO, Complex::new(FRAC_1_SQRT_2, 0.0);
+            Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO,Complex::ZERO,Complex::ZERO,-Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO, Complex::ZERO;
+            Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO,Complex::ZERO, Complex::ZERO,-Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO, Complex::ZERO, Complex::ZERO,-Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO, Complex::ZERO,-Complex::new(FRAC_1_SQRT_2, 0.0);
+        ];
+        h_0
+    }
+
+    #[test]
+    fn test_h_0() {
+        let mat = DebugSimulator::inflate_2x2(Instruction::H(0).get_matrix(), 0, 3);
+        assert_is_matrix_equal!(mat, h_0());
+    }
+
+    fn cnot_201() -> DMatrix<Complex<f32>> {
+        let cnot_201: DMatrix::<Complex<f32>> = dmatrix![
+            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
+            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+        ];
+        cnot_201
+    }
+
+    #[test]
+    fn test_cnot_201() {
+        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[2], &[0,1], 3);
+        assert_is_matrix_equal!(mat, cnot_201());
+    }
+
+
+    #[test]
+    fn test_hadamard_double_cnot_entanglement() {
+        let instructions = vec![
+            Instruction::H(0),
+            Instruction::CNOT(0, 1),
+            Instruction::CNOT(0, 2),
+        ];
+        let circ = Circuit {
+            instructions: instructions,
+            n_qubits: 3,
+        };
+        let sim = DebugSimulator::build(circ).unwrap();
+        assert!(sim.states.len() == 4);
+        let psi0: DVector<Complex<f32>> = dvector![
+            Complex::ONE, // |000>
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO
+        ];
+        assert_is_vector_equal!(psi0, sim.states[0].clone());
+        let psi1: DVector<Complex<f32>> = dvector![
+            Complex::new(FRAC_1_SQRT_2, 0.0), //|000>
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::new(FRAC_1_SQRT_2, 0.0), //|100>
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO
+        ];
+        assert_is_vector_equal!(psi1, sim.states[1].clone());
+        let psi2: DVector<Complex<f32>> = dvector![
+            Complex::new(FRAC_1_SQRT_2, 0.0), // |000>
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::new(FRAC_1_SQRT_2, 0.0), // |110>
+            Complex::ZERO
+        ];
+        assert_is_vector_equal!(psi2, sim.states[2].clone());
+        let psi3: DVector<Complex<f32>> = dvector![
+            Complex::new(FRAC_1_SQRT_2, 0.0), // |000>
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::ZERO,
+            Complex::new(FRAC_1_SQRT_2, 0.0) // |111>
+        ];
+        assert_is_vector_equal!(psi3.clone(), sim.states[3].clone());
+        assert_is_vector_equal!(psi3, sim.final_state());
     }
 }
