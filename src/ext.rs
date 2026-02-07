@@ -1,4 +1,4 @@
-use std::cmp::Ordering;
+use std::{cmp::Ordering, iter::Map, ops::Range};
 
 use nalgebra::{Complex, Dim, Matrix, RawStorage};
 
@@ -65,6 +65,13 @@ where
     }
 
     return Some(Ordering::Equal);
+}
+
+pub fn reverse_indices(
+    range: Range<usize>,
+    len: usize,
+) -> Map<Range<usize>, impl FnMut(usize) -> usize> {
+    range.map(move |i| len - i - 1)
 }
 
 #[macro_export]

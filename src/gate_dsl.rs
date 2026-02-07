@@ -7,7 +7,7 @@ use nalgebra::{
     ArrayStorage, Complex, Const, DMatrix, DVector, Dim, Dyn, Matrix, SMatrix, SVector, StorageMut,
 };
 
-use crate::cart;
+use crate::{cart, ext::reverse_indices};
 
 type State = SVector<Complex<f32>, 2>;
 type Gate2x2 = SMatrix<Complex<f32>, 2, 2>;
@@ -39,6 +39,40 @@ pub const AT_11: Gate2x2 = SMatrix::from_array_storage(ArrayStorage([
 struct MST<QS: QSystem> {
     factors: Vec<ST<QS>>,
     system: QS,
+}
+impl<QS: QSystem> MST<QS> {
+    pub fn eval(&self) -> QS::SystemGate {
+        let system = self.system;
+        let mut stm: Vec<TP<QS>> = vec![TP {
+            system,
+            gates: system.init_gate_storage(&|_| ID),
+        }];
+
+        for i in reverse_indices(0..self.len(), self.len()) {
+            let st = &self[i];
+            let prev = stm.clone();
+            for _ in 1..st.len() {
+                stm.extend(prev.clone());
+            }
+
+            let stride = prev.len();
+            for j in 0..stm.len() {
+                // let mul_lhs = &st[j / stride];
+                // let mul_rhs = &stm[j];
+
+                for k in 0..system.bit_count() {
+                    stm[j].gates.as_mut()[k] = st[j / stride][k] * stm[j].as_ref()[k];
+                }
+            }
+        }
+
+        let mut ret = system.init_system_gate(&|_, _| cart!(0.0));
+        for tm in stm {
+            ret += tm.eval();
+        }
+
+        ret
+    }
 }
 impl<QS: QSystem> Mul<MST<QS>> for MST<QS> {
     type Output = MST<QS>;
@@ -192,7 +226,22 @@ struct TP<QS: QSystem> {
     gates: QS::Storage<Gate2x2>,
     system: QS,
 }
-impl<QS: QSystem> TP<QS> {}
+impl<QS: QSystem> TP<QS> {
+    pub fn eval(&self) -> QS::SystemGate {
+        let stride_init = self.system.state_count() >> 1;
+        self.system.init_system_gate(&|row, col| {
+            let mut ret = cart!(1.0);
+            let mut stride = stride_init;
+            for i in 0..self.system.bit_count() {
+                let row2x2 = (row / stride) & 1;
+                let col2x2 = (col / stride) & 1;
+                ret *= self[i][(row2x2, col2x2)];
+                stride >>= 1;
+            }
+            ret
+        })
+    }
+}
 impl<QS: QSystem> Add<TP<QS>> for TP<QS> {
     type Output = ST<QS>;
 
@@ -410,7 +459,7 @@ impl QSystem for Dyn {
             row_total,
             (0..total).into_iter().map(|i| {
                 let (row, col) = (i / row_total, i % row_total);
-                f(col, row)
+                f(row, col)
             }),
         )
     }
@@ -461,7 +510,7 @@ macro_rules! impl_const_qsystem {
                 let total = self.state_count().pow(2);
                 SMatrix::from_row_iterator((0..total).into_iter().map(|i| {
                     let (row, col) = (i / row_total, i % row_total);
-                    f(col, row)
+                    f(row, col)
                 }))
             }
 
@@ -615,6 +664,47 @@ mod tests {
         assert_eq!(
             cmp_elements(
                 &(mst * state).eval(),
+                &SVector::from_row_slice(&[
+                    cart!(FRAC_1_SQRT_2),
+                    cart!(0.0),
+                    cart!(0.0),
+                    cart!(0.0),
+                    cart!(0.0),
+                    cart!(FRAC_1_SQRT_2),
+                    cart!(0.0),
+                    cart!(0.0),
+                ]),
+                0.000001,
+            ),
+            Some(Ordering::Equal)
+        );
+    }
+
+    #[test]
+    fn hadamard_cnot_entanglement_final_matrix() {
+        let hadamard = Gate2x2::new(
+            FRAC_1_SQRT_2.into(),
+            FRAC_1_SQRT_2.into(),
+            FRAC_1_SQRT_2.into(),
+            (-FRAC_1_SQRT_2).into(),
+        );
+        let x = Gate2x2::new(0.0.into(), 1.0.into(), 1.0.into(), 0.0.into());
+
+        let tp0 = TP::from([hadamard, ID, ID]);
+        let tp1 = TP::from([AT_00, ID, ID]);
+        let tp2 = TP::from([AT_11, ID, x]);
+
+        let st0: ST<Const<3>> = tp0.into();
+        let st1 = tp1 + tp2;
+
+        let mst = st1 * st0;
+
+        let final_matrix = mst.eval();
+        let state = TPV::from([STATE_0, STATE_0, STATE_0]).eval();
+
+        assert_eq!(
+            cmp_elements(
+                &(final_matrix * state),
                 &SVector::from_row_slice(&[
                     cart!(FRAC_1_SQRT_2),
                     cart!(0.0),
