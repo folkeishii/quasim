@@ -3,10 +3,36 @@ use std::{
     ops::{Add, AddAssign, Deref, Mul, MulAssign},
 };
 
-use nalgebra::{Complex, Const, DVector, Dim, Dyn, SMatrix, SVector};
+use nalgebra::{
+    ArrayStorage, Complex, Const, DMatrix, DVector, Dim, Dyn, Matrix, SMatrix, SVector, StorageMut,
+};
+
+use crate::cart;
 
 type State = SVector<Complex<f32>, 2>;
-type Gate = SMatrix<Complex<f32>, 2, 2>;
+type Gate2x2 = SMatrix<Complex<f32>, 2, 2>;
+
+pub const STATE_0: State = SMatrix::from_array_storage(ArrayStorage([[cart!(1.0), cart!(0.0)]]));
+pub const ID: Gate2x2 = SMatrix::from_array_storage(ArrayStorage([
+    [cart!(1.0), cart!(0.0)],
+    [cart!(0.0), cart!(1.0)],
+]));
+pub const AT_00: Gate2x2 = SMatrix::from_array_storage(ArrayStorage([
+    [cart!(1.0), cart!(0.0)],
+    [cart!(0.0), cart!(0.0)],
+]));
+pub const AT_01: Gate2x2 = SMatrix::from_array_storage(ArrayStorage([
+    [cart!(0.0), cart!(0.0)],
+    [cart!(1.0), cart!(0.0)],
+]));
+pub const AT_10: Gate2x2 = SMatrix::from_array_storage(ArrayStorage([
+    [cart!(0.0), cart!(1.0)],
+    [cart!(0.0), cart!(0.0)],
+]));
+pub const AT_11: Gate2x2 = SMatrix::from_array_storage(ArrayStorage([
+    [cart!(0.0), cart!(0.0)],
+    [cart!(0.0), cart!(1.0)],
+]));
 
 #[derive(Clone)]
 // Matrix product of ST:s
@@ -14,10 +40,32 @@ struct MST<QS: QSystem> {
     factors: Vec<ST<QS>>,
     system: QS,
 }
+impl<QS: QSystem> Mul<MST<QS>> for MST<QS> {
+    type Output = MST<QS>;
+
+    fn mul(self, rhs: MST<QS>) -> Self::Output {
+        let mut out = self;
+        out *= rhs;
+        out
+    }
+}
 impl<QS: QSystem> MulAssign<MST<QS>> for MST<QS> {
     fn mul_assign(&mut self, rhs: MST<QS>) {
         self.system.assert_bit_count(rhs.system);
         self.factors.extend(rhs.factors);
+    }
+}
+impl<QS: QSystem> Mul<TPV<QS>> for MST<QS> {
+    type Output = STV<QS>;
+
+    fn mul(self, rhs: TPV<QS>) -> Self::Output {
+        self.system.assert_bit_count(rhs.system);
+
+        let mut ret: Self::Output = rhs.into();
+        for st in self.iter().rev() {
+            ret = st.clone() * ret;
+        }
+        ret
     }
 }
 impl<QS: QSystem> From<ST<QS>> for MST<QS> {
@@ -34,19 +82,6 @@ impl<QS: QSystem> From<TP<QS>> for MST<QS> {
             system: value.system,
             factors: vec![value.into()],
         }
-    }
-}
-impl<QS: QSystem> Mul<TPV<QS>> for MST<QS> {
-    type Output = STV<QS>;
-
-    fn mul(self, rhs: TPV<QS>) -> Self::Output {
-        self.system.assert_bit_count(rhs.system);
-
-        let mut ret: Self::Output = rhs.into();
-        for st in self.iter().rev() {
-            ret = st * &ret;
-        }
-        ret
     }
 }
 impl<QS: QSystem> Deref for MST<QS> {
@@ -82,15 +117,13 @@ impl<QS: QSystem> Mul<ST<QS>> for ST<QS> {
         }
     }
 }
-impl<QS: QSystem> Mul<TP<QS>> for ST<QS> {
-    type Output = MST<QS>;
+impl<QS: QSystem> Add<ST<QS>> for ST<QS> {
+    type Output = Self;
 
-    fn mul(self, rhs: TP<QS>) -> Self::Output {
-        self.system.assert_bit_count(rhs.system);
-        MST {
-            system: self.system,
-            factors: vec![self, rhs.into()],
-        }
+    fn add(self, rhs: ST<QS>) -> Self::Output {
+        let mut out = self;
+        out += rhs;
+        out
     }
 }
 impl<QS: QSystem> AddAssign<ST<QS>> for ST<QS> {
@@ -99,32 +132,26 @@ impl<QS: QSystem> AddAssign<ST<QS>> for ST<QS> {
         self.terms.extend(rhs.terms);
     }
 }
-impl<QS: QSystem> AddAssign<TP<QS>> for ST<QS> {
-    fn add_assign(&mut self, rhs: TP<QS>) {
-        self.system.assert_bit_count(rhs.system);
-        self.terms.push(rhs.into())
-    }
-}
-impl<QS: QSystem> Mul<&TPV<QS>> for &ST<QS> {
+impl<QS: QSystem> Mul<TPV<QS>> for ST<QS> {
     type Output = STV<QS>;
 
-    fn mul(self, rhs: &TPV<QS>) -> Self::Output {
+    fn mul(self, rhs: TPV<QS>) -> Self::Output {
         self.system.assert_bit_count(rhs.system);
         STV {
             system: self.system,
-            terms: self.terms.iter().map(|tp| tp * rhs).collect(),
+            terms: self.terms.into_iter().map(|tp| tp * rhs.clone()).collect(),
         }
     }
 }
-impl<QS: QSystem> Mul<&STV<QS>> for &ST<QS> {
+impl<QS: QSystem> Mul<STV<QS>> for ST<QS> {
     type Output = STV<QS>;
 
-    fn mul(self, rhs: &STV<QS>) -> Self::Output {
+    fn mul(self, rhs: STV<QS>) -> Self::Output {
         self.system.assert_bit_count(rhs.system);
         let mut inner = Vec::new();
         for tp in self.iter() {
             for tpv in rhs.iter() {
-                inner.push(tp * tpv);
+                inner.push(tp.clone() * tpv.clone());
             }
         }
 
@@ -162,17 +189,10 @@ impl<QS: QSystem> Display for ST<QS> {
 #[derive(Debug, Clone)]
 // Tensor Product
 struct TP<QS: QSystem> {
-    gates: QS::Storage<Gate>,
+    gates: QS::Storage<Gate2x2>,
     system: QS,
 }
-impl<QS: QSystem> TP<QS> {
-    pub fn new(system: QS, f: &impl Fn(usize) -> Gate) -> Self {
-        TP {
-            gates: system.init_gate_storage(f),
-            system,
-        }
-    }
-}
+impl<QS: QSystem> TP<QS> {}
 impl<QS: QSystem> Add<TP<QS>> for TP<QS> {
     type Output = ST<QS>;
 
@@ -184,32 +204,10 @@ impl<QS: QSystem> Add<TP<QS>> for TP<QS> {
         }
     }
 }
-impl<QS: QSystem> Mul<TP<QS>> for TP<QS> {
-    type Output = MST<QS>;
-
-    fn mul(self, rhs: TP<QS>) -> Self::Output {
-        self.system.assert_bit_count(rhs.system);
-        MST {
-            system: self.system,
-            factors: vec![self.into(), rhs.into()],
-        }
-    }
-}
-impl<QS: QSystem> Mul<ST<QS>> for TP<QS> {
-    type Output = MST<QS>;
-
-    fn mul(self, rhs: ST<QS>) -> Self::Output {
-        self.system.assert_bit_count(rhs.system);
-        MST {
-            system: self.system,
-            factors: vec![self.into(), rhs],
-        }
-    }
-}
-impl<QS: QSystem> Mul<&TPV<QS>> for &TP<QS> {
+impl<QS: QSystem> Mul<TPV<QS>> for TP<QS> {
     type Output = TPV<QS>;
 
-    fn mul(self, rhs: &TPV<QS>) -> Self::Output {
+    fn mul(self, rhs: TPV<QS>) -> Self::Output {
         self.system.assert_bit_count(rhs.system);
         TPV {
             system: self.system,
@@ -217,16 +215,17 @@ impl<QS: QSystem> Mul<&TPV<QS>> for &TP<QS> {
         }
     }
 }
-impl From<&[Gate]> for TP<Dyn> {
-    fn from(value: &[Gate]) -> Self {
+// impl<const N: usize> From<[Gate2x2; N]> for TP<Const<N>> defined in impl_const_qsystem!
+impl From<Vec<Gate2x2>> for TP<Dyn> {
+    fn from(value: Vec<Gate2x2>) -> Self {
         Self {
             system: Dyn(value.len()),
-            gates: Vec::from(value),
+            gates: value,
         }
     }
 }
 impl<QS: QSystem> Deref for TP<QS> {
-    type Target = [Gate];
+    type Target = [Gate2x2];
 
     fn deref(&self) -> &Self::Target {
         self.gates.as_ref()
@@ -313,11 +312,12 @@ impl<QS: QSystem> TPV<QS> {
         ret
     }
 }
-impl From<&[State]> for TPV<Dyn> {
-    fn from(value: &[State]) -> Self {
+// impl<const N: usize> From<[State; N]> for TPV<Const<N>> defined in impl_const_qsystem!
+impl From<Vec<State>> for TPV<Dyn> {
+    fn from(value: Vec<State>) -> Self {
         Self {
             system: Dyn(value.len()),
-            states: Vec::from(value),
+            states: value,
         }
     }
 }
@@ -338,8 +338,20 @@ impl<QS: QSystem> Display for TPV<QS> {
     }
 }
 
+pub trait StateTrait: Sized + Add<Self> + AddAssign<Self> {}
+impl<T: Sized + Add<Self> + AddAssign<Self>> StateTrait for T {}
+pub trait GateTrait<State>:
+    Sized + Add<Self> + AddAssign<Self> + Mul<Self> + MulAssign<Self> + Mul<State>
+{
+}
+impl<T: Sized + Add<Self> + AddAssign<Self> + Mul<Self> + MulAssign<Self> + Mul<State>, State>
+    GateTrait<State> for T
+{
+}
+
 pub trait QSystem: Copy {
-    type SystemState: Add<Self::SystemState> + AddAssign<Self::SystemState>;
+    type SystemState: StateTrait;
+    type SystemGate: GateTrait<Self::SystemState>;
     type Storage<T: Clone>: Clone + AsRef<[T]> + AsMut<[T]>;
 
     fn assert_bit_count(self, other: Self) {
@@ -353,9 +365,11 @@ pub trait QSystem: Copy {
     /// All arguments passed to `f` must be in the range `0..(bit_count)`
     ///
     /// Returned storage must be of length `bit_count()`
-    fn init_gate_storage(&self, f: &impl Fn(usize) -> Gate) -> Self::Storage<Gate>;
+    fn init_gate_storage(&self, f: &impl Fn(usize) -> Gate2x2) -> Self::Storage<Gate2x2>;
     /// All arguments passed to `f` must be in the range `0..(state_count)`
     fn init_system_state(&self, f: &impl Fn(usize) -> Complex<f32>) -> Self::SystemState;
+    /// All arguments passed to `f` must be in the range `0..(state_count) x 0..(state_count)`
+    fn init_system_gate(&self, f: &impl Fn(usize, usize) -> Complex<f32>) -> Self::SystemGate;
     fn system_get(&self, system_state: &Self::SystemState, index: usize) -> Complex<f32>;
     fn system_apply_f(
         &self,
@@ -370,13 +384,14 @@ pub trait QSystem: Copy {
 }
 impl QSystem for Dyn {
     type SystemState = DVector<Complex<f32>>;
+    type SystemGate = DMatrix<Complex<f32>>;
     type Storage<T: Clone> = Vec<T>;
 
     fn init_state_storage(&self, f: &impl Fn(usize) -> State) -> Self::Storage<State> {
         (0..self.bit_count()).into_iter().map(f).collect()
     }
 
-    fn init_gate_storage(&self, f: &impl Fn(usize) -> Gate) -> Self::Storage<Gate> {
+    fn init_gate_storage(&self, f: &impl Fn(usize) -> Gate2x2) -> Self::Storage<Gate2x2> {
         (0..self.bit_count()).into_iter().map(f).collect()
     }
 
@@ -384,6 +399,19 @@ impl QSystem for Dyn {
         DVector::from_row_iterator(
             self.state_count(),
             (0..self.state_count()).into_iter().map(f),
+        )
+    }
+
+    fn init_system_gate(&self, f: &impl Fn(usize, usize) -> Complex<f32>) -> Self::SystemGate {
+        let row_total = self.state_count();
+        let total = self.state_count().pow(2);
+        DMatrix::from_row_iterator(
+            row_total,
+            row_total,
+            (0..total).into_iter().map(|i| {
+                let (row, col) = (i / row_total, i % row_total);
+                f(col, row)
+            }),
         )
     }
 
@@ -410,18 +438,31 @@ macro_rules! impl_const_qsystem {
     ($qc:expr) => {
         impl QSystem for Const<$qc> {
             type SystemState = SVector<Complex<f32>, { 1 << $qc }>;
+            type SystemGate = SMatrix<Complex<f32>, { 1 << $qc }, { 1 << $qc }>;
             type Storage<T: Clone> = [T; $qc];
 
             fn init_state_storage(&self, f: &impl Fn(usize) -> State) -> Self::Storage<State> {
                 array_init::array_init(f)
             }
 
-            fn init_gate_storage(&self, f: &impl Fn(usize) -> Gate) -> Self::Storage<Gate> {
+            fn init_gate_storage(&self, f: &impl Fn(usize) -> Gate2x2) -> Self::Storage<Gate2x2> {
                 array_init::array_init(f)
             }
 
             fn init_system_state(&self, f: &impl Fn(usize) -> Complex<f32>) -> Self::SystemState {
                 SVector::from_row_iterator((0..self.state_count()).into_iter().map(f))
+            }
+
+            fn init_system_gate(
+                &self,
+                f: &impl Fn(usize, usize) -> Complex<f32>,
+            ) -> Self::SystemGate {
+                let row_total = self.state_count();
+                let total = self.state_count().pow(2);
+                SMatrix::from_row_iterator((0..total).into_iter().map(|i| {
+                    let (row, col) = (i / row_total, i % row_total);
+                    f(col, row)
+                }))
             }
 
             fn system_get(&self, system_state: &Self::SystemState, index: usize) -> Complex<f32> {
@@ -440,6 +481,24 @@ macro_rules! impl_const_qsystem {
 
             fn bit_count(&self) -> usize {
                 $qc
+            }
+        }
+
+        impl From<[Gate2x2; $qc]> for TP<Const<$qc>> {
+            fn from(value: [Gate2x2; $qc]) -> Self {
+                Self {
+                    system: Const::<$qc>,
+                    gates: value,
+                }
+            }
+        }
+
+        impl From<[State; $qc]> for TPV<Const<$qc>> {
+            fn from(value: [State; $qc]) -> Self {
+                Self {
+                    system: Const::<$qc>,
+                    states: value,
+                }
             }
         }
     };
@@ -477,36 +536,6 @@ impl_const_qsystem!(29);
 impl_const_qsystem!(30);
 impl_const_qsystem!(31);
 impl_const_qsystem!(32);
-impl_const_qsystem!(33);
-impl_const_qsystem!(34);
-impl_const_qsystem!(35);
-impl_const_qsystem!(36);
-impl_const_qsystem!(37);
-impl_const_qsystem!(38);
-impl_const_qsystem!(39);
-impl_const_qsystem!(40);
-impl_const_qsystem!(41);
-impl_const_qsystem!(42);
-impl_const_qsystem!(43);
-impl_const_qsystem!(44);
-impl_const_qsystem!(45);
-impl_const_qsystem!(46);
-impl_const_qsystem!(47);
-impl_const_qsystem!(48);
-impl_const_qsystem!(49);
-impl_const_qsystem!(50);
-impl_const_qsystem!(51);
-impl_const_qsystem!(52);
-impl_const_qsystem!(53);
-impl_const_qsystem!(54);
-impl_const_qsystem!(55);
-impl_const_qsystem!(56);
-impl_const_qsystem!(57);
-impl_const_qsystem!(58);
-impl_const_qsystem!(59);
-impl_const_qsystem!(60);
-impl_const_qsystem!(61);
-impl_const_qsystem!(62);
 
 #[cfg(test)]
 mod tests {
@@ -518,51 +547,43 @@ mod tests {
     use nalgebra::{Complex, Const, DVector, Dyn, SVector};
 
     use crate::{
+        cart,
         ext::cmp_elements,
-        gate_dsl::{Gate, ST, State, TP, TPV},
+        gate_dsl::{AT_00, AT_11, Gate2x2, ID, ST, STATE_0, State, TP, TPV},
     };
 
     #[test]
-    fn disp2() {
-        let hadamard = Gate::new(
-            FRAC_1_SQRT_2.into(),
-            FRAC_1_SQRT_2.into(),
-            FRAC_1_SQRT_2.into(),
-            (-FRAC_1_SQRT_2).into(),
+    fn hadamard_cnot_entanglement() {
+        let hadamard = Gate2x2::new(
+            cart!(FRAC_1_SQRT_2),
+            cart!(FRAC_1_SQRT_2),
+            cart!(FRAC_1_SQRT_2),
+            cart!(-FRAC_1_SQRT_2),
         );
-        let cnot_control_0 = Gate::new(1.0.into(), 0.0.into(), 0.0.into(), 0.0.into());
-        let cnot_control_1 = Gate::new(0.0.into(), 0.0.into(), 0.0.into(), 1.0.into());
-        let x = Gate::new(0.0.into(), 1.0.into(), 1.0.into(), 0.0.into());
+        let x = Gate2x2::new(cart!(0.0), cart!(1.0), cart!(1.0), cart!(0.0));
 
-        let tp0 = TP::from([hadamard, Gate::identity(), Gate::identity()].as_slice());
-        let tp1 = TP::from([cnot_control_0, Gate::identity(), Gate::identity()].as_slice());
-        let tp2 = TP::from([cnot_control_1, Gate::identity(), x].as_slice());
+        let tp0 = TP::from(vec![hadamard, ID, ID]);
+        let tp1 = TP::from(vec![AT_00, ID, ID]);
+        let tp2 = TP::from(vec![AT_11, ID, x]);
 
         let st0: ST<Dyn> = tp0.into();
         let st1 = tp1 + tp2;
 
         let mst = st1 * st0;
 
-        let state = TPV::from(
-            [
-                State::new(1.0.into(), 0.0.into()),
-                State::new(1.0.into(), 0.0.into()),
-                State::new(1.0.into(), 0.0.into()),
-            ]
-            .as_slice(),
-        );
+        let state = TPV::from(vec![STATE_0, STATE_0, STATE_0]);
         assert_eq!(
             cmp_elements(
                 &(mst * state).eval(),
                 &DVector::from_row_slice(&[
-                    Complex::new(FRAC_1_SQRT_2, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(FRAC_1_SQRT_2, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
+                    cart!(FRAC_1_SQRT_2),
+                    cart!(0.0),
+                    cart!(0.0),
+                    cart!(0.0),
+                    cart!(0.0),
+                    cart!(FRAC_1_SQRT_2),
+                    cart!(0.0),
+                    cart!(0.0),
                 ]),
                 0.000001,
             ),
@@ -571,50 +592,38 @@ mod tests {
     }
 
     #[test]
-    fn disp2_const() {
-        let hadamard = Gate::new(
+    fn hadamard_cnot_entanglement_stack() {
+        let hadamard = Gate2x2::new(
             FRAC_1_SQRT_2.into(),
             FRAC_1_SQRT_2.into(),
             FRAC_1_SQRT_2.into(),
             (-FRAC_1_SQRT_2).into(),
         );
-        let cnot_control_0 = Gate::new(1.0.into(), 0.0.into(), 0.0.into(), 0.0.into());
-        let cnot_control_1 = Gate::new(0.0.into(), 0.0.into(), 0.0.into(), 1.0.into());
-        let x = Gate::new(0.0.into(), 1.0.into(), 1.0.into(), 0.0.into());
+        let x = Gate2x2::new(0.0.into(), 1.0.into(), 1.0.into(), 0.0.into());
 
-        let tp0 = TP::new(Const::<3>, &|i| {
-            [hadamard, Gate::identity(), Gate::identity()][i]
-        });
-        let tp1 = TP::new(Const::<3>, &|i| {
-            [cnot_control_0, Gate::identity(), Gate::identity()][i]
-        });
-        let tp2 = TP::new(Const::<3>, &|i| [cnot_control_1, Gate::identity(), x][i]);
+        let tp0 = TP::from([hadamard, ID, ID]);
+        let tp1 = TP::from([AT_00, ID, ID]);
+        let tp2 = TP::from([AT_11, ID, x]);
 
         let st0: ST<Const<3>> = tp0.into();
         let st1 = tp1 + tp2;
 
         let mst = st1 * st0;
 
-        let state = TPV::new(Const::<3>, &|i| {
-            [
-                State::new(1.0.into(), 0.0.into()),
-                State::new(1.0.into(), 0.0.into()),
-                State::new(1.0.into(), 0.0.into()),
-            ][i]
-        });
+        let state = TPV::from([STATE_0, STATE_0, STATE_0]);
 
         assert_eq!(
             cmp_elements(
                 &(mst * state).eval(),
-                &SVector::<Complex<f32>, 8>::from_row_slice(&[
-                    Complex::new(FRAC_1_SQRT_2, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(FRAC_1_SQRT_2, 0.0),
-                    Complex::new(0.0, 0.0),
-                    Complex::new(0.0, 0.0),
+                &SVector::from_row_slice(&[
+                    cart!(FRAC_1_SQRT_2),
+                    cart!(0.0),
+                    cart!(0.0),
+                    cart!(0.0),
+                    cart!(0.0),
+                    cart!(FRAC_1_SQRT_2),
+                    cart!(0.0),
+                    cart!(0.0),
                 ]),
                 0.000001,
             ),

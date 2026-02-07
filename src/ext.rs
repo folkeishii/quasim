@@ -66,3 +66,13 @@ where
 
     return Some(Ordering::Equal);
 }
+
+#[macro_export]
+macro_rules! cart {
+    ($re:expr) => {
+        Complex { re: $re, im: 0.0 }
+    };
+    ($re:expr, $im:expr) => {
+        Complex { re: $re, im: $im }
+    };
+}
