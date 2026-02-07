@@ -20,7 +20,7 @@ impl SimpleSimulator for DebugSimulator {
         };
 
         for inst in circuit.instructions {
-            let mat = DebugSimulator::inst_to_big_matrix(inst, k);
+            let mat = DebugSimulator::expand_matrix_from_instruction(inst, k);
             let v = sim.final_state();
             let w = mat * v;
             sim.states.push(w);
@@ -48,24 +48,13 @@ impl SimpleSimulator for DebugSimulator {
 }
 
 impl DebugSimulator {
-    fn inst_to_big_matrix(inst: Instruction, n_qubits: usize) -> DMatrix<Complex<f32>> {
-        match inst {
-            Instruction::CNOT(control, target) => DebugSimulator::controlled(
-                Instruction::X(0).get_matrix(),
-                &[control],
-                &[target],
-                n_qubits,
-            ),
-            /* TODO: usage of inflate_2x2 is pretty inefficient.
-             * Instead, apply the 2x2 gate on a signle qubit.
-             * */
-            Instruction::X(target)
-            | Instruction::Y(target)
-            | Instruction::Z(target)
-            | Instruction::H(target) => {
-                DebugSimulator::inflate_2x2(inst.get_matrix(), target, n_qubits)
-            }
-        }
+    fn expand_matrix_from_instruction(inst: Instruction, n_qubits: usize) -> DMatrix<Complex<f32>> {
+        DebugSimulator::expand_matrix(
+            inst.get_matrix(),
+            &inst.get_controls(),
+            &inst.get_targets(),
+            n_qubits,
+        )
     }
 
     fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f32>>> {
@@ -79,18 +68,8 @@ impl DebugSimulator {
         )
     }
 
-    fn inflate_2x2(
-        matrix_2x2: DMatrix<Complex<f32>>,
-        target: usize,
-        n_qubits: usize,
-    ) -> DMatrix<Complex<f32>> {
-        let mut tensor_factors = DebugSimulator::identity_tensor_factors(n_qubits);
-        tensor_factors[target] = matrix_2x2;
-        DebugSimulator::eval_tensor_product(tensor_factors)
-    }
-
     //TODO: Allow for neg_controls.
-    fn controlled(
+    fn expand_matrix(
         matrix_2x2: DMatrix<Complex<f32>>,
         controls: &[usize],
         targets: &[usize],
@@ -164,10 +143,7 @@ mod tests {
     #[test]
     fn bell_state_test() {
         let circ = Circuit {
-            instructions: vec![
-                Instruction::H(0),
-                Instruction::CNOT(0, 1),
-            ],
+            instructions: vec![Instruction::H(0), Instruction::CNOT(0, 1)],
             n_qubits: 2,
         };
 
@@ -190,7 +166,7 @@ mod tests {
 
     #[test]
     fn test_textbook_cnot() {
-        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[0], &[1], 2);
+        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::CNOT(0, 1), 2);
         assert_is_matrix_equal!(mat, textbook_cnot());
     }
 
@@ -210,7 +186,7 @@ mod tests {
     }
     #[test]
     fn test_textbook_toffoli() {
-        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[0, 1], &[2], 3);
+        let mat = DebugSimulator::expand_matrix(Instruction::X(0).get_matrix(), &[0, 1], &[2], 3);
         assert_is_matrix_equal!(mat, textbook_toffoli());
     }
 
@@ -233,7 +209,7 @@ mod tests {
 
     #[test]
     fn test_cnot_01() {
-        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[0], &[1], 3);
+        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::CNOT(0, 1), 3);
         assert_is_matrix_equal!(mat, cnot_01());
     }
 
@@ -254,7 +230,7 @@ mod tests {
 
     #[test]
     fn test_cnot_02() {
-        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[0], &[2], 3);
+        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::CNOT(0, 2), 3);
         assert_is_matrix_equal!(mat, cnot_02());
     }
 
@@ -275,7 +251,7 @@ mod tests {
 
     #[test]
     fn test_cnot_12() {
-        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[1], &[2], 3);
+        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::CNOT(1, 2), 3);
         assert_is_matrix_equal!(mat, cnot_12());
     }
 
@@ -296,12 +272,12 @@ mod tests {
 
     #[test]
     fn test_h_0() {
-        let mat = DebugSimulator::inflate_2x2(Instruction::H(0).get_matrix(), 0, 3);
+        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::H(0), 3);
         assert_is_matrix_equal!(mat, h_0());
     }
 
     fn cnot_201() -> DMatrix<Complex<f32>> {
-        let cnot_201: DMatrix::<Complex<f32>> = dmatrix![
+        let cnot_201: DMatrix<Complex<f32>> = dmatrix![
             Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
             Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
             Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
@@ -316,10 +292,9 @@ mod tests {
 
     #[test]
     fn test_cnot_201() {
-        let mat = DebugSimulator::controlled(Instruction::X(0).get_matrix(), &[2], &[0,1], 3);
+        let mat = DebugSimulator::expand_matrix(Instruction::X(0).get_matrix(), &[2], &[0, 1], 3);
         assert_is_matrix_equal!(mat, cnot_201());
     }
-
 
     #[test]
     fn test_hadamard_double_cnot_entanglement() {
