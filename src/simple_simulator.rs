@@ -27,9 +27,10 @@ impl SimpleSimulator for SimpleSimpleSimulator {
     }
     
     fn run(&self) -> usize {
-        let probs: Vec<f32> = self.state_vector.iter().map(|&c| c.norm_sqr()).collect();
+        let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
 
-        let dist = WeightedIndex::new(probs).unwrap();
+        let dist = WeightedIndex::new(probs)
+            .expect("Failed to create probability distribution. Invalid or empty state vector?");
         let mut rng = rand::rng();
 
         dist.sample(&mut rng)
