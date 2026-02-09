@@ -107,7 +107,10 @@ impl DebugSimulator {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum SimpleError {}
+pub enum SimpleError {
+    #[error("Measurement mid-circuit")]
+    MidCircuitMeasurement
+}
 
 #[cfg(test)]
 mod tests {
