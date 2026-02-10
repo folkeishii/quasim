@@ -5,12 +5,13 @@ use std::{
 
 use nalgebra::{
     ArrayStorage, Complex, Const, DMatrix, DVector, Dim, Dyn, Matrix, SMatrix, SVector, StorageMut,
+    VecStorage,
 };
 
 use crate::{cart, ext::reverse_indices};
 
-type State = SVector<Complex<f32>, 2>;
-type Gate2x2 = SMatrix<Complex<f32>, 2, 2>;
+pub type State = SVector<Complex<f32>, 2>;
+pub type Gate2x2 = SMatrix<Complex<f32>, 2, 2>;
 
 pub const STATE_0: State = SMatrix::from_array_storage(ArrayStorage([[cart!(1.0), cart!(0.0)]]));
 pub const ID: Gate2x2 = SMatrix::from_array_storage(ArrayStorage([
@@ -36,12 +37,15 @@ pub const AT_11: Gate2x2 = SMatrix::from_array_storage(ArrayStorage([
 
 #[derive(Clone)]
 // Matrix product of ST:s
-struct MST<QS: QSystem> {
+pub struct MST<QS: QSystem> {
     factors: Vec<ST<QS>>,
     system: QS,
 }
 impl<QS: QSystem> MST<QS> {
-    pub fn eval(&self) -> QS::SystemGate {
+    pub fn eval(
+        &self,
+    ) -> Matrix<Complex<f32>, <QS as QSystem>::SysR, <QS as QSystem>::SysC, <QS as QSystem>::SysGS>
+    {
         let system = self.system;
         let mut stm: Vec<TP<QS>> = vec![TP {
             system,
@@ -136,7 +140,7 @@ impl<QS: QSystem> Display for MST<QS> {
 
 #[derive(Clone)]
 // Sum of TP:s
-struct ST<QS: QSystem> {
+pub struct ST<QS: QSystem> {
     terms: Vec<TP<QS>>,
     system: QS,
 }
@@ -222,12 +226,15 @@ impl<QS: QSystem> Display for ST<QS> {
 
 #[derive(Debug, Clone)]
 // Tensor Product
-struct TP<QS: QSystem> {
+pub struct TP<QS: QSystem> {
     gates: QS::Storage<Gate2x2>,
     system: QS,
 }
 impl<QS: QSystem> TP<QS> {
-    pub fn eval(&self) -> QS::SystemGate {
+    pub fn eval(
+        &self,
+    ) -> Matrix<Complex<f32>, <QS as QSystem>::SysR, <QS as QSystem>::SysC, <QS as QSystem>::SysGS>
+    {
         let stride_init = self.system.state_count() >> 1;
         self.system.init_system_gate(&|row, col| {
             let mut ret = cart!(1.0);
@@ -240,6 +247,14 @@ impl<QS: QSystem> TP<QS> {
             }
             ret
         })
+    }
+}
+impl<QS: SQsystem> TP<QS> {
+    pub fn from_array(array: QS::Storage<Gate2x2>) -> Self {
+        Self {
+            gates: array,
+            system: QS::system(),
+        }
     }
 }
 impl<QS: QSystem> Add<TP<QS>> for TP<QS> {
@@ -292,12 +307,14 @@ impl<QS: QSystem> Display for TP<QS> {
 
 #[derive(Clone)]
 // Sum of TPV2s
-struct STV<QS: QSystem> {
+pub struct STV<QS: QSystem> {
     terms: Vec<TPV<QS>>,
     system: QS,
 }
 impl<QS: QSystem> STV<QS> {
-    pub fn eval(&self) -> QS::SystemState {
+    pub fn eval(
+        &self,
+    ) -> Matrix<Complex<f32>, <QS as QSystem>::SysR, Const<1>, <QS as QSystem>::SysSS> {
         let mut ret = self.system.init_system_state(&|_| 0.0.into());
 
         for tpv in self.iter() {
@@ -334,19 +351,14 @@ impl<QS: QSystem> Display for STV<QS> {
 
 #[derive(Debug, Clone)]
 // Tensor Product of Vectors
-struct TPV<QS: QSystem> {
+pub struct TPV<QS: QSystem> {
     states: QS::Storage<State>,
     system: QS,
 }
 impl<QS: QSystem> TPV<QS> {
-    pub fn new(system: QS, f: &impl Fn(usize) -> State) -> Self {
-        Self {
-            states: system.init_state_storage(f),
-            system,
-        }
-    }
-
-    pub fn eval(&self) -> QS::SystemState {
+    pub fn eval(
+        &self,
+    ) -> Matrix<Complex<f32>, <QS as QSystem>::SysR, Const<1>, <QS as QSystem>::SysSS> {
         let mut ret = self
             .system
             .init_system_state(&|_| Complex { re: 1.0, im: 0.0 });
@@ -359,6 +371,14 @@ impl<QS: QSystem> TPV<QS> {
         }
 
         ret
+    }
+}
+impl<QS: SQsystem> TPV<QS> {
+    pub fn from_array(array: QS::Storage<State>) -> Self {
+        Self {
+            states: array,
+            system: QS::system(),
+        }
     }
 }
 // impl<const N: usize> From<[State; N]> for TPV<Const<N>> defined in impl_const_qsystem!
@@ -399,8 +419,10 @@ impl<T: Sized + Add<Self> + AddAssign<Self> + Mul<Self> + MulAssign<Self> + Mul<
 }
 
 pub trait QSystem: Copy {
-    type SystemState: StateTrait;
-    type SystemGate: GateTrait<Self::SystemState>;
+    type SysR: Dim;
+    type SysC: Dim;
+    type SysSS: StorageMut<Complex<f32>, Self::SysR, Const<1>>;
+    type SysGS: StorageMut<Complex<f32>, Self::SysR, Self::SysC>;
     type Storage<T: Clone>: Clone + AsRef<[T]> + AsMut<[T]>;
 
     fn assert_bit_count(self, other: Self) {
@@ -416,13 +438,23 @@ pub trait QSystem: Copy {
     /// Returned storage must be of length `bit_count()`
     fn init_gate_storage(&self, f: &impl Fn(usize) -> Gate2x2) -> Self::Storage<Gate2x2>;
     /// All arguments passed to `f` must be in the range `0..(state_count)`
-    fn init_system_state(&self, f: &impl Fn(usize) -> Complex<f32>) -> Self::SystemState;
+    fn init_system_state(
+        &self,
+        f: &impl Fn(usize) -> Complex<f32>,
+    ) -> Matrix<Complex<f32>, Self::SysR, Const<1>, Self::SysSS>;
     /// All arguments passed to `f` must be in the range `0..(state_count) x 0..(state_count)`
-    fn init_system_gate(&self, f: &impl Fn(usize, usize) -> Complex<f32>) -> Self::SystemGate;
-    fn system_get(&self, system_state: &Self::SystemState, index: usize) -> Complex<f32>;
+    fn init_system_gate(
+        &self,
+        f: &impl Fn(usize, usize) -> Complex<f32>,
+    ) -> Matrix<Complex<f32>, Self::SysR, Self::SysC, Self::SysGS>;
+    fn system_get(
+        &self,
+        system_state: &Matrix<Complex<f32>, Self::SysR, Const<1>, Self::SysSS>,
+        index: usize,
+    ) -> Complex<f32>;
     fn system_apply_f(
         &self,
-        system_state: &mut Self::SystemState,
+        system_state: &mut Matrix<Complex<f32>, Self::SysR, Const<1>, Self::SysSS>,
         f: &impl Fn(usize, Complex<f32>) -> Complex<f32>,
     );
 
@@ -431,9 +463,16 @@ pub trait QSystem: Copy {
         1 << self.bit_count()
     }
 }
+
+pub trait SQsystem: QSystem {
+    fn system() -> Self;
+}
+
 impl QSystem for Dyn {
-    type SystemState = DVector<Complex<f32>>;
-    type SystemGate = DMatrix<Complex<f32>>;
+    type SysR = Dyn;
+    type SysC = Dyn;
+    type SysSS = VecStorage<Complex<f32>, Self::SysR, Const<1>>;
+    type SysGS = VecStorage<Complex<f32>, Self::SysR, Self::SysC>;
     type Storage<T: Clone> = Vec<T>;
 
     fn init_state_storage(&self, f: &impl Fn(usize) -> State) -> Self::Storage<State> {
@@ -444,14 +483,14 @@ impl QSystem for Dyn {
         (0..self.bit_count()).into_iter().map(f).collect()
     }
 
-    fn init_system_state(&self, f: &impl Fn(usize) -> Complex<f32>) -> Self::SystemState {
+    fn init_system_state(&self, f: &impl Fn(usize) -> Complex<f32>) -> DVector<Complex<f32>> {
         DVector::from_row_iterator(
             self.state_count(),
             (0..self.state_count()).into_iter().map(f),
         )
     }
 
-    fn init_system_gate(&self, f: &impl Fn(usize, usize) -> Complex<f32>) -> Self::SystemGate {
+    fn init_system_gate(&self, f: &impl Fn(usize, usize) -> Complex<f32>) -> DMatrix<Complex<f32>> {
         let row_total = self.state_count();
         let total = self.state_count().pow(2);
         DMatrix::from_row_iterator(
@@ -464,13 +503,13 @@ impl QSystem for Dyn {
         )
     }
 
-    fn system_get(&self, system_state: &Self::SystemState, index: usize) -> Complex<f32> {
+    fn system_get(&self, system_state: &DVector<Complex<f32>>, index: usize) -> Complex<f32> {
         system_state[index]
     }
 
     fn system_apply_f(
         &self,
-        system_state: &mut Self::SystemState,
+        system_state: &mut DVector<Complex<f32>>,
         f: &impl Fn(usize, Complex<f32>) -> Complex<f32>,
     ) {
         for i in 0..self.state_count() {
@@ -486,8 +525,10 @@ impl QSystem for Dyn {
 macro_rules! impl_const_qsystem {
     ($qc:expr) => {
         impl QSystem for Const<$qc> {
-            type SystemState = SVector<Complex<f32>, { 1 << $qc }>;
-            type SystemGate = SMatrix<Complex<f32>, { 1 << $qc }, { 1 << $qc }>;
+            type SysR = Const<{ 1 << $qc }>;
+            type SysC = Const<{ 1 << $qc }>;
+            type SysSS = ArrayStorage<Complex<f32>, { 1 << $qc }, 1>;
+            type SysGS = ArrayStorage<Complex<f32>, { 1 << $qc }, { 1 << $qc }>;
             type Storage<T: Clone> = [T; $qc];
 
             fn init_state_storage(&self, f: &impl Fn(usize) -> State) -> Self::Storage<State> {
@@ -498,14 +539,17 @@ macro_rules! impl_const_qsystem {
                 array_init::array_init(f)
             }
 
-            fn init_system_state(&self, f: &impl Fn(usize) -> Complex<f32>) -> Self::SystemState {
+            fn init_system_state(
+                &self,
+                f: &impl Fn(usize) -> Complex<f32>,
+            ) -> SVector<Complex<f32>, { 1 << $qc }> {
                 SVector::from_row_iterator((0..self.state_count()).into_iter().map(f))
             }
 
             fn init_system_gate(
                 &self,
                 f: &impl Fn(usize, usize) -> Complex<f32>,
-            ) -> Self::SystemGate {
+            ) -> SMatrix<Complex<f32>, { 1 << $qc }, { 1 << $qc }> {
                 let row_total = self.state_count();
                 let total = self.state_count().pow(2);
                 SMatrix::from_row_iterator((0..total).into_iter().map(|i| {
@@ -514,13 +558,17 @@ macro_rules! impl_const_qsystem {
                 }))
             }
 
-            fn system_get(&self, system_state: &Self::SystemState, index: usize) -> Complex<f32> {
+            fn system_get(
+                &self,
+                system_state: &SVector<Complex<f32>, { 1 << $qc }>,
+                index: usize,
+            ) -> Complex<f32> {
                 system_state[index]
             }
 
             fn system_apply_f(
                 &self,
-                system_state: &mut Self::SystemState,
+                system_state: &mut SVector<Complex<f32>, { 1 << $qc }>,
                 f: &impl Fn(usize, Complex<f32>) -> Complex<f32>,
             ) {
                 for i in 0..self.state_count() {
@@ -530,6 +578,12 @@ macro_rules! impl_const_qsystem {
 
             fn bit_count(&self) -> usize {
                 $qc
+            }
+        }
+
+        impl SQsystem for Const<$qc> {
+            fn system() -> Self {
+                Const::<$qc>
             }
         }
 

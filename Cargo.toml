@@ -5,4 +5,9 @@ edition = "2024"
 
 [dependencies]
 array-init = "2.1.0"
+divan = "0.1.21"
 nalgebra = "0.34.1"
+
+[[bench]]
+name = "gate-dsl"
+harness = false
