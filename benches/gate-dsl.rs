@@ -1,9 +1,7 @@
 use std::{cmp::Ordering, f32::consts::FRAC_1_SQRT_2};
 
 use nalgebra::{Complex, Const, DVector, Dyn, SVector};
-use quasim::{
-    AT_00, AT_11, Gate2x2, ID, MST, QSystem, SQsystem, ST, STATE_0, TP, TPV, cart, cmp_elements,
-};
+use quasim::{AT_00, AT_11, Gate2x2, ID, SQsystem, ST, STATE_0, TP, TPV, cart, cmp_elements,};
 
 extern crate quasim;
 fn main() {

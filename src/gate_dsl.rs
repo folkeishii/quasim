@@ -642,17 +642,14 @@ impl_const_qsystem!(32);
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        cmp::Ordering,
-        f32::{self, consts::FRAC_1_SQRT_2},
-    };
+    use std::{cmp::Ordering, f32::consts::FRAC_1_SQRT_2};
 
     use nalgebra::{Complex, Const, DVector, Dyn, SVector};
 
     use crate::{
         cart,
         ext::cmp_elements,
-        gate_dsl::{AT_00, AT_11, Gate2x2, ID, ST, STATE_0, State, TP, TPV},
+        gate_dsl::{AT_00, AT_11, Gate2x2, ID, ST, STATE_0, TP, TPV},
     };
 
     #[test]
