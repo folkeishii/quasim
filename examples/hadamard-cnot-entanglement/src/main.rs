@@ -1,4 +1,9 @@
 use quasim;
 fn main() {
-    println!("Hello, world {}!", quasim::add(1, 2));
+    let circuit = quasim::Circuit::default()
+        .hadamard(0)
+        .cnot(0, 1)
+        .measure(None);
+
+    todo!()
 }
