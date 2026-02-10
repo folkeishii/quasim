@@ -1,6 +1,8 @@
+use std::{slice, vec};
+
 use crate::Instruction;
 
 pub struct Circuit {
-    instructions: Vec<Instruction>,
-    n_qbits: usize,
+    pub instructions: Vec<Instruction>,
+    pub n_qubits: usize,
 }
