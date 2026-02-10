@@ -1,5 +1,6 @@
-use crate::{Circuit, Instruction, SimpleSimulator};
-use nalgebra::{Complex, DMatrix, DVector};
+use nalgebra::{Complex, DMatrix, DVector, Normed};
+use rand::{distr::weighted::WeightedIndex, prelude::*};
+use crate::{SimpleSimulator, Circuit, Instruction};
 
 pub struct SimpleSimpleSimulator {
     state_vector: Vec<Complex<f32>>,
@@ -7,28 +8,40 @@ pub struct SimpleSimpleSimulator {
 
 impl SimpleSimulator for SimpleSimpleSimulator {
     type E = SimpleError;
+    
+    fn build(circuit: Circuit) -> Result<Self, Self::E> {
 
-    fn build(circuit: crate::Circuit) -> Result<Self, Self::E> {
-        for i in 0..circuit.n_qubits {}
+        let k = circuit.n_qubits;
+        let mut init_state_vector = vec![Complex::ZERO; 1 << k];
+        init_state_vector[0] = Complex::ONE;
 
-        for inst in circuit.instructions {}
-        todo!()
+        let mut sim = SimpleSimpleSimulator {
+            state_vector: init_state_vector,
+        };
+
+        for inst in circuit.instructions {
+            sim.apply_instruction(inst);
+        }
+
+        Ok(sim)
     }
-
+    
     fn run(&self) -> usize {
-        todo!()
-    }
+        let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
 
-    fn final_state(&self) -> nalgebra::DVector<nalgebra::Complex<f32>> {
-        todo!()
+        let dist = WeightedIndex::new(probs)
+            .expect("Failed to create probability distribution. Invalid or empty state vector?");
+        let mut rng = rand::rng();
+
+        dist.sample(&mut rng)
+    }
+    
+    fn final_state(&self) -> DVector<Complex<f32>> {
+        return DVector::from_vec(self.state_vector.clone());
     }
 }
 
 impl SimpleSimpleSimulator {
-    // fn test() {
-    //     SimpleSimpleSimulator::apply_controlled_gate(self, vec![0], vec![1], Instruction::CNOT(0, 1).get_matrix())
-    // }
-
     fn controls_active(i: usize, controls: &[usize]) -> bool {
         controls.iter().all(|&c| ((i >> c) & 1) == 1)
     }
@@ -53,35 +66,32 @@ impl SimpleSimpleSimulator {
         }
 
         indices
+    
     }
 
-    fn apply_controlled_gate(
+    fn apply_gate(
         &mut self,
-        controls: Vec<usize>,
-        targets: Vec<usize>,
-        u: DMatrix<Complex<f32>>,
-    ) {
+        controls: &[usize],
+        targets: &[usize],
+        u: DMatrix<Complex<f32>>
+    )
+    {
         // State vector is length 2^n , n=num qubits
         for i in 0..self.state_vector.len() {
-            if !SimpleSimpleSimulator::is_block_base(i, &targets) {
+            if !SimpleSimpleSimulator::is_block_base(i, targets) {
                 continue;
             }
 
-            if !SimpleSimpleSimulator::controls_active(i, &controls) {
+            if !SimpleSimpleSimulator::controls_active(i, controls) {
                 continue;
             }
 
-            let indices = SimpleSimpleSimulator::block_indices(i, &targets);
+            let indices = SimpleSimpleSimulator::block_indices(i, targets);
 
             // Read amplitudes
-            let mut v = Vec::with_capacity(indices.len());
-            for &idx in &indices {
-                v.push(self.state_vector[idx]);
-            }
-
             let v = DVector::from_iterator(
                 indices.len(),
-                indices.iter().map(|&idx| self.state_vector[idx]),
+                indices.iter().map(|&idx| self.state_vector[idx])
             );
 
             // Apply gate matrix, assumes u matches size of v
@@ -92,8 +102,54 @@ impl SimpleSimpleSimulator {
                 self.state_vector[idx] = v2[j];
             }
         }
+
+    }
+
+    fn apply_instruction(&mut self, inst: Instruction) {
+        self.apply_gate(&inst.get_controls(), &inst.get_targets(), inst.get_matrix());
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum SimpleError {}
+pub enum SimpleError {
+    #[error("Measurement mid-circuit")]
+    MidCircuitMeasurement
+}
+
+
+#[cfg(test)]
+mod tests {
+    use crate::{Circuit, Instruction, SimpleSimpleSimulator, SimpleSimulator};
+
+    #[test]
+    fn state_vector_print() {
+        let circ = Circuit {
+            instructions: vec![
+                Instruction::H(0),
+                Instruction::CNOT(0, 2),
+                Instruction::X(0),
+                Instruction::H(0),
+                Instruction::Y(1),
+            ],
+            n_qubits: 3,
+        };
+
+        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        println!("{}", sim.final_state());
+        println!("{:03b}", sim.run());
+    }
+
+    #[test]
+    fn bell_state_test() {
+        let circ = Circuit {
+            instructions: vec![
+                Instruction::H(0),
+                Instruction::CNOT(0, 1),
+            ],
+            n_qubits: 2,
+        };
+
+        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        println!("{:02b}", sim.run());
+    }
+}

@@ -1,3 +1,5 @@
+use std::{slice, vec};
+
 use crate::Instruction;
 
 pub struct Circuit {
