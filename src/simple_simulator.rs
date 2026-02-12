@@ -42,6 +42,31 @@ impl SimpleSimulator for SimpleSimpleSimulator {
 }
 
 impl SimpleSimpleSimulator {
+    // This function should probably return something indicating which bits collapsed to what
+    // For like debugging purposes ig
+    fn measure(&mut self, targets: &[usize]) {
+        let measurement = self.run();
+        //let collapsed_states: Vec<usize> = targets.iter().map(|&t| (measurement >> t) & 1).collect();
+
+        // Mask is bitstring with 1:s at target position
+        let mut mask = 0;
+        for t in targets {
+            mask |= 1 << t;
+        }
+        let collapsed_bitstring = measurement & mask;
+
+        // Go through state vector and remove amplitude for all states that do not align with measurement
+        for (i, amp) in self.state_vector.iter_mut().enumerate() {
+            if (i & mask) != collapsed_bitstring {
+                *amp = Complex::ZERO;
+            }
+        }
+
+        // Renormalize state vector
+        let norm = self.state_vector.iter().map(|x| x.norm_sqr()).sum::<f32>().sqrt();
+        self.state_vector.iter_mut().for_each(|x| *x /= norm);
+    }
+    
     fn controls_active(i: usize, controls: &[usize]) -> bool {
         controls.iter().all(|&c| ((i >> c) & 1) == 1)
     }
