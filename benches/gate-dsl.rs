@@ -1,7 +1,7 @@
-use std::{cmp::Ordering, f32::consts::FRAC_1_SQRT_2};
+use std::f32::consts::FRAC_1_SQRT_2;
 
 use nalgebra::{Complex, Const, DVector, Dyn, SVector};
-use quasim::{AT_00, AT_11, Gate2x2, ID, SQsystem, ST, STATE_0, TP, TPV, cart, cmp_elements,};
+use quasim::{AT_00, AT_11, Gate2x2, ID, SQsystem, ST, STATE_0, TP, TPV, cart, equal_to_matrix_c};
 
 extern crate quasim;
 fn main() {
@@ -28,23 +28,20 @@ fn dyn_hadamard_cnot_entanglement() {
     let mst = st1 * st0;
 
     let state = TPV::from(vec![STATE_0, STATE_0, STATE_0]);
-    assert_eq!(
-        cmp_elements(
-            &(mst * state).eval(),
-            &DVector::from_row_slice(&[
-                cart!(FRAC_1_SQRT_2),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(FRAC_1_SQRT_2),
-                cart!(0.0),
-                cart!(0.0),
-            ]),
-            0.000001,
-        ),
-        Some(Ordering::Equal)
-    );
+    assert!(equal_to_matrix_c(
+        &(mst * state).eval(),
+        &DVector::from_row_slice(&[
+            cart!(FRAC_1_SQRT_2),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(FRAC_1_SQRT_2),
+            cart!(0.0),
+            cart!(0.0),
+        ]),
+        0.000001,
+    ));
 }
 
 #[divan::bench()]
@@ -68,23 +65,20 @@ fn stack_hadamard_cnot_entanglement() {
 
     let state = TPV::from([STATE_0, STATE_0, STATE_0]);
 
-    assert_eq!(
-        cmp_elements(
-            &(mst * state).eval(),
-            &SVector::from_row_slice(&[
-                cart!(FRAC_1_SQRT_2),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(FRAC_1_SQRT_2),
-                cart!(0.0),
-                cart!(0.0),
-            ]),
-            0.000001,
-        ),
-        Some(Ordering::Equal)
-    );
+    assert!(equal_to_matrix_c(
+        &(mst * state).eval(),
+        &SVector::from_row_slice(&[
+            cart!(FRAC_1_SQRT_2),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(FRAC_1_SQRT_2),
+            cart!(0.0),
+            cart!(0.0),
+        ]),
+        0.000001,
+    ));
 }
 
 #[divan::bench()]
@@ -109,23 +103,20 @@ fn dyn_hadamard_cnot_entanglement_final_matrix() {
     let final_matrix = mst.eval();
     let state = TPV::from(vec![STATE_0, STATE_0, STATE_0]).eval();
 
-    assert_eq!(
-        cmp_elements(
-            &(final_matrix * state),
-            &DVector::from_row_slice(&[
-                cart!(FRAC_1_SQRT_2),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(FRAC_1_SQRT_2),
-                cart!(0.0),
-                cart!(0.0),
-            ]),
-            0.000001,
-        ),
-        Some(Ordering::Equal)
-    );
+    assert!(equal_to_matrix_c(
+        &(final_matrix * state),
+        &DVector::from_row_slice(&[
+            cart!(FRAC_1_SQRT_2),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(FRAC_1_SQRT_2),
+            cart!(0.0),
+            cart!(0.0),
+        ]),
+        0.000001,
+    ));
 }
 
 #[divan::bench()]
@@ -150,23 +141,20 @@ fn stack_hadamard_cnot_entanglement_final_matrix() {
     let final_matrix = mst.eval();
     let state = TPV::from([STATE_0, STATE_0, STATE_0]).eval();
 
-    assert_eq!(
-        cmp_elements(
-            &(final_matrix * state),
-            &SVector::from_row_slice(&[
-                cart!(FRAC_1_SQRT_2),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(0.0),
-                cart!(FRAC_1_SQRT_2),
-                cart!(0.0),
-                cart!(0.0),
-            ]),
-            0.000001,
-        ),
-        Some(Ordering::Equal)
-    );
+    assert!(equal_to_matrix_c(
+        &(final_matrix * state),
+        &SVector::from_row_slice(&[
+            cart!(FRAC_1_SQRT_2),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(FRAC_1_SQRT_2),
+            cart!(0.0),
+            cart!(0.0),
+        ]),
+        0.000001,
+    ));
 }
 
 const fn gate_at(bit_count: usize, index: usize, i: usize) -> Gate2x2 {
@@ -201,12 +189,9 @@ fn stack_n_qubit_m_control_identity<QS: SQsystem>(len: usize) {
 
     let state = TPV::<QS>::from_array(system.init_state_storage(&|_| STATE_0));
 
-    assert_eq!(
-        cmp_elements(
-            &(mst * state).eval(),
-            &system.init_system_state(&|i| if i == 0 { cart!(1.0) } else { cart!(0.0) }),
-            0.000001,
-        ),
-        Some(Ordering::Equal)
-    );
+    assert!(equal_to_matrix_c(
+        &(mst * state).eval(),
+        &system.init_system_state(&|i| if i == 0 { cart!(1.0) } else { cart!(0.0) }),
+        0.000001,
+    ));
 }

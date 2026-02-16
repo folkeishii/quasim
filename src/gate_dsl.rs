@@ -622,33 +622,38 @@ impl_const_qsystem!(12);
 impl_const_qsystem!(13);
 impl_const_qsystem!(14);
 impl_const_qsystem!(15);
-impl_const_qsystem!(16);
-impl_const_qsystem!(17);
-impl_const_qsystem!(18);
-impl_const_qsystem!(19);
-impl_const_qsystem!(20);
-impl_const_qsystem!(21);
-impl_const_qsystem!(22);
-impl_const_qsystem!(23);
-impl_const_qsystem!(24);
-impl_const_qsystem!(25);
-impl_const_qsystem!(26);
-impl_const_qsystem!(27);
-impl_const_qsystem!(28);
-impl_const_qsystem!(29);
-impl_const_qsystem!(30);
-impl_const_qsystem!(31);
-impl_const_qsystem!(32);
+
+// There is a chance that following
+// impls do not compile depending
+// on the targets available memory
+//
+// impl_const_qsystem!(16);
+// impl_const_qsystem!(17);
+// impl_const_qsystem!(18);
+// impl_const_qsystem!(19);
+// impl_const_qsystem!(20);
+// impl_const_qsystem!(21);
+// impl_const_qsystem!(22);
+// impl_const_qsystem!(23);
+// impl_const_qsystem!(24);
+// impl_const_qsystem!(25);
+// impl_const_qsystem!(26);
+// impl_const_qsystem!(27);
+// impl_const_qsystem!(28);
+// impl_const_qsystem!(29);
+// impl_const_qsystem!(30);
+// impl_const_qsystem!(31);
+// impl_const_qsystem!(32);
 
 #[cfg(test)]
 mod tests {
-    use std::{cmp::Ordering, f32::consts::FRAC_1_SQRT_2};
+    use std::f32::consts::FRAC_1_SQRT_2;
 
     use nalgebra::{Complex, Const, DVector, Dyn, SVector};
 
     use crate::{
         cart,
-        ext::cmp_elements,
+        ext::equal_to_matrix_c,
         gate_dsl::{AT_00, AT_11, Gate2x2, ID, ST, STATE_0, TP, TPV},
     };
 
@@ -672,23 +677,20 @@ mod tests {
         let mst = st1 * st0;
 
         let state = TPV::from(vec![STATE_0, STATE_0, STATE_0]);
-        assert_eq!(
-            cmp_elements(
-                &(mst * state).eval(),
-                &DVector::from_row_slice(&[
-                    cart!(FRAC_1_SQRT_2),
-                    cart!(0.0),
-                    cart!(0.0),
-                    cart!(0.0),
-                    cart!(0.0),
-                    cart!(FRAC_1_SQRT_2),
-                    cart!(0.0),
-                    cart!(0.0),
-                ]),
-                0.000001,
-            ),
-            Some(Ordering::Equal)
-        );
+        assert!(equal_to_matrix_c(
+            &(mst * state).eval(),
+            &DVector::from_row_slice(&[
+                cart!(FRAC_1_SQRT_2),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(FRAC_1_SQRT_2),
+                cart!(0.0),
+                cart!(0.0),
+            ]),
+            0.000001,
+        ));
     }
 
     #[test]
@@ -712,23 +714,20 @@ mod tests {
 
         let state = TPV::from([STATE_0, STATE_0, STATE_0]);
 
-        assert_eq!(
-            cmp_elements(
-                &(mst * state).eval(),
-                &SVector::from_row_slice(&[
-                    cart!(FRAC_1_SQRT_2),
-                    cart!(0.0),
-                    cart!(0.0),
-                    cart!(0.0),
-                    cart!(0.0),
-                    cart!(FRAC_1_SQRT_2),
-                    cart!(0.0),
-                    cart!(0.0),
-                ]),
-                0.000001,
-            ),
-            Some(Ordering::Equal)
-        );
+        assert!(equal_to_matrix_c(
+            &(mst * state).eval(),
+            &SVector::from_row_slice(&[
+                cart!(FRAC_1_SQRT_2),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(FRAC_1_SQRT_2),
+                cart!(0.0),
+                cart!(0.0),
+            ]),
+            0.000001,
+        ));
     }
 
     #[test]
@@ -753,22 +752,19 @@ mod tests {
         let final_matrix = mst.eval();
         let state = TPV::from([STATE_0, STATE_0, STATE_0]).eval();
 
-        assert_eq!(
-            cmp_elements(
-                &(final_matrix * state),
-                &SVector::from_row_slice(&[
-                    cart!(FRAC_1_SQRT_2),
-                    cart!(0.0),
-                    cart!(0.0),
-                    cart!(0.0),
-                    cart!(0.0),
-                    cart!(FRAC_1_SQRT_2),
-                    cart!(0.0),
-                    cart!(0.0),
-                ]),
-                0.000001,
-            ),
-            Some(Ordering::Equal)
-        );
+        assert!(equal_to_matrix_c(
+            &(final_matrix * state),
+            &SVector::from_row_slice(&[
+                cart!(FRAC_1_SQRT_2),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(FRAC_1_SQRT_2),
+                cart!(0.0),
+                cart!(0.0),
+            ]),
+            0.000001,
+        ));
     }
 }
