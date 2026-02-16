@@ -5,6 +5,12 @@ edition = "2024"
 
 [dependencies]
 crossterm = "0.29.0"
+array-init = "2.1.0"
+divan = "0.1.21"
 nalgebra = "0.34.1"
 rand = "0.9.2"
 thiserror = "2.0.18"
+
+[[bench]]
+name = "gate-dsl"
+harness = false
