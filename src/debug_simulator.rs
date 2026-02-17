@@ -2,9 +2,9 @@ use crate::{Circuit, Instruction, SimpleSimulator};
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
+#[derive(Debug, Clone)]
 pub struct DebugSimulator {
     current_state: DVector<Complex<f32>>,
-    final_state: DVector<Complex<f32>>,
     circuit: Circuit,
     current_step: usize,
 }
@@ -27,7 +27,6 @@ impl SimpleSimulator for DebugSimulator {
 
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),
-            final_state: current_state,
             circuit: circuit,
             current_step: 0,
         };
@@ -36,11 +35,17 @@ impl SimpleSimulator for DebugSimulator {
     }
 
     fn final_state(&self) -> DVector<nalgebra::Complex<f32>> {
-        return self.final_state.clone();
+        let mut sim = self.clone();
+
+        while sim.current_step < sim.n_instructions() {
+            sim.step_forwards();
+        }
+        return sim.current_state;
     }
 
     fn run(&self) -> usize {
-        let probs = self.final_state.iter().map(|&c| c.norm_sqr());
+        let final_state = self.final_state();
+        let probs = final_state.iter().map(|&c| c.norm_sqr());
 
         let dist = WeightedIndex::new(probs)
             .expect("Failed to create probability distribution. Invalid or empty state vector?");
@@ -51,27 +56,30 @@ impl SimpleSimulator for DebugSimulator {
 }
 
 impl DebugSimulator {
-    fn current_state(&self) -> DVector<Complex<f32>> {
-        return self.current_state.clone();
+    fn n_instructions(&self) -> usize {
+        self.circuit.instructions.len()
     }
 
-    fn step_forwards(&mut self) -> Result<(), <Self as SimpleSimulator>::E> {
-        if self.current_step >= self.circuit.instructions.len() {
-            return Err::<(), SimpleError>(SimpleError::DebugStepForwardsOutOfBounds);
-        }
+    fn current_state(&self) -> &DVector<Complex<f32>> {
+        return &self.current_state;
+    }
 
+    fn step_forwards(&mut self) -> Option<&DVector<Complex<f32>>> {
+        if self.current_step >= self.n_instructions() {
+            return None;
+        }
         let mat = Self::expand_matrix_from_instruction(
             &self.circuit.instructions[self.current_step],
             self.circuit.n_qubits,
         );
         self.current_state = mat * self.current_state.clone();
         self.current_step += 1;
-        Ok(())
+        return Some(&self.current_state);
     }
 
-    fn step_backwards(&mut self) -> Result<(), <Self as SimpleSimulator>::E> {
+    fn step_backwards(&mut self) -> Option<&DVector<Complex<f32>>> {
         if self.current_step <= 0 {
-            return Err::<(), SimpleError>(SimpleError::DebugStepBackwardsOutOfBounds);
+            return None;
         }
 
         self.current_step -= 1;
@@ -83,7 +91,7 @@ impl DebugSimulator {
             .try_inverse()
             .expect("Unitary matricies should be invertible.");
         self.current_state = mat * self.current_state.clone();
-        Ok(())
+        return Some(&self.current_state);
     }
 
     fn expand_matrix_from_instruction(
@@ -159,7 +167,6 @@ pub enum SimpleError {
 
 #[cfg(test)]
 mod tests {
-    use crate::debug_simulator::SimpleError;
     use crate::{Circuit, DebugSimulator, Instruction, SimpleSimulator};
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f32::consts::FRAC_1_SQRT_2;
@@ -196,7 +203,7 @@ mod tests {
             n_qubits: 2,
         };
 
-        let sim = DebugSimulator::build(circ).unwrap();
+        let sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
         let collapsed = sim.run();
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
         assert!(collapsed == 0b00 || collapsed == 0b11);
@@ -397,31 +404,31 @@ mod tests {
             Complex::new(FRAC_1_SQRT_2, 0.0) // |111>
         ];
         let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
-        assert_is_vector_equal!(psi0.clone(), sim.current_state());
+        assert_is_vector_equal!(psi0.clone(), sim.current_state().clone());
         sim.step_forwards().expect("Apply Hadamard.");
-        assert_is_vector_equal!(psi1.clone(), sim.current_state());
+        assert_is_vector_equal!(psi1.clone(), sim.current_state().clone());
         sim.step_forwards().expect("Apply first CNOT.");
-        assert_is_vector_equal!(psi2.clone(), sim.current_state());
+        assert_is_vector_equal!(psi2.clone(), sim.current_state().clone());
         sim.step_forwards().expect("Apply second CNOT.");
-        assert_is_vector_equal!(psi3.clone(), sim.current_state());
+        assert_is_vector_equal!(psi3.clone(), sim.current_state().clone());
 
         let res = sim.step_forwards();
         match res {
-            Ok(_) => panic!("Does not err correctly when stepping forwards."),
-            Err(e) => assert!(e == SimpleError::DebugStepForwardsOutOfBounds),
+            Some(_) => panic!("Does not err correctly when stepping forwards."),
+            None => println!("Errs correctly when stepping forwards"),
         }
 
         sim.step_backwards().expect("Revert second CNOT");
-        assert_is_vector_equal!(psi2.clone(), sim.current_state());
+        assert_is_vector_equal!(psi2.clone(), sim.current_state().clone());
         sim.step_backwards().expect("Revert first CNOT");
-        assert_is_vector_equal!(psi1.clone(), sim.current_state());
+        assert_is_vector_equal!(psi1.clone(), sim.current_state().clone());
         sim.step_backwards().expect("Revert Hadamard");
-        assert_is_vector_equal!(psi0.clone(), sim.current_state());
+        assert_is_vector_equal!(psi0.clone(), sim.current_state().clone());
 
         let res = sim.step_backwards();
         match res {
-            Ok(_) => panic!("Does not err correctly when stepping forwards."),
-            Err(e) => assert!(e == SimpleError::DebugStepBackwardsOutOfBounds),
+            Some(_) => panic!("Does not err correctly when stepping forwards."),
+            None => println!("Errs correctly when stepping backwards"),
         }
     }
 }
