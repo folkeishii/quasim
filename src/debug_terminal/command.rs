@@ -76,14 +76,12 @@ pub enum Command {
     /// disable [gate index...]    # Disable breakpoints at indices
     Disable(DisableArgs),
 
-    /// TODO
-    ///
-    /// Gives information about specified state or
-    /// breakpoint
+    /// Print out the current state vector
     ///
     /// Usage:
     /// state                # Get all states (if possible)
-    /// state [states...]    # Get specific states
+    /// state state1         # Get a specific state (if possible)
+    /// state [state1, ...]  # Get specific states (if possible)
     /// state state1..state2 # Get a range of states (if possible)
     State(StateArgs),
 }
