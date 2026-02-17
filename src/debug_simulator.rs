@@ -149,7 +149,7 @@ impl DebugSimulator {
     }
 }
 
-#[derive(Debug, thiserror::Error, PartialEq)]
+#[derive(Debug, thiserror::Error)]
 pub enum SimpleError {
     #[error("Measurement mid-circuit")]
     MidCircuitMeasurement,
