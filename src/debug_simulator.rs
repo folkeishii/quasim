@@ -3,7 +3,10 @@ use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
 pub struct DebugSimulator {
-    pub states: Vec<DVector<Complex<f32>>>,
+    current_state: DVector<Complex<f32>>,
+    final_state: DVector<Complex<f32>>,
+    circuit: Circuit,
+    current_step: usize,
 }
 
 impl SimpleSimulator for DebugSimulator {
@@ -15,32 +18,32 @@ impl SimpleSimulator for DebugSimulator {
         // Initial state assumed to be |000..>
         let mut init_state = vec![Complex::ZERO; 1 << k];
         init_state[0] = Complex::ONE;
-        let mut sim = DebugSimulator {
-            states: vec![DVector::from_vec(init_state)],
-        };
+        let mut current_state = DVector::from_vec(init_state.clone());
 
-        for inst in circuit.instructions {
-            let mat = DebugSimulator::expand_matrix_from_instruction(inst, k);
-            let v = sim.final_state();
-            let w = mat * v;
-            sim.states.push(w);
+        for inst in &circuit.instructions {
+            let mat = DebugSimulator::expand_matrix_from_instruction(&inst, k);
+            current_state = mat * current_state;
         }
+
+        let sim = DebugSimulator {
+            current_state: DVector::from_vec(init_state),
+            final_state: current_state,
+            circuit: circuit,
+            current_step: 0,
+        };
 
         Ok(sim)
     }
 
     fn final_state(&self) -> DVector<nalgebra::Complex<f32>> {
-        return self
-            .states
-            .last()
-            .expect("states should, at least, contain the initial state")
-            .clone();
+        return self.final_state.clone();
     }
 
     fn run(&self) -> usize {
-        let probs: Vec<f32> = self.final_state().iter().map(|&c| c.norm_sqr()).collect();
+        let probs = self.final_state.iter().map(|&c| c.norm_sqr());
 
-        let dist = WeightedIndex::new(probs).unwrap();
+        let dist = WeightedIndex::new(probs)
+            .expect("Failed to create probability distribution. Invalid or empty state vector?");
         let mut rng = rand::rng();
 
         dist.sample(&mut rng)
@@ -48,7 +51,45 @@ impl SimpleSimulator for DebugSimulator {
 }
 
 impl DebugSimulator {
-    fn expand_matrix_from_instruction(inst: Instruction, n_qubits: usize) -> DMatrix<Complex<f32>> {
+    fn current_state(&self) -> DVector<Complex<f32>> {
+        return self.current_state.clone();
+    }
+
+    fn step_forwards(&mut self) -> Result<(), <Self as SimpleSimulator>::E> {
+        if self.current_step >= self.circuit.instructions.len() {
+            return Err::<(), SimpleError>(SimpleError::DebugStepForwardsOutOfBounds);
+        }
+
+        let mat = Self::expand_matrix_from_instruction(
+            &self.circuit.instructions[self.current_step],
+            self.circuit.n_qubits,
+        );
+        self.current_state = mat * self.current_state.clone();
+        self.current_step += 1;
+        Ok(())
+    }
+
+    fn step_backwards(&mut self) -> Result<(), <Self as SimpleSimulator>::E> {
+        if self.current_step <= 0 {
+            return Err::<(), SimpleError>(SimpleError::DebugStepBackwardsOutOfBounds);
+        }
+
+        self.current_step -= 1;
+        let mut mat = Self::expand_matrix_from_instruction(
+            &self.circuit.instructions[self.current_step],
+            self.circuit.n_qubits,
+        );
+        mat = mat
+            .try_inverse()
+            .expect("Unitary matricies should be invertible.");
+        self.current_state = mat * self.current_state.clone();
+        Ok(())
+    }
+
+    fn expand_matrix_from_instruction(
+        inst: &Instruction,
+        n_qubits: usize,
+    ) -> DMatrix<Complex<f32>> {
         DebugSimulator::expand_matrix(
             inst.get_matrix(),
             &inst.get_controls(),
@@ -106,14 +147,19 @@ impl DebugSimulator {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, PartialEq)]
 pub enum SimpleError {
     #[error("Measurement mid-circuit")]
-    MidCircuitMeasurement
+    MidCircuitMeasurement,
+    #[error("Stepped forwards out of bounds")]
+    DebugStepForwardsOutOfBounds,
+    #[error("Stepped backwards out of bounds")]
+    DebugStepBackwardsOutOfBounds,
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::debug_simulator::SimpleError;
     use crate::{Circuit, DebugSimulator, Instruction, SimpleSimulator};
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f32::consts::FRAC_1_SQRT_2;
@@ -169,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_textbook_cnot() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::CNOT(0, 1), 2);
+        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::CNOT(0, 1), 2);
         assert_is_matrix_equal!(mat, textbook_cnot());
     }
 
@@ -212,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_cnot_01() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::CNOT(0, 1), 3);
+        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::CNOT(0, 1), 3);
         assert_is_matrix_equal!(mat, cnot_01());
     }
 
@@ -233,7 +279,7 @@ mod tests {
 
     #[test]
     fn test_cnot_02() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::CNOT(0, 2), 3);
+        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::CNOT(0, 2), 3);
         assert_is_matrix_equal!(mat, cnot_02());
     }
 
@@ -254,7 +300,7 @@ mod tests {
 
     #[test]
     fn test_cnot_12() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::CNOT(1, 2), 3);
+        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::CNOT(1, 2), 3);
         assert_is_matrix_equal!(mat, cnot_12());
     }
 
@@ -275,7 +321,7 @@ mod tests {
 
     #[test]
     fn test_h_0() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(Instruction::H(0), 3);
+        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::H(0), 3);
         assert_is_matrix_equal!(mat, h_0());
     }
 
@@ -310,8 +356,6 @@ mod tests {
             instructions: instructions,
             n_qubits: 3,
         };
-        let sim = DebugSimulator::build(circ).unwrap();
-        assert!(sim.states.len() == 4);
         let psi0: DVector<Complex<f32>> = dvector![
             Complex::ONE, // |000>
             Complex::ZERO,
@@ -322,7 +366,6 @@ mod tests {
             Complex::ZERO,
             Complex::ZERO
         ];
-        assert_is_vector_equal!(psi0, sim.states[0].clone());
         let psi1: DVector<Complex<f32>> = dvector![
             Complex::new(FRAC_1_SQRT_2, 0.0), //|000>
             Complex::ZERO,
@@ -333,7 +376,6 @@ mod tests {
             Complex::ZERO,
             Complex::ZERO
         ];
-        assert_is_vector_equal!(psi1, sim.states[1].clone());
         let psi2: DVector<Complex<f32>> = dvector![
             Complex::new(FRAC_1_SQRT_2, 0.0), // |000>
             Complex::ZERO,
@@ -344,7 +386,6 @@ mod tests {
             Complex::new(FRAC_1_SQRT_2, 0.0), // |110>
             Complex::ZERO
         ];
-        assert_is_vector_equal!(psi2, sim.states[2].clone());
         let psi3: DVector<Complex<f32>> = dvector![
             Complex::new(FRAC_1_SQRT_2, 0.0), // |000>
             Complex::ZERO,
@@ -355,7 +396,32 @@ mod tests {
             Complex::ZERO,
             Complex::new(FRAC_1_SQRT_2, 0.0) // |111>
         ];
-        assert_is_vector_equal!(psi3.clone(), sim.states[3].clone());
-        assert_is_vector_equal!(psi3, sim.final_state());
+        let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
+        assert_is_vector_equal!(psi0.clone(), sim.current_state());
+        sim.step_forwards().expect("Apply Hadamard.");
+        assert_is_vector_equal!(psi1.clone(), sim.current_state());
+        sim.step_forwards().expect("Apply first CNOT.");
+        assert_is_vector_equal!(psi2.clone(), sim.current_state());
+        sim.step_forwards().expect("Apply second CNOT.");
+        assert_is_vector_equal!(psi3.clone(), sim.current_state());
+
+        let res = sim.step_forwards();
+        match res {
+            Ok(_) => panic!("Does not err correctly when stepping forwards."),
+            Err(e) => assert!(e == SimpleError::DebugStepForwardsOutOfBounds),
+        }
+
+        sim.step_backwards().expect("Revert second CNOT");
+        assert_is_vector_equal!(psi2.clone(), sim.current_state());
+        sim.step_backwards().expect("Revert first CNOT");
+        assert_is_vector_equal!(psi1.clone(), sim.current_state());
+        sim.step_backwards().expect("Revert Hadamard");
+        assert_is_vector_equal!(psi0.clone(), sim.current_state());
+
+        let res = sim.step_backwards();
+        match res {
+            Ok(_) => panic!("Does not err correctly when stepping forwards."),
+            Err(e) => assert!(e == SimpleError::DebugStepBackwardsOutOfBounds),
+        }
     }
 }
