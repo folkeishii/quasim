@@ -1,39 +1,38 @@
 use nalgebra::{Complex, DMatrix, DVector, Normed};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
-use crate::{SimpleSimulator, Circuit, Instruction};
+use crate::{SimpleSimulator, Debugger, Circuit, Instruction};
 
 pub struct SimpleSimpleSimulator {
-    state_vector: Vec<Complex<f32>>,
+    circuit: Circuit,
 }
+
+impl Debugger for SimpleSimpleSimulator {
+    
+}
+
 
 impl SimpleSimulator for SimpleSimpleSimulator {
     type E = SimpleError;
     
     fn build(circuit: Circuit) -> Result<Self, Self::E> {
-
-        let k = circuit.n_qubits;
-        let mut init_state_vector = vec![Complex::ZERO; 1 << k];
-        init_state_vector[0] = Complex::ONE;
-
-        let mut sim = SimpleSimpleSimulator {
-            state_vector: init_state_vector,
+        let sim = SimpleSimpleSimulator {
+            circuit: circuit
         };
-
-        for inst in circuit.instructions {
-            sim.apply_instruction(inst);
-        }
 
         Ok(sim)
     }
     
     fn run(&self) -> usize {
-        let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
+        let k = self.circuit.n_qubits;
+        let mut state_vector: Vec<Complex<f32>> = vec![Complex::ZERO; 1 << k];
+        state_vector[0] = Complex::ONE;
 
-        let dist = WeightedIndex::new(probs)
-            .expect("Failed to create probability distribution. Invalid or empty state vector?");
-        let mut rng = rand::rng();
-
-        dist.sample(&mut rng)
+        let instructions = self.circuit.instructions.clone();
+        for inst in self.circuit.instructions {
+            self.apply_instruction(inst);
+        }
+        
+        self.get_collapsed_state()
     }
     
     fn final_state(&self) -> DVector<Complex<f32>> {
@@ -42,6 +41,31 @@ impl SimpleSimulator for SimpleSimpleSimulator {
 }
 
 impl SimpleSimpleSimulator {
+    // This function should probably return something indicating which bits collapsed to what
+    // For like debugging purposes ig
+    fn measure(&mut self, targets: &[usize]) {
+        let measurement = self.get_collapsed_state();
+        //let collapsed_states: Vec<usize> = targets.iter().map(|&t| (measurement >> t) & 1).collect();
+
+        // Mask is bitstring with 1:s at target position
+        let mut mask = 0;
+        for t in targets {
+            mask |= 1 << t;
+        }
+        let collapsed_bitstring = measurement & mask;
+
+        // Go through state vector and remove amplitude for all states that do not align with measurement
+        for (i, amp) in self.state_vector.iter_mut().enumerate() {
+            if (i & mask) != collapsed_bitstring {
+                *amp = Complex::ZERO;
+            }
+        }
+
+        // Renormalize state vector
+        let norm = self.state_vector.iter().map(|x| x.norm_sqr()).sum::<f32>().sqrt();
+        self.state_vector.iter_mut().for_each(|x| *x /= norm);
+    }
+    
     fn controls_active(i: usize, controls: &[usize]) -> bool {
         controls.iter().all(|&c| ((i >> c) & 1) == 1)
     }
@@ -105,8 +129,19 @@ impl SimpleSimpleSimulator {
 
     }
 
-    fn apply_instruction(&mut self, inst: Instruction) {
+    fn apply_instruction(&mut self, inst: &Instruction) {
         self.apply_gate(&inst.get_controls(), &inst.get_targets(), inst.get_matrix());
+    }
+
+    /// Gets a collapsed result from the current state vector
+    fn get_collapsed_state(&self) -> usize {
+        let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
+
+        let dist = WeightedIndex::new(probs)
+            .expect("Failed to create probability distribution. Invalid or empty state vector?");
+        let mut rng = rand::rng();
+
+        dist.sample(&mut rng)
     }
 }
 
@@ -134,7 +169,7 @@ mod tests {
             n_qubits: 3,
         };
 
-        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        let mut sim = SimpleSimpleSimulator::build(circ).unwrap();
         println!("{}", sim.final_state());
         println!("{:03b}", sim.run());
     }
@@ -150,6 +185,21 @@ mod tests {
         };
 
         let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        println!("{:02b}", sim.run());
+    }
+
+    #[test]
+    fn swap_gate_test() {
+        let circ = Circuit {
+            instructions: vec![
+                Instruction::X(1),
+                Instruction::SWAP(0, 1),
+            ],
+            n_qubits: 2,
+        };
+
+        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        println!("{}", sim.final_state());
         println!("{:02b}", sim.run());
     }
 

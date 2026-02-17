@@ -1,6 +1,7 @@
 use nalgebra::{Complex, DMatrix, dmatrix};
 use std::{f32::consts::{FRAC_1_SQRT_2, PI}, vec};
 
+#[derive(Clone)]
 pub enum Instruction {
     CNOT(usize, usize),
     X(usize),
@@ -10,6 +11,20 @@ pub enum Instruction {
     SWAP(usize, usize),
     CSWAP(usize, usize, usize), // Fredkin gate
 }
+
+// pub enum Instruction {
+//     Gate(Gate),
+//     Measurement(usize),
+//     If {condition: Expr, gate: Gate},
+// }
+
+// enum Expr {
+//     Bit(usize),
+//     Not(Expr),
+//     And(Expr, Expr),
+//     Or(Expr, Expr),
+//     Xor(Expr, Expr),
+// }
 
 impl Instruction {
     pub const PAULI_X_DATA: [Complex<f32>; 4] = [
