@@ -1,4 +1,5 @@
 mod arguments;
+mod breakpoint;
 mod command;
 mod parse;
 mod state;
@@ -17,18 +18,25 @@ use crossterm::{
     style::{self, Attributes, Color, ContentStyle, StyledContent},
 };
 use std::{
-    fmt::Display,
-    io::{self, Write},
+    fmt::{Display, write},
+    io::{self, Read, Write},
+    ops::{Deref, Index, IndexMut, RangeInclusive},
+    str::FromStr,
 };
 
 pub struct DebugTerminal {
     simulator: DebugSimulator,
+    /// Sorted array of breakpoints
+    /// i.e. Breakpoints are in order
+    /// of gate index
+    breakpoints: BreakpointList,
 }
 
 impl DebugTerminal {
     pub fn new(circuit: Circuit) -> Result<Self, <DebugSimulator as BuildSimulator>::E> {
         Ok(Self {
             simulator: DebugSimulator::build(circuit)?,
+            breakpoints: Default::default(),
         })
     }
 
@@ -62,12 +70,57 @@ impl DebugTerminal {
                 Command::Continue(_continue_args) => Self::print(&mut stdout, &"Continue")?,
                 Command::Next(next_args) => self.next(&mut stdout, next_args)?,
                 Command::Previous(prev_args) => self.prev(&mut stdout, prev_args)?,
-                Command::Break(_break_args) => Self::print(&mut stdout, &"Break")?,
+                Command::Break(_break_args) => self.handle_break(&mut stdout, &args)?,
                 Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
                 Command::Disable(_disable_args) => Self::print(&mut stdout, &"Disable")?,
                 Command::State(state_args) => self.print_state(&mut stdout, state_args)?,
             }
         }
+        Ok(())
+    }
+
+    fn handle_break<W: Write>(&mut self, stdout: &mut W, args: &BreakArgs) -> io::Result<()> {
+        let mut enable_only = false;
+        let gate_indices = match args {
+            BreakArgs::GateIndices(gate_indices) => gate_indices,
+            BreakArgs::GateIndicesEnable(gate_indices) => {
+                enable_only = true;
+                gate_indices
+            }
+        };
+
+        // *
+        // TODO:
+        // Check that all indices are actual gates
+        // *
+
+        for &gate_index in gate_indices {
+            let status = if !enable_only {
+                self.breakpoints.insert_or_enable(gate_index)
+            } else if let Some(status) = self.breakpoints.enable(gate_index) {
+                status
+            } else {
+                Self::error(
+                    stdout,
+                    &format!(
+                        "Could not enable breakpoint at {}, breakpoint does not exist",
+                        gate_index
+                    ),
+                )?;
+                continue;
+            };
+
+            match status {
+                PEBreakpoint::Enabled => {
+                    Self::print(stdout, &format!("Enabled breakpoint at {}", gate_index))?
+                }
+                PEBreakpoint::Inserted => Self::print(
+                    stdout,
+                    &format!("Inserted new breakpoint at {}", gate_index),
+                )?,
+            }
+        }
+
         Ok(())
     }
 
