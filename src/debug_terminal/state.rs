@@ -1,4 +1,4 @@
-use crate::{DebugTerminal, Debugger, StateArgs};
+use crate::{DebugTerminal, StateArgs};
 use std::io;
 use std::io::Write;
 
