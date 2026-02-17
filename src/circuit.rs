@@ -1,5 +1,6 @@
 use crate::Instruction;
 
+#[derive(Debug, Clone)]
 pub struct Circuit {
     pub instructions: Vec<Instruction>,
     pub n_qubits: usize,
