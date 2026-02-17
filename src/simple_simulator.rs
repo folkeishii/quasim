@@ -1,6 +1,6 @@
 use nalgebra::{Complex, DMatrix, DVector, Normed};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
-use crate::{SimpleSimulator, Debugger, Circuit, Instruction};
+use crate::{SimpleSimulator, Debugger, Circuit, Instruction, cart};
 
 pub struct SimpleSimpleSimulator {
     circuit: Circuit,
