@@ -152,4 +152,19 @@ mod tests {
         let sim = SimpleSimpleSimulator::build(circ).unwrap();
         println!("{:02b}", sim.run());
     }
+
+    #[test]
+    fn swap_gate_test() {
+        let circ = Circuit {
+            instructions: vec![
+                Instruction::X(1),
+                Instruction::SWAP(0, 1),
+            ],
+            n_qubits: 2,
+        };
+
+        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        println!("{}", sim.final_state());
+        println!("{:02b}", sim.run());
+    }
 }
