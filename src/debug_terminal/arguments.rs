@@ -87,6 +87,28 @@ impl NextArgs {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum PrevArgs {
+    Back,
+    Count(usize),
+}
+impl PrevArgs {
+    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
+        let mut tokens = tokens;
+        let arg = if let Some(token) = tokens.next() {
+            token
+        } else {
+            return Ok(PrevArgs::Back);
+        };
+
+        if let Some(token) = tokens.next() {
+            return Err(ParseError::UnexpectedArgument(token.into()));
+        };
+
+        Ok(PrevArgs::Count(parse_usize!(arg)?))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum BreakArgs {
     GateIndices(Vec<usize>),

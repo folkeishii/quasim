@@ -71,7 +71,7 @@ impl DebugSimulator {
         return Some(&self.current_state);
     }
 
-    fn step_backwards(&mut self) -> Option<&DVector<Complex<f32>>> {
+    pub fn step_backwards(&mut self) -> Option<&DVector<Complex<f32>>> {
         if self.current_step <= 0 {
             return None;
         }

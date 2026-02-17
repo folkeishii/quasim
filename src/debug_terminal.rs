@@ -1,6 +1,7 @@
 mod arguments;
 mod command;
 mod parse;
+mod prev;
 mod state;
 
 pub use arguments::*;
@@ -59,6 +60,7 @@ impl DebugTerminal {
                 Command::Help(_help_args) => Self::print(&mut stdout, &"Help")?,
                 Command::Continue(_continue_args) => Self::print(&mut stdout, &"Continue")?,
                 Command::Next(_next_args) => Self::print(&mut stdout, &"Next")?,
+                Command::Previous(prev_args) => self.prev(&mut stdout, prev_args)?,
                 Command::Break(_break_args) => Self::print(&mut stdout, &"Break")?,
                 Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
                 Command::Disable(_disable_args) => Self::print(&mut stdout, &"Disable")?,
