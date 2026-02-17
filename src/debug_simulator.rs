@@ -18,12 +18,6 @@ impl SimpleSimulator for DebugSimulator {
         // Initial state assumed to be |000..>
         let mut init_state = vec![Complex::ZERO; 1 << k];
         init_state[0] = Complex::ONE;
-        let mut current_state = DVector::from_vec(init_state.clone());
-
-        for inst in &circuit.instructions {
-            let mat = DebugSimulator::expand_matrix_from_instruction(&inst, k);
-            current_state = mat * current_state;
-        }
 
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),
