@@ -59,3 +59,17 @@ macro_rules! cart {
         Complex { re: $re, im: $im }
     };
 }
+
+#[macro_export]
+macro_rules! polar {
+    ($r: expr, $theta: expr) => {
+        Complex::from_polar($r, $theta)
+    };
+}
+
+#[macro_export]
+macro_rules! cexp {
+    ($exp: expr) => {
+        Complex::exp($exp)
+    };
+}

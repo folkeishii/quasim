@@ -1,6 +1,6 @@
 use nalgebra::{Complex, DMatrix, DVector, Normed};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
-use crate::{SimpleSimulator, Circuit, Instruction};
+use crate::{SimpleSimulator, Circuit, Instruction, cart};
 
 pub struct SimpleSimpleSimulator {
     state_vector: Vec<Complex<f32>>,
@@ -12,8 +12,8 @@ impl SimpleSimulator for SimpleSimpleSimulator {
     fn build(circuit: Circuit) -> Result<Self, Self::E> {
 
         let k = circuit.n_qubits;
-        let mut init_state_vector = vec![Complex::ZERO; 1 << k];
-        init_state_vector[0] = Complex::ONE;
+        let mut init_state_vector = vec![cart!(0.0); 1 << k];
+        init_state_vector[0] = cart!(1.0);
 
         let mut sim = SimpleSimpleSimulator {
             state_vector: init_state_vector,
