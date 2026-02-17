@@ -1,6 +1,7 @@
 mod arguments;
 mod command;
 mod parse;
+mod state;
 
 pub use arguments::*;
 pub use command::*;
@@ -66,7 +67,7 @@ impl DebugTerminal {
                 Command::Break(break_args) => Self::print(&mut stdout, &"Break")?,
                 Command::Delete(delete_args) => Self::print(&mut stdout, &"Delete")?,
                 Command::Disable(disable_args) => Self::print(&mut stdout, &"Disable")?,
-                Command::State(state_args) => Self::print(&mut stdout, &"State")?,
+                Command::State(state_args) => self.print_state(&mut stdout, state_args)?,
             }
         }
         Ok(())
