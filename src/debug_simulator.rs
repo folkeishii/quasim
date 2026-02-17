@@ -1,4 +1,4 @@
-use crate::{Circuit, Instruction, SimpleSimulator};
+use crate::{cart, Circuit, Instruction, SimpleSimulator};
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
@@ -16,8 +16,8 @@ impl SimpleSimulator for DebugSimulator {
         let k = circuit.n_qubits;
 
         // Initial state assumed to be |000..>
-        let mut init_state = vec![Complex::ZERO; 1 << k];
-        init_state[0] = Complex::ONE;
+        let mut init_state = vec![cart!(0.0); 1 << k];
+        init_state[0] = cart!(1.0);
 
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),
@@ -119,8 +119,8 @@ impl DebugSimulator {
         n_qubits: usize,
     ) -> DMatrix<Complex<f32>> {
         let ketbra = [
-            dmatrix![Complex::ONE, Complex::ZERO; Complex::ZERO, Complex::ZERO], // |0><0|
-            dmatrix![Complex::ZERO, Complex::ZERO; Complex::ZERO, Complex::ONE], // |1><1|
+            dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)], // |0><0|
+            dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)], // |1><1|
         ];
         let n_controls = controls.len();
 
@@ -161,7 +161,7 @@ pub enum SimpleError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Circuit, DebugSimulator, Instruction, SimpleSimulator};
+    use crate::{cart, Circuit, DebugSimulator, Instruction, SimpleSimulator};
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f32::consts::FRAC_1_SQRT_2;
 
@@ -206,10 +206,10 @@ mod tests {
     fn textbook_cnot() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let textbook_cnot: DMatrix::<Complex<f32>> = dmatrix![
-            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
-            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
+            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
         ];
         textbook_cnot
     }
@@ -223,14 +223,14 @@ mod tests {
     fn textbook_toffoli() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let textbook_toffoli: DMatrix::<Complex<f32>> = dmatrix![
-            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
         ];
         textbook_toffoli
     }
@@ -245,14 +245,14 @@ mod tests {
     fn cnot_01() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let cnot_01: DMatrix::<Complex<f32>> = dmatrix![
-            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
+            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
         ];
         cnot_01
     }
@@ -266,14 +266,14 @@ mod tests {
     fn cnot_02() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let cnot_02: DMatrix::<Complex<f32>> = dmatrix![
-            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
         ];
         cnot_02
     }
@@ -287,14 +287,14 @@ mod tests {
     fn cnot_12() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let cnot_12: DMatrix::<Complex<f32>> = dmatrix![
-            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
+            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
         ];
         cnot_12
     }
@@ -308,14 +308,14 @@ mod tests {
     fn h_0() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let h_0: DMatrix::<Complex<f32>> = dmatrix![
-            Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO,Complex::ZERO,Complex::ZERO, Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO, Complex::ZERO;
-            Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO,Complex::ZERO, Complex::ZERO, Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO, Complex::ZERO, Complex::ZERO, Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO, Complex::ZERO, Complex::new(FRAC_1_SQRT_2, 0.0);
-            Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO,Complex::ZERO,Complex::ZERO,-Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO, Complex::ZERO;
-            Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO,Complex::ZERO, Complex::ZERO,-Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0),Complex::ZERO, Complex::ZERO, Complex::ZERO,-Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::new(FRAC_1_SQRT_2, 0.0), Complex::ZERO, Complex::ZERO, Complex::ZERO,-Complex::new(FRAC_1_SQRT_2, 0.0);
+            cart!(FRAC_1_SQRT_2),cart!(0.0),cart!(0.0),cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0),cart!(FRAC_1_SQRT_2),cart!(0.0),cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(FRAC_1_SQRT_2),cart!(0.0), cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2);
+            cart!(FRAC_1_SQRT_2),cart!(0.0),cart!(0.0),cart!(0.0),-cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0),cart!(FRAC_1_SQRT_2),cart!(0.0),cart!(0.0), cart!(0.0),-cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(FRAC_1_SQRT_2),cart!(0.0), cart!(0.0), cart!(0.0),-cart!(FRAC_1_SQRT_2), cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0),-cart!(FRAC_1_SQRT_2);
         ];
         h_0
     }
@@ -328,14 +328,14 @@ mod tests {
 
     fn cnot_201() -> DMatrix<Complex<f32>> {
         let cnot_201: DMatrix<Complex<f32>> = dmatrix![
-            Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE;
-            Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
-            Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ONE,Complex::ZERO;
-            Complex::ZERO,Complex::ONE,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO,Complex::ZERO;
+            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
+            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
+            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
         ];
         cnot_201
     }
@@ -358,44 +358,44 @@ mod tests {
             n_qubits: 3,
         };
         let psi0: DVector<Complex<f32>> = dvector![
-            Complex::ONE, // |000>
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO
+            cart!(1.0), // |000>
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0)
         ];
         let psi1: DVector<Complex<f32>> = dvector![
-            Complex::new(FRAC_1_SQRT_2, 0.0), //|000>
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::new(FRAC_1_SQRT_2, 0.0), //|100>
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO
+            cart!(FRAC_1_SQRT_2), //|000>
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(FRAC_1_SQRT_2), //|100>
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0)
         ];
         let psi2: DVector<Complex<f32>> = dvector![
-            Complex::new(FRAC_1_SQRT_2, 0.0), // |000>
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::new(FRAC_1_SQRT_2, 0.0), // |110>
-            Complex::ZERO
+            cart!(FRAC_1_SQRT_2), // |000>
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(FRAC_1_SQRT_2), // |110>
+            cart!(0.0)
         ];
         let psi3: DVector<Complex<f32>> = dvector![
-            Complex::new(FRAC_1_SQRT_2, 0.0), // |000>
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::ZERO,
-            Complex::new(FRAC_1_SQRT_2, 0.0) // |111>
+            cart!(FRAC_1_SQRT_2), // |000>
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(FRAC_1_SQRT_2) // |111>
         ];
         let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
         assert_is_vector_equal!(psi0.clone(), sim.current_state().clone());

@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+crossterm = "0.29.0"
 array-init = "2.1.0"
 divan = "0.1.21"
 nalgebra = "0.34.1"
