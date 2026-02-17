@@ -1,5 +1,6 @@
 use nalgebra::{Complex, DMatrix, dmatrix};
 use std::{f32::consts::{FRAC_1_SQRT_2, PI}, vec};
+use crate::cart;
 
 pub enum Instruction {
     CNOT(usize, usize),
@@ -13,34 +14,34 @@ pub enum Instruction {
 
 impl Instruction {
     pub const PAULI_X_DATA: [Complex<f32>; 4] = [
-        Complex::new(0.0, 0.0), Complex::new(1.0, 0.0),
-        Complex::new(1.0, 0.0), Complex::new(0.0, 0.0),
+        cart!(0.0), cart!(1.0),
+        cart!(1.0), cart!(0.0),
     ];
 
     #[rustfmt::skip]
     pub const PAULI_Y_DATA: [Complex<f32>; 4] = [
-        Complex::new(0.0, 0.0), Complex::new(0.0, -1.0),
-        Complex::new(0.0, 1.0), Complex::new(0.0, 0.0),
+        cart!(0.0), cart!(0.0, -1.0),
+        cart!(0.0, 1.0), cart!(0.0),
     ];
 
     #[rustfmt::skip]
     pub const PAULI_Z_DATA: [Complex<f32>; 4] = [
-        Complex::new(1.0, 0.0), Complex::new(0.0, 0.0),
-        Complex::new(0.0, 0.0), Complex::new(-1.0, 0.0),
+        cart!(1.0), cart!(0.0),
+        cart!(0.0), cart!(-1.0, 0.0),
     ];
 
     #[rustfmt::skip]
     pub const HADAMARD_DATA: [Complex<f32>; 4] = [
-        Complex::new(FRAC_1_SQRT_2, 0.0), Complex::new(FRAC_1_SQRT_2, 0.0),
-        Complex::new(FRAC_1_SQRT_2, 0.0), Complex::new(-FRAC_1_SQRT_2, 0.0),
+        cart!(FRAC_1_SQRT_2, 0.0), cart!(FRAC_1_SQRT_2, 0.0),
+        cart!(FRAC_1_SQRT_2, 0.0), cart!(-FRAC_1_SQRT_2, 0.0),
     ];
 
     #[rustfmt::skip]
     pub const SWAP_DATA: [Complex<f32>; 16] = [
-        Complex::ONE, Complex::ZERO, Complex::ZERO, Complex::ZERO,
-        Complex::ZERO, Complex::ZERO, Complex::ONE, Complex::ZERO,
-        Complex::ZERO, Complex::ONE, Complex::ZERO, Complex::ZERO,
-        Complex::ZERO, Complex::ZERO, Complex::ZERO, Complex::ONE
+        cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0),
+        cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0),
+        cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0),
+        cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0)
     ];
 
     // Can add an argument specifying if we should include full matrix including for the control bits of the gate
