@@ -13,6 +13,6 @@ pub trait SimpleSimulator: Sized {
 pub trait Debugger {
     fn next(&mut self) -> Option<&DVector<Complex<f32>>>;
     fn prev(&mut self) -> Option<&DVector<Complex<f32>>>;
-    fn current_instruction(&self) -> Option<Instruction>;
+    fn current_instruction(&self) -> Option<&Instruction>;
     fn current_state(&self) -> &DVector<Complex<f32>>;
 }
