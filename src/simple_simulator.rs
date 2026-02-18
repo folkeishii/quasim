@@ -1,32 +1,16 @@
 use nalgebra::{Complex, DMatrix, DVector, Normed};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
-use crate::{SimpleSimulator, Circuit, Instruction};
+use crate::{SimpleSimulator, Debugger, Circuit, Instruction, cart};
 
-pub struct SimpleSimpleSimulator {
-    state_vector: Vec<Complex<f32>>,
+struct SVExecutor<'a> {
+    state_vector: DVector<Complex<f32>>,
+    sim: &'a SimpleSimpleSimulator,
+    pc: usize,
 }
 
-impl SimpleSimulator for SimpleSimpleSimulator {
-    type E = SimpleError;
-    
-    fn build(circuit: Circuit) -> Result<Self, Self::E> {
-
-        let k = circuit.n_qubits;
-        let mut init_state_vector = vec![Complex::ZERO; 1 << k];
-        init_state_vector[0] = Complex::ONE;
-
-        let mut sim = SimpleSimpleSimulator {
-            state_vector: init_state_vector,
-        };
-
-        for inst in circuit.instructions {
-            sim.apply_instruction(inst);
-        }
-
-        Ok(sim)
-    }
-    
-    fn run(&self) -> usize {
+impl<'a> SVExecutor<'a> {
+    /// Gets a collapsed result from the current state vector
+    fn get_collapsed_state(&self) -> usize {
         let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
 
         let dist = WeightedIndex::new(probs)
@@ -35,38 +19,7 @@ impl SimpleSimulator for SimpleSimpleSimulator {
 
         dist.sample(&mut rng)
     }
-    
-    fn final_state(&self) -> DVector<Complex<f32>> {
-        return DVector::from_vec(self.state_vector.clone());
-    }
-}
 
-impl SimpleSimpleSimulator {
-    // This function should probably return something indicating which bits collapsed to what
-    // For like debugging purposes ig
-    fn measure(&mut self, targets: &[usize]) {
-        let measurement = self.run();
-        //let collapsed_states: Vec<usize> = targets.iter().map(|&t| (measurement >> t) & 1).collect();
-
-        // Mask is bitstring with 1:s at target position
-        let mut mask = 0;
-        for t in targets {
-            mask |= 1 << t;
-        }
-        let collapsed_bitstring = measurement & mask;
-
-        // Go through state vector and remove amplitude for all states that do not align with measurement
-        for (i, amp) in self.state_vector.iter_mut().enumerate() {
-            if (i & mask) != collapsed_bitstring {
-                *amp = Complex::ZERO;
-            }
-        }
-
-        // Renormalize state vector
-        let norm = self.state_vector.iter().map(|x| x.norm_sqr()).sum::<f32>().sqrt();
-        self.state_vector.iter_mut().for_each(|x| *x /= norm);
-    }
-    
     fn controls_active(i: usize, controls: &[usize]) -> bool {
         controls.iter().all(|&c| ((i >> c) & 1) == 1)
     }
@@ -103,15 +56,15 @@ impl SimpleSimpleSimulator {
     {
         // State vector is length 2^n , n=num qubits
         for i in 0..self.state_vector.len() {
-            if !SimpleSimpleSimulator::is_block_base(i, targets) {
+            if !Self::is_block_base(i, targets) {
                 continue;
             }
 
-            if !SimpleSimpleSimulator::controls_active(i, controls) {
+            if !Self::controls_active(i, controls) {
                 continue;
             }
 
-            let indices = SimpleSimpleSimulator::block_indices(i, targets);
+            let indices = Self::block_indices(i, targets);
 
             // Read amplitudes
             let v = DVector::from_iterator(
@@ -130,10 +83,119 @@ impl SimpleSimpleSimulator {
 
     }
 
-    fn apply_instruction(&mut self, inst: Instruction) {
+    // This function should probably return something indicating which bits collapsed to what
+    // For like debugging purposes ig
+    fn measure(&mut self, targets: &[usize]) {
+        let measurement = self.get_collapsed_state();
+        //let collapsed_states: Vec<usize> = targets.iter().map(|&t| (measurement >> t) & 1).collect();
+
+        // Mask is bitstring with 1:s at target position
+        let mut mask = 0;
+        for t in targets {
+            mask |= 1 << t;
+        }
+        let collapsed_bitstring = measurement & mask;
+
+        // Go through state vector and remove amplitude for all states that do not align with measurement
+        for (i, amp) in self.state_vector.iter_mut().enumerate() {
+            if (i & mask) != collapsed_bitstring {
+                *amp = Complex::ZERO;
+            }
+        }
+
+        // Renormalize state vector
+        let norm = self.state_vector.iter().map(|x| x.norm_sqr()).sum::<f32>().sqrt();
+        self.state_vector.iter_mut().for_each(|x| *x /= norm);
+    }
+
+    pub fn step(&mut self) -> Option<&DVector<Complex<f32>>> {
+        if self.pc >= self.sim.circuit.instructions.len() {
+            return None;
+        }
+
+        let inst = &self.sim.circuit.instructions[self.pc];
+
         self.apply_gate(&inst.get_controls(), &inst.get_targets(), inst.get_matrix());
+        
+        self.pc += 1;
+        
+        Some(&self.state_vector)
+    }
+
+    pub fn step_all(&mut self) -> &Self {
+        while let Some(_) = self.step() {}
+        self
     }
 }
+
+
+pub struct SimpleSimpleSimulator {
+    circuit: Circuit,
+}
+
+impl SimpleSimulator for SimpleSimpleSimulator {
+    type E = SimpleError;
+    
+    fn build(circuit: Circuit) -> Result<Self, Self::E> {
+        Ok(SimpleSimpleSimulator {
+            circuit: circuit,
+        })
+    }
+    
+    fn run(&self) -> usize {
+        self.get_executor().step_all().get_collapsed_state()
+    }
+    
+    fn final_state(&self) -> DVector<Complex<f32>> {
+        self.get_executor().step_all().state_vector.clone()
+    }
+}
+
+impl SimpleSimpleSimulator {
+    fn get_executor(&self) -> SVExecutor {
+        let size = 1 << self.circuit.n_qubits;
+        let mut init_state_vector: DVector<Complex<f32>> = DVector::from_element(size, cart![0.0]);
+        init_state_vector[0] = cart![1.0];
+
+        SVExecutor {
+            state_vector: init_state_vector,
+            sim: self,
+            pc: 0,
+        }
+    }
+
+    fn attach_debugger(&self) -> SimpleSimulatorDebugger<'_> {
+        SimpleSimulatorDebugger { executor: self.get_executor() }
+    }
+}
+
+pub struct SimpleSimulatorDebugger<'a> {
+    executor: SVExecutor<'a>,
+}
+
+impl<'a> Debugger for SimpleSimulatorDebugger<'a> {
+
+    fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
+        self.executor.step()
+    }
+
+    fn prev(&mut self) -> Option<&DVector<Complex<f32>>> {
+        todo!()
+    }
+
+    fn current_instruction(&self) -> Option<&Instruction> {
+        let pc = self.executor.pc;
+        if pc >= self.executor.sim.circuit.instructions.len() {
+            return None;
+        }
+        Some(&self.executor.sim.circuit.instructions[pc])
+    }
+
+    fn current_state(&self) -> &DVector<Complex<f32>> {
+        &self.executor.state_vector
+    }
+}
+
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimpleError {
@@ -144,7 +206,7 @@ pub enum SimpleError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Circuit, Instruction, SimpleSimpleSimulator, SimpleSimulator};
+    use crate::{Circuit, Debugger, Instruction, SimpleSimpleSimulator, SimpleSimulator};
 
     #[test]
     fn state_vector_print() {
@@ -176,5 +238,37 @@ mod tests {
 
         let sim = SimpleSimpleSimulator::build(circ).unwrap();
         println!("{:02b}", sim.run());
+    }
+
+    #[test]
+    fn swap_gate_test() {
+        let circ = Circuit {
+            instructions: vec![
+                Instruction::X(1),
+                Instruction::SWAP(0, 1),
+            ],
+            n_qubits: 2,
+        };
+
+        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        println!("{}", sim.final_state());
+        println!("{:02b}", sim.run());
+    }
+
+    #[test]
+    fn debug_test() {
+        let circ = Circuit {
+            instructions: vec![
+                Instruction::X(1),
+                Instruction::SWAP(0, 1),
+            ],
+            n_qubits: 2,
+        };
+
+        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        let mut dbg = sim.attach_debugger();
+        println!("{}", dbg.current_state());
+        println!("{}", dbg.next().unwrap());
+        println!("{}", dbg.next().unwrap());
     }
 }
