@@ -4,20 +4,18 @@ use std::io::Write;
 
 impl DebugTerminal {
     pub fn prev<W: Write>(&mut self, stdout: &mut W, prev_args: PrevArgs) -> io::Result<()> {
-        match prev_args {
-            PrevArgs::Back => {
-                if self.simulator.step_backwards().is_none() {
-                    Self::error(stdout, &"Already at the beginning")?
-                }
-            }
-            PrevArgs::Count(n) => {
-                for _ in 0..n {
-                    if self.simulator.step_backwards().is_none() {
-                        break;
-                    }
-                }
+        let step_count = match prev_args {
+            PrevArgs::Back => 1,
+            PrevArgs::Count(n) => n,
+        };
+
+        for _ in 0..step_count {
+            if self.simulator.step_backwards().is_none() {
+                Self::error(stdout, &"Already at the beginning")?;
+                break;
             }
         }
+
         Ok(())
     }
 }
