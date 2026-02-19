@@ -213,7 +213,7 @@ impl StateArgs {
 
     pub fn from_state(
         current_state: &DVector<Complex<f32>>,
-        state_args: StateArgs,
+        state_args: &StateArgs,
     ) -> Result<Vec<IndexedState>, StateError> {
         let state_size = current_state.len() - 1;
 
@@ -250,6 +250,7 @@ impl StateArgs {
                 })
                 .collect(),
             StateArgs::Range(r) => r
+                .clone()
                 .map(|r| IndexedState {
                     index: r,
                     state: current_state[r].to_string(),
@@ -258,14 +259,14 @@ impl StateArgs {
             StateArgs::Multiple(ms) => ms
                 .into_iter()
                 .map(|m| IndexedState {
-                    index: m,
-                    state: current_state[m].to_string(),
+                    index: *m,
+                    state: current_state[*m].to_string(),
                 })
                 .collect(),
             StateArgs::Single(s) => {
                 vec![IndexedState {
-                    index: s,
-                    state: current_state[s].to_string(),
+                    index: *s,
+                    state: current_state[*s].to_string(),
                 }]
             }
         };

@@ -1,4 +1,5 @@
 mod arguments;
+mod breakpoint;
 mod command;
 mod parse;
 mod state;
@@ -9,7 +10,10 @@ pub use command::*;
 use crate::{
     circuit::Circuit,
     debug_simulator::DebugSimulator,
-    debug_terminal::parse::into_tokens,
+    debug_terminal::{
+        breakpoint::{BreakpointList, PEBreakpoint},
+        parse::into_tokens,
+    },
     simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
 };
 use crossterm::{
@@ -23,12 +27,17 @@ use std::{
 
 pub struct DebugTerminal {
     simulator: DebugSimulator,
+    /// Sorted array of breakpoints
+    /// i.e. Breakpoints are in order
+    /// of gate index
+    breakpoints: BreakpointList,
 }
 
 impl DebugTerminal {
     pub fn new(circuit: Circuit) -> Result<Self, <DebugSimulator as BuildSimulator>::E> {
         Ok(Self {
             simulator: DebugSimulator::build(circuit)?,
+            breakpoints: Default::default(),
         })
     }
 
@@ -60,12 +69,12 @@ impl DebugTerminal {
                 Command::Quit => break,
                 Command::Help(_help_args) => Self::print(&mut stdout, &"Help")?,
                 Command::Continue(_continue_args) => Self::print(&mut stdout, &"Continue")?,
-                Command::Next(next_args) => self.next(&mut stdout, next_args)?,
-                Command::Previous(prev_args) => self.prev(&mut stdout, prev_args)?,
-                Command::Break(_break_args) => Self::print(&mut stdout, &"Break")?,
+                Command::Next(next_args) => self.handle_next(&mut stdout, &next_args)?,
+                Command::Previous(prev_args) => self.handle_prev(&mut stdout, &prev_args)?,
+                Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
                 Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
                 Command::Disable(_disable_args) => Self::print(&mut stdout, &"Disable")?,
-                Command::State(state_args) => self.print_state(&mut stdout, state_args)?,
+                Command::State(state_args) => self.handle_state(&mut stdout, &state_args)?,
             }
         }
         Ok(())
@@ -91,7 +100,7 @@ impl DebugTerminal {
         )
     }
 
-    fn next(&mut self, stdout: &mut io::Stdout, next_args: NextArgs) -> io::Result<()> {
+    fn handle_next(&mut self, stdout: &mut io::Stdout, next_args: &NextArgs) -> io::Result<()> {
         let step_checker = match next_args {
             NextArgs::Step => {
                 let res = self.simulator.next().is_none();
@@ -100,7 +109,7 @@ impl DebugTerminal {
                 }
                 res
             }
-            NextArgs::Count(n) => self.next_n_steps(stdout, n)?,
+            NextArgs::Count(n) => self.next_n_steps(stdout, *n)?,
         };
 
         if !step_checker {
@@ -124,10 +133,10 @@ impl DebugTerminal {
         Ok(true)
     }
 
-    fn prev<W: Write>(&mut self, stdout: &mut W, prev_args: PrevArgs) -> io::Result<()> {
+    fn handle_prev<W: Write>(&mut self, stdout: &mut W, prev_args: &PrevArgs) -> io::Result<()> {
         let step_count = match prev_args {
             PrevArgs::Back => 1,
-            PrevArgs::Count(n) => n,
+            PrevArgs::Count(n) => *n,
         };
 
         for _ in 0..step_count {
@@ -140,7 +149,59 @@ impl DebugTerminal {
         Ok(())
     }
 
-    fn print_state<W: Write>(&mut self, stdout: &mut W, state_args: StateArgs) -> io::Result<()> {
+    fn handle_break<W: Write>(&mut self, stdout: &mut W, args: &BreakArgs) -> io::Result<()> {
+        let (enable_only, gate_indices) = match args {
+            BreakArgs::GateIndices(gate_indices) => (false, gate_indices),
+            BreakArgs::GateIndicesEnable(gate_indices) => (true, gate_indices),
+        };
+
+        // Check that all indices are actual gates
+        let gate_range = 0..self.simulator.instruction_count();
+        for gate_index in gate_indices {
+            if !gate_range.contains(gate_index) {
+                Self::error(
+                    stdout,
+                    &format!(
+                        "Unable to set or enable breakpoint at index {}, no gate at index",
+                        gate_index
+                    ),
+                )?;
+                return Ok(());
+            }
+        }
+
+        // Insert or enable breakpoints
+        for &gate_index in gate_indices {
+            let status = if !enable_only {
+                self.breakpoints.insert_or_enable(gate_index)
+            } else if let Some(status) = self.breakpoints.enable(gate_index) {
+                status
+            } else {
+                Self::error(
+                    stdout,
+                    &format!(
+                        "Could not enable breakpoint at {}, breakpoint does not exist",
+                        gate_index
+                    ),
+                )?;
+                continue;
+            };
+
+            match status {
+                PEBreakpoint::Enabled => {
+                    Self::print(stdout, &format!("Enabled breakpoint at {}", gate_index))?
+                }
+                PEBreakpoint::Inserted => Self::print(
+                    stdout,
+                    &format!("Inserted new breakpoint at {}", gate_index),
+                )?,
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_state<W: Write>(&mut self, stdout: &mut W, state_args: &StateArgs) -> io::Result<()> {
         let current_state = self.simulator.current_state();
         let to_show = match StateArgs::from_state(current_state, state_args) {
             Ok(v) => v,

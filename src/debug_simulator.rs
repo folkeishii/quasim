@@ -1,5 +1,10 @@
 use crate::{
-    cart, circuit::Circuit, ext::get_gate_matrix, gate::Gate, instruction::Instruction, simulator::{DebuggableSimulator, DoubleEndedSimulator}
+    cart,
+    circuit::Circuit,
+    ext::get_gate_matrix,
+    gate::Gate,
+    instruction::Instruction,
+    simulator::{DebuggableSimulator, DoubleEndedSimulator},
 };
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 
@@ -48,18 +53,15 @@ impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
         match &self.circuit.instructions()[self.current_step] {
             Instruction::Gate(gate) => {
-                if self.current_step >= self.n_instructions() {
+                if self.current_step >= self.instruction_count() {
                     return None;
                 }
-                let mat = Self::expand_matrix_from_gate(
-                    &gate,
-                    self.circuit.n_qubits(),
-                );
+                let mat = Self::expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 self.current_state = mat * self.current_state.clone();
                 self.current_step += 1;
                 Some(&self.current_state)
-            },
-            Instruction::Measurement(qbits) => todo!(),
+            }
+            Instruction::Measurement(_) => todo!(),
         }
     }
 
@@ -82,25 +84,22 @@ impl DoubleEndedSimulator for DebugSimulator {
                 if self.current_step <= 0 {
                     return None;
                 }
-        
+
                 self.current_step -= 1;
-                let mut mat = Self::expand_matrix_from_gate(
-                    &gate,
-                    self.circuit.n_qubits(),
-                );
+                let mut mat = Self::expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 mat = mat
                     .try_inverse()
                     .expect("Unitary matricies should be invertible.");
                 self.current_state = mat * self.current_state.clone();
-            },
-            Instruction::Measurement(qbits) => todo!(),
+            }
+            Instruction::Measurement(_) => todo!(),
         }
         Some(&self.current_state)
     }
 }
 
 impl DebugSimulator {
-    fn n_instructions(&self) -> usize {
+    pub fn instruction_count(&self) -> usize {
         self.circuit.instructions().len()
     }
 
@@ -171,7 +170,12 @@ pub enum DebugSimulatorError {
 #[cfg(test)]
 mod tests {
     use crate::{
-        cart, circuit::Circuit, debug_simulator::DebugSimulator, ext::get_gate_matrix, gate::{Gate, GateType}, instruction::Instruction, simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator}
+        cart,
+        circuit::Circuit,
+        debug_simulator::DebugSimulator,
+        ext::get_gate_matrix,
+        gate::{Gate, GateType},
+        simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
     };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use rand::distr::{Distribution, weighted::WeightedIndex};
