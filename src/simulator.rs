@@ -1,6 +1,5 @@
-use nalgebra::{Complex, DMatrix, DVector};
-use crate::{Circuit, Instruction};
-use rand::prelude::*;
+use crate::{circuit::Circuit, instruction::Instruction};
+use nalgebra::{Complex, DVector};
 
 pub trait SimpleSimulator: Sized {
     type E: std::error::Error;

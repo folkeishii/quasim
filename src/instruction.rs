@@ -1,6 +1,6 @@
-use nalgebra::{Complex, DMatrix, dmatrix};
-use std::{f32::consts::{FRAC_1_SQRT_2, PI}, vec};
 use crate::cart;
+use nalgebra::{Complex, DMatrix};
+use std::{f32::consts::FRAC_1_SQRT_2, vec};
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
@@ -14,10 +14,7 @@ pub enum Instruction {
 }
 
 impl Instruction {
-    pub const PAULI_X_DATA: [Complex<f32>; 4] = [
-        cart!(0.0), cart!(1.0),
-        cart!(1.0), cart!(0.0),
-    ];
+    pub const PAULI_X_DATA: [Complex<f32>; 4] = [cart!(0.0), cart!(1.0), cart!(1.0), cart!(0.0)];
 
     #[rustfmt::skip]
     pub const PAULI_Y_DATA: [Complex<f32>; 4] = [
@@ -63,8 +60,7 @@ impl Instruction {
 
     pub fn get_controls(&self) -> Vec<usize> {
         match self {
-            Instruction::CNOT(c, _)
-            | Instruction::CSWAP(c, _, _) => vec![*c],
+            Instruction::CNOT(c, _) | Instruction::CSWAP(c, _, _) => vec![*c],
             _ => vec![],
         }
     }
@@ -76,8 +72,7 @@ impl Instruction {
             | Instruction::Y(t)
             | Instruction::Z(t)
             | Instruction::H(t) => vec![*t],
-            Instruction::SWAP(t1, t2)
-            | Instruction::CSWAP(_, t1, t2) => vec![*t1, *t2],
+            Instruction::SWAP(t1, t2) | Instruction::CSWAP(_, t1, t2) => vec![*t1, *t2],
         }
     }
 }

@@ -1,6 +1,6 @@
-use nalgebra::{Complex, DMatrix, DVector, Normed};
+use crate::{cart, circuit::Circuit, instruction::Instruction, simulator::SimpleSimulator};
+use nalgebra::{Complex, DMatrix, DVector};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
-use crate::{SimpleSimulator, Circuit, Instruction, cart};
 
 pub struct SimpleSimpleSimulator {
     state_vector: Vec<Complex<f32>>,
@@ -8,9 +8,8 @@ pub struct SimpleSimpleSimulator {
 
 impl SimpleSimulator for SimpleSimpleSimulator {
     type E = SimpleError;
-    
-    fn build(circuit: Circuit) -> Result<Self, Self::E> {
 
+    fn build(circuit: Circuit) -> Result<Self, Self::E> {
         let k = circuit.n_qubits;
         let mut init_state_vector = vec![cart!(0.0); 1 << k];
         init_state_vector[0] = cart!(1.0);
@@ -25,7 +24,7 @@ impl SimpleSimulator for SimpleSimpleSimulator {
 
         Ok(sim)
     }
-    
+
     fn run(&self) -> usize {
         let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
 
@@ -35,7 +34,7 @@ impl SimpleSimulator for SimpleSimpleSimulator {
 
         dist.sample(&mut rng)
     }
-    
+
     fn final_state(&self) -> DVector<Complex<f32>> {
         return DVector::from_vec(self.state_vector.clone());
     }
@@ -66,16 +65,9 @@ impl SimpleSimpleSimulator {
         }
 
         indices
-    
     }
 
-    fn apply_gate(
-        &mut self,
-        controls: &[usize],
-        targets: &[usize],
-        u: DMatrix<Complex<f32>>
-    )
-    {
+    fn apply_gate(&mut self, controls: &[usize], targets: &[usize], u: DMatrix<Complex<f32>>) {
         // State vector is length 2^n , n=num qubits
         for i in 0..self.state_vector.len() {
             if !SimpleSimpleSimulator::is_block_base(i, targets) {
@@ -91,7 +83,7 @@ impl SimpleSimpleSimulator {
             // Read amplitudes
             let v = DVector::from_iterator(
                 indices.len(),
-                indices.iter().map(|&idx| self.state_vector[idx])
+                indices.iter().map(|&idx| self.state_vector[idx]),
             );
 
             // Apply gate matrix, assumes u matches size of v
@@ -102,7 +94,6 @@ impl SimpleSimpleSimulator {
                 self.state_vector[idx] = v2[j];
             }
         }
-
     }
 
     fn apply_instruction(&mut self, inst: Instruction) {
@@ -113,13 +104,15 @@ impl SimpleSimpleSimulator {
 #[derive(Debug, thiserror::Error)]
 pub enum SimpleError {
     #[error("Measurement mid-circuit")]
-    MidCircuitMeasurement
+    MidCircuitMeasurement,
 }
-
 
 #[cfg(test)]
 mod tests {
-    use crate::{Circuit, Instruction, SimpleSimpleSimulator, SimpleSimulator};
+    use crate::{
+        circuit::Circuit, instruction::Instruction, simple_simulator::SimpleSimpleSimulator,
+        simulator::SimpleSimulator,
+    };
 
     #[test]
     fn state_vector_print() {
@@ -142,10 +135,7 @@ mod tests {
     #[test]
     fn bell_state_test() {
         let circ = Circuit {
-            instructions: vec![
-                Instruction::H(0),
-                Instruction::CNOT(0, 1),
-            ],
+            instructions: vec![Instruction::H(0), Instruction::CNOT(0, 1)],
             n_qubits: 2,
         };
 
@@ -156,10 +146,7 @@ mod tests {
     #[test]
     fn swap_gate_test() {
         let circ = Circuit {
-            instructions: vec![
-                Instruction::X(1),
-                Instruction::SWAP(0, 1),
-            ],
+            instructions: vec![Instruction::X(1), Instruction::SWAP(0, 1)],
             n_qubits: 2,
         };
 
