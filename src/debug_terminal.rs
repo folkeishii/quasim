@@ -16,6 +16,8 @@ use crossterm::{
     execute,
     style::{self, Attributes, Color, ContentStyle, StyledContent},
 };
+use std::collections::HashMap;
+use std::ops::Div;
 use std::{
     fmt::Display,
     io::{self, Write},
@@ -66,6 +68,9 @@ impl DebugTerminal {
                 Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
                 Command::Disable(_disable_args) => Self::print(&mut stdout, &"Disable")?,
                 Command::State(state_args) => self.print_state(&mut stdout, state_args)?,
+                Command::Collapse(collapse_args) => {
+                    self.collapse_state(&mut stdout, collapse_args)?
+                }
             }
         }
         Ok(())
@@ -139,6 +144,54 @@ impl DebugTerminal {
             )?;
         }
         Self::print(stdout, &format!("└ {} ┘\n", " ".repeat(state_width)))?;
+
+        Ok(())
+    }
+
+    fn collapse_state<W: Write>(
+        &mut self,
+        stdout: &mut W,
+        collapse_args: CollapseArgs,
+    ) -> io::Result<()> {
+        let state = self.simulator.current_state();
+        let mut count_map: HashMap<usize, usize> = HashMap::new();
+        let count = match collapse_args {
+            CollapseArgs::Collapse => 1,
+            CollapseArgs::Count(n) => n,
+        };
+
+        for _ in 0..count {
+            let collapsed = DebugSimulator::collapse(state);
+            *count_map.entry(collapsed).or_insert(0) += 1;
+        }
+
+        let mut counts = count_map.iter().collect::<Vec<_>>();
+        counts.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let max_index = counts.iter().map(|i| i.0).max().unwrap_or(&1);
+        let decimal_width = (max_index.checked_ilog10().unwrap_or(0) + 1) as usize;
+        let binary_width = (max_index.checked_ilog2().unwrap_or(0) + 1) as usize;
+
+        let max_count = counts.iter().map(|i| i.1).max().unwrap_or(&1);
+        let max_width = (max_count.checked_ilog10().unwrap_or(0) + 1) as usize;
+
+        let mut count_peekable = counts.iter().peekable();
+        while let Some(c) = count_peekable.next() {
+            Self::print(
+                stdout,
+                &format!(
+                    "{: >decimal_width$} ({:0binary_width$b}) - {: >max_width$} ({: >2}%)",
+                    c.0,
+                    c.0,
+                    c.1,
+                    ((*c.1 as f64).div(count as f64) * 100.0).round(),
+                ),
+            )?;
+
+            if count_peekable.peek().is_some() {
+                Self::print(stdout, &"\n")?;
+            }
+        }
 
         Ok(())
     }
