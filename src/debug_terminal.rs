@@ -92,36 +92,21 @@ impl DebugTerminal {
     }
 
     fn next(&mut self, stdout: &mut io::Stdout, next_args: NextArgs) -> io::Result<()> {
-        let step_checker = match next_args {
-            NextArgs::Step => {
-                let res = self.simulator.next().is_none();
-                if !res {
-                    Self::print(stdout, &"Stepped 1 time")?;
-                }
-                res
-            }
-            NextArgs::Count(n) => self.next_n_steps(stdout, n)?,
+        let step_count = match next_args {
+            NextArgs::Step => 1,
+            NextArgs::Count(n) => n,
         };
 
-        if !step_checker {
-            Self::error(
-                stdout,
-                &format!("Cannot step further, end of circuit reached"),
-            )?;
-        }
-
-        Ok(())
-    }
-
-    fn next_n_steps(&mut self, stdout: &mut io::Stdout, n: usize) -> io::Result<bool> {
-        for i in 0..n {
+        for i in 0..step_count {
             if self.simulator.next().is_none() {
-                Self::error(stdout, &format!("Stepped {} time(s)", i))?;
-                return Ok(false);
+                Self::error(stdout, &"End of Circuit reached")?;
+                Self::print(stdout, &format!(", stepped forward {} time(s)", i))?;
+                return Ok(());
             }
         }
-        Self::print(stdout, &format!("Stepped {} times", n))?;
-        Ok(true)
+        Self::print(stdout, &format!("Stepped forward {} time(s)", step_count))?;
+
+        return Ok(());
     }
 
     fn prev<W: Write>(&mut self, stdout: &mut W, prev_args: PrevArgs) -> io::Result<()> {
