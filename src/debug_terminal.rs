@@ -92,4 +92,40 @@ impl DebugTerminal {
             style::Print(output.to_string())
         )
     }
+
+    fn print_state<W: Write>(&mut self, stdout: &mut W, state_args: StateArgs) -> io::Result<()> {
+        let current_state = self.simulator.current_state();
+        let to_show = match StateArgs::from_state(current_state, state_args) {
+            Ok(v) => v,
+            Err(e) => {
+                Self::error(stdout, &e)?;
+                return Ok(());
+            }
+        };
+
+        if to_show.len() == 1 {
+            let state = to_show.first().unwrap();
+            Self::print(stdout, &format!("[ {} ] {}\n", state.state, state.index))?;
+            return Ok(());
+        }
+
+        let state_width = to_show.iter().map(|i| i.state.len()).max().unwrap_or(1);
+        let max_index = to_show.iter().map(|i| i.index).max().unwrap_or(1);
+        let decimal_width = (max_index.checked_ilog10().unwrap_or(0) + 1) as usize;
+        let binary_width = (max_index.checked_ilog2().unwrap_or(0) + 1) as usize;
+
+        Self::print(stdout, &format!("┌ {} ┐\n", " ".repeat(state_width)))?;
+        for s in to_show {
+            Self::print(
+                stdout,
+                &format!(
+                    "│ {: >state_width$} │ {: >decimal_width$} ({:0binary_width$b})\n",
+                    s.state, s.index, s.index
+                ),
+            )?;
+        }
+        Self::print(stdout, &format!("└ {} ┘\n", " ".repeat(state_width)))?;
+
+        Ok(())
+    }
 }
