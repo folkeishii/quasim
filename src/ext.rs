@@ -53,7 +53,9 @@ pub fn reverse_indices(
 }
 
 /// Collapse a state vector into a value
-pub fn collapse(state: &Vec<Complex<f32>>) -> usize {
+///
+/// The sum of the squares of each item should equal to one
+pub fn collapse(state: &[Complex<f32>]) -> usize {
     let probs = state.iter().map(|&c| c.norm_sqr());
 
     let dist = WeightedIndex::new(probs)

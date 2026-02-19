@@ -207,7 +207,7 @@ mod tests {
         let circ = Circuit::from_instructions(2, vec![Instruction::H(0), Instruction::CNOT(0, 1)]);
 
         let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
-        let collapsed = collapse(sim.continue_until(None).data.as_vec());
+        let collapsed = collapse(sim.continue_until(None).as_ref());
 
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
         assert!(collapsed == 0b00 || collapsed == 0b11);
