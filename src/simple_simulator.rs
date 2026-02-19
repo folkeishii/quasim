@@ -1,6 +1,5 @@
-use crate::{cart, circuit::Circuit, ext::get_gate_matrix, instruction::Instruction, simulator::RunnableSimulator};
+use crate::{cart, circuit::Circuit, ext::{collapse, get_gate_matrix}, instruction::Instruction, simulator::RunnableSimulator};
 use nalgebra::{Complex, DMatrix, DVector};
-use rand::{distr::weighted::WeightedIndex, prelude::*};
 
 pub struct SimpleSimulator {
     state_vector: Vec<Complex<f32>>,
@@ -29,13 +28,7 @@ impl TryFrom<Circuit> for SimpleSimulator {
 
 impl RunnableSimulator for SimpleSimulator {
     fn run(&self) -> usize {
-        let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
-
-        let dist = WeightedIndex::new(probs)
-            .expect("Failed to create probability distribution. Invalid or empty state vector?");
-        let mut rng = rand::rng();
-
-        dist.sample(&mut rng)
+        collapse(&self.state_vector)
     }
 
     fn final_state(&self) -> DVector<Complex<f32>> {

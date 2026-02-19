@@ -170,11 +170,11 @@ pub enum DebugSimulatorError {
 
 #[cfg(test)]
 mod tests {
+    use crate::ext::collapse;
     use crate::{
         cart, circuit::Circuit, debug_simulator::DebugSimulator, ext::get_gate_matrix, gate::{Gate, GateType}, instruction::Instruction, simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator}
     };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
-    use rand::distr::{Distribution, weighted::WeightedIndex};
     use std::f32::consts::FRAC_1_SQRT_2;
 
     fn is_matrix_equal_to(m1: DMatrix<Complex<f32>>, m2: DMatrix<Complex<f32>>) -> bool {
@@ -207,13 +207,8 @@ mod tests {
         let circ = Circuit::new(2).hadamard(0).cnot(0, 1);
 
         let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
-        let probs = sim.continue_until(None).iter().map(|&c| c.norm_sqr());
+        let collapsed = collapse(sim.continue_until(None).data.as_vec());
 
-        let dist = WeightedIndex::new(probs)
-            .expect("Failed to create probability distribution. Invalid or empty state vector?");
-        let mut rng = rand::rng();
-
-        let collapsed = dist.sample(&mut rng);
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
         assert!(collapsed == 0b00 || collapsed == 0b11);
     }
