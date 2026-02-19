@@ -1,4 +1,10 @@
-use crate::{cart, circuit::Circuit, ext::{collapse, get_gate_matrix}, instruction::Instruction, simulator::RunnableSimulator};
+use crate::{
+    cart,
+    circuit::Circuit,
+    ext::{collapse, get_gate_matrix},
+    instruction::Instruction,
+    simulator::RunnableSimulator,
+};
 use nalgebra::{Complex, DMatrix, DVector};
 
 pub struct SimpleSimulator {
@@ -114,7 +120,6 @@ pub enum SimpleError {
 mod tests {
     use crate::{
         circuit::Circuit,
-        instruction::Instruction,
         simple_simulator::SimpleSimulator,
         simulator::{BuildSimulator, RunnableSimulator},
     };
