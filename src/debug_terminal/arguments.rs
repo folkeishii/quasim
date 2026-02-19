@@ -273,3 +273,25 @@ impl StateArgs {
         Ok(to_show)
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum CollapseArgs {
+    Collapse,
+    Count(usize),
+}
+impl CollapseArgs {
+    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
+        let mut tokens = tokens;
+        let arg = if let Some(token) = tokens.next() {
+            token
+        } else {
+            return Ok(CollapseArgs::Collapse);
+        };
+
+        if let Some(token) = tokens.next() {
+            return Err(ParseError::UnexpectedArgument(token.into()));
+        }
+
+        Ok(CollapseArgs::Count(parse_usize!(arg)?))
+    }
+}

@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::debug_terminal::{
-    BreakArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs, StateArgs,
+    BreakArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs, StateArgs,
     parse::{ParseError, ParseResult, Token, TokenIterator},
 };
 
@@ -91,6 +91,13 @@ pub enum Command {
     /// state [state1, ...]  # Get specific states (if possible)
     /// state state1..state2 # Get a range of states (if possible)
     State(StateArgs),
+
+    /// Collapse the current state vector
+    ///
+    /// Usage: (collapse can be substituted with `cl`)
+    /// collapse        # Collapse the current state
+    /// collapse n      # Collapse the current state n number of times
+    Collapse(CollapseArgs),
 }
 impl Command {
     pub fn parse_tokens(tokens: TokenIterator<'_>) -> ParseResult<Self> {
@@ -107,6 +114,7 @@ impl Command {
             CommandIdent::Delete => Command::Delete(DeleteArgs::parse_arguments(tokens)?),
             CommandIdent::Disable => Command::Disable(DisableArgs::parse_arguments(tokens)?),
             CommandIdent::State => Command::State(StateArgs::parse_arguments(tokens)?),
+            CommandIdent::Collapse => Command::Collapse(CollapseArgs::parse_arguments(tokens)?),
             CommandIdent::Quit => {
                 if let Some(token) = tokens.next() {
                     return Err(ParseError::UnexpectedArgument(token.into()));
@@ -147,6 +155,8 @@ pub enum CommandIdent {
     Disable,
     /// state
     State,
+    /// collapse
+    Collapse,
 }
 impl CommandIdent {
     pub fn parse_command(tokens: &mut TokenIterator<'_>) -> ParseResult<Self> {
@@ -169,6 +179,7 @@ impl CommandIdent {
             CommandIdent::Delete => "delete".into(),
             CommandIdent::Disable => "disable".into(),
             CommandIdent::State => "state".into(),
+            CommandIdent::Collapse => "collapse".into(),
         }
     }
 }
@@ -188,6 +199,7 @@ impl TryFrom<Token<'_>> for CommandIdent {
             "delete" => Ok(Self::Delete),
             "disable" => Ok(Self::Disable),
             "state" => Ok(Self::State),
+            "collapse" | "cl" => Ok(Self::Collapse),
             _ => Err(ParseError::ExpectedCommand(value.into())),
         }
     }
