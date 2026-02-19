@@ -1,6 +1,6 @@
+use crate::{Circuit, Gate, Instruction, SimpleSimulator, cart, get_gate_matrix};
 use nalgebra::{Complex, DMatrix, DVector, Normed};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
-use crate::{SimpleSimulator, Circuit, Instruction, cart};
 
 pub struct SimpleSimpleSimulator {
     state_vector: Vec<Complex<f32>>,
@@ -8,9 +8,8 @@ pub struct SimpleSimpleSimulator {
 
 impl SimpleSimulator for SimpleSimpleSimulator {
     type E = SimpleError;
-    
-    fn build(circuit: Circuit) -> Result<Self, Self::E> {
 
+    fn build(circuit: Circuit) -> Result<Self, Self::E> {
         let k = circuit.n_qubits;
         let mut init_state_vector = vec![cart!(0.0); 1 << k];
         init_state_vector[0] = cart!(1.0);
@@ -25,7 +24,7 @@ impl SimpleSimulator for SimpleSimpleSimulator {
 
         Ok(sim)
     }
-    
+
     fn run(&self) -> usize {
         let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
 
@@ -35,7 +34,7 @@ impl SimpleSimulator for SimpleSimpleSimulator {
 
         dist.sample(&mut rng)
     }
-    
+
     fn final_state(&self) -> DVector<Complex<f32>> {
         return DVector::from_vec(self.state_vector.clone());
     }
@@ -66,16 +65,9 @@ impl SimpleSimpleSimulator {
         }
 
         indices
-    
     }
 
-    fn apply_gate(
-        &mut self,
-        controls: &[usize],
-        targets: &[usize],
-        u: DMatrix<Complex<f32>>
-    )
-    {
+    fn apply_gate(&mut self, controls: &[usize], targets: &[usize], u: DMatrix<Complex<f32>>) {
         // State vector is length 2^n , n=num qubits
         for i in 0..self.state_vector.len() {
             if !SimpleSimpleSimulator::is_block_base(i, targets) {
@@ -91,7 +83,7 @@ impl SimpleSimpleSimulator {
             // Read amplitudes
             let v = DVector::from_iterator(
                 indices.len(),
-                indices.iter().map(|&idx| self.state_vector[idx])
+                indices.iter().map(|&idx| self.state_vector[idx]),
             );
 
             // Apply gate matrix, assumes u matches size of v
@@ -102,20 +94,25 @@ impl SimpleSimpleSimulator {
                 self.state_vector[idx] = v2[j];
             }
         }
-
     }
 
     fn apply_instruction(&mut self, inst: Instruction) {
-        self.apply_gate(&inst.get_controls(), &inst.get_targets(), inst.get_matrix());
+        match inst {
+            Instruction::Gate(gate) => self.apply_gate(
+                &gate.get_controls(),
+                &gate.get_targets(),
+                get_gate_matrix(&gate),
+            ),
+            Instruction::Measurement(qbits) => todo!(),
+        }
     }
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimpleError {
     #[error("Measurement mid-circuit")]
-    MidCircuitMeasurement
+    MidCircuitMeasurement,
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -123,16 +120,7 @@ mod tests {
 
     #[test]
     fn state_vector_print() {
-        let circ = Circuit {
-            instructions: vec![
-                Instruction::H(0),
-                Instruction::CNOT(0, 2),
-                Instruction::X(0),
-                Instruction::H(0),
-                Instruction::Y(1),
-            ],
-            n_qubits: 3,
-        };
+        let circ = Circuit::new(3).hadamard(0).cnot(0, 2).x(0).hadamard(0).y(1);
 
         let sim = SimpleSimpleSimulator::build(circ).unwrap();
         println!("{}", sim.final_state());
@@ -141,13 +129,7 @@ mod tests {
 
     #[test]
     fn bell_state_test() {
-        let circ = Circuit {
-            instructions: vec![
-                Instruction::H(0),
-                Instruction::CNOT(0, 1),
-            ],
-            n_qubits: 2,
-        };
+        let circ = Circuit::new(2).hadamard(0).cnot(0, 1);
 
         let sim = SimpleSimpleSimulator::build(circ).unwrap();
         println!("{:02b}", sim.run());
@@ -155,13 +137,7 @@ mod tests {
 
     #[test]
     fn swap_gate_test() {
-        let circ = Circuit {
-            instructions: vec![
-                Instruction::X(1),
-                Instruction::SWAP(0, 1),
-            ],
-            n_qubits: 2,
-        };
+        let circ = Circuit::new(2).x(1).swap(0, 1);
 
         let sim = SimpleSimpleSimulator::build(circ).unwrap();
         println!("{}", sim.final_state());

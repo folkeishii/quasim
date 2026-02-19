@@ -1,5 +1,5 @@
-use nalgebra::{Complex, DMatrix, DVector};
 use crate::{Circuit, Instruction};
+use nalgebra::{Complex, DMatrix, DVector};
 use rand::prelude::*;
 
 pub trait SimpleSimulator: Sized {

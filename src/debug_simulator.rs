@@ -1,4 +1,4 @@
-use crate::{cart, Circuit, Instruction, SimpleSimulator};
+use crate::{Circuit, Gate, Instruction, SimpleSimulator, cart, get_gate_matrix};
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
@@ -59,43 +59,26 @@ impl DebugSimulator {
     }
 
     fn step_forwards(&mut self) -> Option<&DVector<Complex<f32>>> {
-        if self.current_step >= self.n_instructions() {
-            return None;
+        match &self.circuit.instructions[self.current_step] {
+            Instruction::Gate(gate) => {
+                if self.current_step >= self.n_instructions() {
+                    return None;
+                }
+                let mat = Self::expand_matrix_from_gate(&gate, self.circuit.n_qubits);
+                self.current_state = mat * self.current_state.clone();
+                self.current_step += 1;
+                return Some(&self.current_state);
+            }
+
+            Instruction::Measurement(qbits) => todo!(),
         }
-        let mat = Self::expand_matrix_from_instruction(
-            &self.circuit.instructions[self.current_step],
-            self.circuit.n_qubits,
-        );
-        self.current_state = mat * self.current_state.clone();
-        self.current_step += 1;
-        return Some(&self.current_state);
     }
 
-    fn step_backwards(&mut self) -> Option<&DVector<Complex<f32>>> {
-        if self.current_step <= 0 {
-            return None;
-        }
-
-        self.current_step -= 1;
-        let mut mat = Self::expand_matrix_from_instruction(
-            &self.circuit.instructions[self.current_step],
-            self.circuit.n_qubits,
-        );
-        mat = mat
-            .try_inverse()
-            .expect("Unitary matricies should be invertible.");
-        self.current_state = mat * self.current_state.clone();
-        return Some(&self.current_state);
-    }
-
-    fn expand_matrix_from_instruction(
-        inst: &Instruction,
-        n_qubits: usize,
-    ) -> DMatrix<Complex<f32>> {
+    fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<f32>> {
         DebugSimulator::expand_matrix(
-            inst.get_matrix(),
-            &inst.get_controls(),
-            &inst.get_targets(),
+            get_gate_matrix(gate),
+            &gate.get_controls(),
+            &gate.get_targets(),
             n_qubits,
         )
     }
@@ -161,7 +144,10 @@ pub enum SimpleError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{cart, Circuit, DebugSimulator, Instruction, SimpleSimulator};
+    use crate::{
+        Circuit, DebugSimulator, Gate, GateType, Instruction, SimpleSimulator, cart,
+        get_gate_matrix,
+    };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f32::consts::FRAC_1_SQRT_2;
 
@@ -192,10 +178,7 @@ mod tests {
 
     #[test]
     fn bell_state_test() {
-        let circ = Circuit {
-            instructions: vec![Instruction::H(0), Instruction::CNOT(0, 1)],
-            n_qubits: 2,
-        };
+        let circ = Circuit::new(2).hadamard(0).cnot(0, 1);
 
         let sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
         let collapsed = sim.run();
@@ -216,7 +199,8 @@ mod tests {
 
     #[test]
     fn test_textbook_cnot() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::CNOT(0, 1), 2);
+        let cnot = Gate::new(GateType::X, &[0], &[1]).unwrap();
+        let mat = DebugSimulator::expand_matrix_from_gate(&cnot, 2);
         assert_is_matrix_equal!(mat, textbook_cnot());
     }
 
@@ -236,7 +220,8 @@ mod tests {
     }
     #[test]
     fn test_textbook_toffoli() {
-        let mat = DebugSimulator::expand_matrix(Instruction::X(0).get_matrix(), &[0, 1], &[2], 3);
+        let x = Gate::new(GateType::X, &[], &[0]).unwrap();
+        let mat = DebugSimulator::expand_matrix(get_gate_matrix(&x), &[0, 1], &[2], 3);
         assert_is_matrix_equal!(mat, textbook_toffoli());
     }
 
@@ -259,7 +244,8 @@ mod tests {
 
     #[test]
     fn test_cnot_01() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::CNOT(0, 1), 3);
+        let cnot = Gate::new(GateType::X, &[0], &[1]).unwrap();
+        let mat = DebugSimulator::expand_matrix_from_gate(&cnot, 3);
         assert_is_matrix_equal!(mat, cnot_01());
     }
 
@@ -280,7 +266,8 @@ mod tests {
 
     #[test]
     fn test_cnot_02() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::CNOT(0, 2), 3);
+        let cnot = Gate::new(GateType::X, &[0], &[2]).unwrap();
+        let mat = DebugSimulator::expand_matrix_from_gate(&cnot, 3);
         assert_is_matrix_equal!(mat, cnot_02());
     }
 
@@ -301,7 +288,8 @@ mod tests {
 
     #[test]
     fn test_cnot_12() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::CNOT(1, 2), 3);
+        let cnot = Gate::new(GateType::X, &[1], &[2]).unwrap();
+        let mat = DebugSimulator::expand_matrix_from_gate(&cnot, 3);
         assert_is_matrix_equal!(mat, cnot_12());
     }
 
@@ -322,7 +310,8 @@ mod tests {
 
     #[test]
     fn test_h_0() {
-        let mat = DebugSimulator::expand_matrix_from_instruction(&Instruction::H(0), 3);
+        let h = Gate::new(GateType::H, &[], &[0]).unwrap();
+        let mat = DebugSimulator::expand_matrix_from_gate(&h, 3);
         assert_is_matrix_equal!(mat, h_0());
     }
 
@@ -342,21 +331,15 @@ mod tests {
 
     #[test]
     fn test_cnot_201() {
-        let mat = DebugSimulator::expand_matrix(Instruction::X(0).get_matrix(), &[2], &[0, 1], 3);
+        let x = Gate::new(GateType::H, &[], &[0]).unwrap();
+        let mat = DebugSimulator::expand_matrix(get_gate_matrix(&x), &[2], &[0, 1], 3);
         assert_is_matrix_equal!(mat, cnot_201());
     }
 
     #[test]
     fn test_hadamard_double_cnot_entanglement() {
-        let instructions = vec![
-            Instruction::H(0),
-            Instruction::CNOT(0, 1),
-            Instruction::CNOT(0, 2),
-        ];
-        let circ = Circuit {
-            instructions: instructions,
-            n_qubits: 3,
-        };
+        let circ = Circuit::new(3).hadamard(0).cnot(0, 1).cnot(0, 2);
+
         let psi0: DVector<Complex<f32>> = dvector![
             cart!(1.0), // |000>
             cart!(0.0),
@@ -410,19 +393,6 @@ mod tests {
         match res {
             Some(_) => panic!("Does not err correctly when stepping forwards."),
             None => println!("Errs correctly when stepping forwards"),
-        }
-
-        sim.step_backwards().expect("Revert second CNOT");
-        assert_is_vector_equal!(psi2.clone(), sim.current_state().clone());
-        sim.step_backwards().expect("Revert first CNOT");
-        assert_is_vector_equal!(psi1.clone(), sim.current_state().clone());
-        sim.step_backwards().expect("Revert Hadamard");
-        assert_is_vector_equal!(psi0.clone(), sim.current_state().clone());
-
-        let res = sim.step_backwards();
-        match res {
-            Some(_) => panic!("Does not err correctly when stepping forwards."),
-            None => println!("Errs correctly when stepping backwards"),
         }
     }
 }
