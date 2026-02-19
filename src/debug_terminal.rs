@@ -100,7 +100,7 @@ impl DebugTerminal {
         for i in 0..step_count {
             if self.simulator.next().is_none() {
                 Self::error(stdout, &"End of Circuit reached")?;
-                Self::print(stdout, &format!("Stepped forward {} time(s)", i))?;
+                Self::print(stdout, &format!(", stepped forward {} time(s)", i))?;
                 return Ok(());
             }
         }
