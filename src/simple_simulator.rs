@@ -1,4 +1,7 @@
-use crate::{cart, circuit::Circuit, ext::get_gate_matrix, instruction::Instruction, simulator::RunnableSimulator};
+use crate::{
+    cart, circuit::Circuit, ext::get_gate_matrix, instruction::Instruction,
+    simulator::RunnableSimulator,
+};
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
@@ -106,7 +109,7 @@ impl SimpleSimulator {
                 &gate.get_targets(),
                 get_gate_matrix(&gate),
             ),
-            Instruction::Measurement(qbits) => todo!(),
+            Instruction::Measurement(_) => todo!(),
         }
     }
 }
@@ -121,7 +124,6 @@ pub enum SimpleError {
 mod tests {
     use crate::{
         circuit::Circuit,
-        instruction::Instruction,
         simple_simulator::SimpleSimulator,
         simulator::{BuildSimulator, RunnableSimulator},
     };

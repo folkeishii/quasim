@@ -61,7 +61,7 @@ impl DebuggableSimulator for DebugSimulator {
                 self.current_step += 1;
                 Some(&self.current_state)
             }
-            Instruction::Measurement(qbits) => todo!(),
+            Instruction::Measurement(_) => todo!(),
         }
     }
 
@@ -92,7 +92,7 @@ impl DoubleEndedSimulator for DebugSimulator {
                     .expect("Unitary matricies should be invertible.");
                 self.current_state = mat * self.current_state.clone();
             }
-            Instruction::Measurement(qbits) => todo!(),
+            Instruction::Measurement(_) => todo!(),
         }
         Some(&self.current_state)
     }
@@ -175,7 +175,6 @@ mod tests {
         debug_simulator::DebugSimulator,
         ext::get_gate_matrix,
         gate::{Gate, GateType},
-        instruction::Instruction,
         simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
     };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
