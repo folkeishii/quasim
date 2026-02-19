@@ -1,4 +1,4 @@
-use crate::Instruction;
+use crate::instruction::Instruction;
 
 #[derive(Debug, Clone)]
 pub struct Circuit {

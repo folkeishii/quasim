@@ -1,4 +1,4 @@
-use crate::{cart, Circuit, Instruction, SimpleSimulator};
+use crate::{cart, circuit::Circuit, instruction::Instruction, simulator::SimpleSimulator};
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
@@ -161,7 +161,10 @@ pub enum SimpleError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{cart, Circuit, DebugSimulator, Instruction, SimpleSimulator};
+    use crate::{
+        cart, circuit::Circuit, debug_simulator::DebugSimulator, instruction::Instruction,
+        simulator::SimpleSimulator,
+    };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f32::consts::FRAC_1_SQRT_2;
 

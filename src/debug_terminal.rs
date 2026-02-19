@@ -7,21 +7,16 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::{
-    Circuit, DebugSimulator, SimpleSimulator,
-    debug_terminal::parse::{ParseError, Token, into_tokens},
+    circuit::Circuit, debug_simulator::DebugSimulator, debug_terminal::parse::into_tokens,
+    simulator::SimpleSimulator,
 };
 use crossterm::{
-    cursor,
-    event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
-    execute, queue,
+    execute,
     style::{self, Attributes, Color, ContentStyle, StyledContent},
-    terminal,
 };
 use std::{
-    fmt::{Display, write},
-    io::{self, Read, Write},
-    ops::RangeInclusive,
-    str::FromStr,
+    fmt::Display,
+    io::{self, Write},
 };
 
 pub struct DebugTerminal {
@@ -61,12 +56,12 @@ impl DebugTerminal {
 
             match command {
                 Command::Quit => break,
-                Command::Help(help_args) => Self::print(&mut stdout, &"Help")?,
-                Command::Continue(continue_args) => Self::print(&mut stdout, &"Continue")?,
-                Command::Next(next_args) => Self::print(&mut stdout, &"Next")?,
-                Command::Break(break_args) => Self::print(&mut stdout, &"Break")?,
-                Command::Delete(delete_args) => Self::print(&mut stdout, &"Delete")?,
-                Command::Disable(disable_args) => Self::print(&mut stdout, &"Disable")?,
+                Command::Help(_help_args) => Self::print(&mut stdout, &"Help")?,
+                Command::Continue(_continue_args) => Self::print(&mut stdout, &"Continue")?,
+                Command::Next(_next_args) => Self::print(&mut stdout, &"Next")?,
+                Command::Break(_break_args) => Self::print(&mut stdout, &"Break")?,
+                Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
+                Command::Disable(_disable_args) => Self::print(&mut stdout, &"Disable")?,
                 Command::State(state_args) => self.print_state(&mut stdout, state_args)?,
             }
         }
