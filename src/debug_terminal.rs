@@ -60,7 +60,7 @@ impl DebugTerminal {
                 Command::Quit => break,
                 Command::Help(_help_args) => Self::print(&mut stdout, &"Help")?,
                 Command::Continue(_continue_args) => Self::print(&mut stdout, &"Continue")?,
-                Command::Next(_next_args) => Self::print(&mut stdout, &"Next")?,
+                Command::Next(next_args) => self.next(&mut stdout, next_args)?,
                 Command::Previous(prev_args) => self.prev(&mut stdout, prev_args)?,
                 Command::Break(_break_args) => Self::print(&mut stdout, &"Break")?,
                 Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
@@ -89,6 +89,39 @@ impl DebugTerminal {
             )),
             style::Print(output.to_string())
         )
+    }
+
+    fn next(&mut self, stdout: &mut io::Stdout, next_args: NextArgs) -> io::Result<()> {
+        let step_checker = match next_args {
+            NextArgs::Step => {
+                let res = self.simulator.next().is_none();
+                if !res {
+                    Self::print(stdout, &"Stepped 1 time")?;
+                }
+                res
+            }
+            NextArgs::Count(n) => self.next_n_steps(stdout, n)?,
+        };
+
+        if !step_checker {
+            Self::error(
+                stdout,
+                &format!("Cannot step further, end of circuit reached"),
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn next_n_steps(&mut self, stdout: &mut io::Stdout, n: usize) -> io::Result<bool> {
+        for i in 0..n {
+            if self.simulator.next().is_none() {
+                Self::error(stdout, &format!("Stepped {} time(s)", i))?;
+                return Ok(false);
+            }
+        }
+        Self::print(stdout, &format!("Stepped {} times", n))?;
+        Ok(true)
     }
 
     fn prev<W: Write>(&mut self, stdout: &mut W, prev_args: PrevArgs) -> io::Result<()> {
