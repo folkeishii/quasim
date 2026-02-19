@@ -69,12 +69,12 @@ impl DebugTerminal {
                 Command::Quit => break,
                 Command::Help(_help_args) => Self::print(&mut stdout, &"Help")?,
                 Command::Continue(_continue_args) => Self::print(&mut stdout, &"Continue")?,
-                Command::Next(next_args) => self.next(&mut stdout, next_args)?,
-                Command::Previous(prev_args) => self.prev(&mut stdout, prev_args)?,
+                Command::Next(next_args) => self.handle_next(&mut stdout, &next_args)?,
+                Command::Previous(prev_args) => self.handle_prev(&mut stdout, &prev_args)?,
                 Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
                 Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
                 Command::Disable(_disable_args) => Self::print(&mut stdout, &"Disable")?,
-                Command::State(state_args) => self.print_state(&mut stdout, state_args)?,
+                Command::State(state_args) => self.handle_state(&mut stdout, &state_args)?,
             }
         }
         Ok(())
@@ -100,7 +100,7 @@ impl DebugTerminal {
         )
     }
 
-    fn next(&mut self, stdout: &mut io::Stdout, next_args: NextArgs) -> io::Result<()> {
+    fn handle_next(&mut self, stdout: &mut io::Stdout, next_args: &NextArgs) -> io::Result<()> {
         let step_checker = match next_args {
             NextArgs::Step => {
                 let res = self.simulator.next().is_none();
@@ -109,7 +109,7 @@ impl DebugTerminal {
                 }
                 res
             }
-            NextArgs::Count(n) => self.next_n_steps(stdout, n)?,
+            NextArgs::Count(n) => self.next_n_steps(stdout, *n)?,
         };
 
         if !step_checker {
@@ -133,10 +133,10 @@ impl DebugTerminal {
         Ok(true)
     }
 
-    fn prev<W: Write>(&mut self, stdout: &mut W, prev_args: PrevArgs) -> io::Result<()> {
+    fn handle_prev<W: Write>(&mut self, stdout: &mut W, prev_args: &PrevArgs) -> io::Result<()> {
         let step_count = match prev_args {
             PrevArgs::Back => 1,
-            PrevArgs::Count(n) => n,
+            PrevArgs::Count(n) => *n,
         };
 
         for _ in 0..step_count {
@@ -201,7 +201,7 @@ impl DebugTerminal {
         Ok(())
     }
 
-    fn print_state<W: Write>(&mut self, stdout: &mut W, state_args: StateArgs) -> io::Result<()> {
+    fn handle_state<W: Write>(&mut self, stdout: &mut W, state_args: &StateArgs) -> io::Result<()> {
         let current_state = self.simulator.current_state();
         let to_show = match StateArgs::from_state(current_state, state_args) {
             Ok(v) => v,
