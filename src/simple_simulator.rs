@@ -109,7 +109,10 @@ pub enum SimpleError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{Circuit, Instruction, SimpleSimpleSimulator, SimpleSimulator};
+    use crate::{
+        circuit::Circuit, instruction::Instruction, simple_simulator::SimpleSimpleSimulator,
+        simulator::SimpleSimulator,
+    };
 
     #[test]
     fn state_vector_print() {
