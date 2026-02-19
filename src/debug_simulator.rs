@@ -251,18 +251,11 @@ mod tests {
         };
     }
 
-    fn final_state(mut sim: DebugSimulator) -> DVector<Complex<f32>> {
-        while sim.current_step < sim.n_instructions() {
-            sim.next();
-        }
-        sim.current_state
-    }
-
     #[test]
     fn measure_hadamard_all() {
         let circ = Circuit::new(3).hadamard(0).hadamard(1).hadamard(2);
-        let sim = DebugSimulator::build(circ).expect("Circuit should be valid");
-        let mut res = final_state(sim);
+        let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
+        let mut res = sim.continue_until(None).clone();
         let plus_plus_plus: DVector<Complex<f32>> = dvector![
             cart!(0.5 * FRAC_1_SQRT_2), // |000>
             cart!(0.5 * FRAC_1_SQRT_2), // |001>
@@ -368,8 +361,8 @@ mod tests {
     #[test]
     fn measure_entanglement() {
         let circ = Circuit::new(3).hadamard(0).cnot(0, 1);
-        let sim = DebugSimulator::build(circ).expect("Circuit should be valid");
-        let mut res = final_state(sim);
+        let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
+        let mut res = sim.continue_until(None).clone();
         // Expected state vector before any measurments
         let bell: DVector<Complex<f32>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
@@ -421,9 +414,8 @@ mod tests {
     fn bell_state_test() {
         let circ = Circuit::new(2).hadamard(0).cnot(0, 1);
 
-        let sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
-        let final_state = final_state(sim);
-        let probs = final_state.iter().map(|&c| c.norm_sqr());
+        let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
+        let probs = sim.continue_until(None).iter().map(|&c| c.norm_sqr());
 
         let dist = WeightedIndex::new(probs)
             .expect("Failed to create probability distribution. Invalid or empty state vector?");
