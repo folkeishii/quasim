@@ -1,8 +1,8 @@
-use quasim::{self, SimpleSimpleSimulator, SimpleSimulator};
+use quasim::{self, circuit::Circuit, simple_simulator::SimpleSimpleSimulator, simulator::SimpleSimulator};
 
 fn main() {
     // let circuit = quasim::Circuit::new(2).hadamard(0).cnot(0, 1);
-    let circuit = match quasim::Circuit::from_qasm_file("src/circuit.qasm") {
+    let circuit = match Circuit::from_qasm_file("src/circuit.qasm") {
         Ok(circuit) => circuit,
         Err(e) => panic!("Error reading QASM file: {}", e),
     };
