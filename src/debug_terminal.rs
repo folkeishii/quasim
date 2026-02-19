@@ -106,7 +106,7 @@ impl DebugTerminal {
         }
         Self::print(stdout, &format!("Stepped forward {} time(s)", step_count))?;
 
-        return Ok(())
+        return Ok(());
     }
 
     fn prev<W: Write>(&mut self, stdout: &mut W, prev_args: PrevArgs) -> io::Result<()> {
