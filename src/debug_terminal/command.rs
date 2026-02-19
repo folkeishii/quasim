@@ -97,7 +97,7 @@ pub enum Command {
     ///
     /// Usage: (collapse can be substituted with `cl`)
     /// collapse        # Collapse the current state
-    /// collapse n      # Collapse the current state n number of times
+    /// collapse [n]    # Collapse the current state n number of times
     Collapse(CollapseArgs),
 }
 impl Command {

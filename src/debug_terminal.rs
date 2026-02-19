@@ -195,14 +195,14 @@ impl DebugTerminal {
         };
 
         for _ in 0..count {
-            let collapsed = collapse(state.data.as_vec());
+            let collapsed = collapse(state.as_ref());
             *count_map.entry(collapsed).or_insert(0) += 1;
         }
 
         let mut counts = count_map.iter().collect::<Vec<_>>();
         counts.sort_by(|a, b| b.1.cmp(&a.1));
 
-        let max_index = counts.iter().map(|i| i.0).max().unwrap_or(&1);
+        let max_index = counts.iter().map(|i| i.0).max().unwrap_or(&0);
         let decimal_width = (max_index.checked_ilog10().unwrap_or(0) + 1) as usize;
         let binary_width = (max_index.checked_ilog2().unwrap_or(0) + 1) as usize;
 
