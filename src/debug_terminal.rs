@@ -71,6 +71,37 @@ impl DebugTerminal {
         Ok(())
     }
 
+    fn next(&mut self, next_args: NextArgs) {
+        let step_checker = 
+        match next_args{
+            NextArgs::Step => {
+                let res = self.simulator.next().is_none();
+                if !res {
+                    Self::print(&mut io::stdout(), &"Stepped 1 time").unwrap();
+                }
+                res
+            },
+            NextArgs::Count(n) => {
+                self.next_n_steps(n)
+            }
+        };
+
+        if !step_checker {
+            Self::error(&mut io::stdout(), &format!("Cannot step further, end of circuit reached")).unwrap();
+        }
+    }
+
+    fn next_n_steps(&mut self, n: usize) -> bool{
+        for i in 0..n {
+            if self.simulator.next().is_none() {
+                Self::error(&mut io::stdout(), &format!("Stepped {} time(s)", i)).unwrap();
+                return false;
+            }
+        }
+        Self::print(&mut io::stdout(), &format!("Stepped {} times", n)).unwrap();
+        return true;
+    }
+
     fn print<W: Write, T: Display>(stdout: &mut W, output: &T) -> io::Result<()> {
         execute!(stdout, style::Print(output))
     }
