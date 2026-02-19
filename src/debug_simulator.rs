@@ -1,4 +1,4 @@
-use crate::{cart, Circuit, Instruction, SimpleSimulator};
+use crate::{Circuit, Instruction, SimpleSimulator, cart};
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
@@ -72,6 +72,7 @@ impl DebugSimulator {
     }
 
     fn step_backwards(&mut self) -> Option<&DVector<Complex<f32>>> {
+        // WILL NOT WORK IF THERE ARE MID-MEASUREMENTS IN THE CIRCUIT!!
         if self.current_step <= 0 {
             return None;
         }
@@ -86,6 +87,48 @@ impl DebugSimulator {
             .expect("Unitary matricies should be invertible.");
         self.current_state = mat * self.current_state.clone();
         return Some(&self.current_state);
+    }
+
+    fn measure(
+        state: DVector<Complex<f32>>,
+        n_qubits: usize,
+        target: usize,
+    ) -> DVector<Complex<f32>> {
+        // Choose a collapsed state
+        let prob_target_eq_zero = state
+            .iter()
+            .enumerate()
+            .filter(|&(idx, _)| (1 << target) & idx == 0)
+            .map(|(_, c)| c.norm_sqr())
+            .sum::<f32>();
+
+        let mut rng = rand::rng();
+        let random_value = rng.random_range(0.0..1.0);
+        let mut result = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
+        if random_value < prob_target_eq_zero {
+            result = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
+        }
+
+        // Calculate projection operator, M
+        let mut projection_operator_prod = DebugSimulator::identity_tensor_factors(n_qubits);
+        projection_operator_prod[target] = result;
+        let projection_operator = DebugSimulator::eval_tensor_product(projection_operator_prod);
+
+        /*
+         * Use formula for next state,
+         *
+         * \ket{\psi_1} =
+         * \frac
+         * {M_m\ket{\psi_0}}
+         * {\sqrt{\bra{\psi_0}M_mM_m^\dagger\ket{\psi_0}}}
+         *
+         * */
+        let bra = state.adjoint(); // <\psi|
+        let proj_ket_state = projection_operator * state; //M_m|\psi>
+        // No need to find adjoint of proj_ket_state as it is hermitian
+        let normalization = (bra * proj_ket_state.clone())[(0, 0)].sqrt(); // sqrt(<\psi|M_m|\psi>), Will be 1x1-matrix
+
+        proj_ket_state / normalization
     }
 
     fn expand_matrix_from_instruction(
@@ -161,7 +204,7 @@ pub enum SimpleError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{cart, Circuit, DebugSimulator, Instruction, SimpleSimulator};
+    use crate::{Circuit, DebugSimulator, Instruction, SimpleSimulator, cart};
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f32::consts::FRAC_1_SQRT_2;
 
@@ -188,6 +231,22 @@ mod tests {
         ($m1: expr, $m2: expr) => {
             assert!(is_vector_equal_to($m1, $m2))
         };
+    }
+
+    #[test]
+    fn measure1() {
+        let res = DebugSimulator::measure(
+            dvector![
+                cart!(0.5, 0.0),
+                cart!(0.5, 0.0),
+                cart!(0.5, 0.0),
+                cart!(0.5, 0.0)
+            ],
+            2,
+            1,
+        );
+
+        println!("{}", res);
     }
 
     #[test]
