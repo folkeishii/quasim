@@ -11,7 +11,10 @@ use crate::ext::collapse;
 use crate::{
     circuit::Circuit,
     debug_simulator::DebugSimulator,
-    debug_terminal::parse::into_tokens,
+    debug_terminal::{
+        breakpoint::{BreakpointList, PEBreakpoint},
+        parse::into_tokens,
+    },
     simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
 };
 use crossterm::{
@@ -20,10 +23,8 @@ use crossterm::{
 };
 use std::ops::Div;
 use std::{
-    fmt::{Display, write},
-    io::{self, Read, Write},
-    ops::{Deref, Index, IndexMut, RangeInclusive},
-    str::FromStr,
+    fmt::Display,
+    io::{self, Write},
 };
 
 pub struct DebugTerminal {
@@ -72,7 +73,7 @@ impl DebugTerminal {
                 Command::Continue(_continue_args) => Self::print(&mut stdout, &"Continue")?,
                 Command::Next(next_args) => self.next(&mut stdout, next_args)?,
                 Command::Previous(prev_args) => self.prev(&mut stdout, prev_args)?,
-                Command::Break(_break_args) => self.handle_break(&mut stdout, &args)?,
+                Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
                 Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
                 Command::Disable(_disable_args) => Self::print(&mut stdout, &"Disable")?,
                 Command::State(state_args) => self.print_state(&mut stdout, state_args)?,
