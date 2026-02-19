@@ -1,6 +1,8 @@
 use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, Dim, Matrix, RawStorage};
+use rand::distr::weighted::WeightedIndex;
+use rand::prelude::Distribution;
 
 use crate::gate::{Gate, GateType};
 
@@ -64,6 +66,19 @@ pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f32>> {
     let dim = 1 << gate.get_type().arity();
 
     return DMatrix::from_row_slice(dim, dim, data);
+}
+
+/// Collapse a state vector into a value
+///
+/// The sum of the squares of each item should equal to one
+pub fn collapse(state: &[Complex<f32>]) -> usize {
+    let probs = state.iter().map(|&c| c.norm_sqr());
+
+    let dist = WeightedIndex::new(probs)
+        .expect("Failed to create probability distribution. Invalid or empty state vector?");
+    let mut rng = rand::rng();
+
+    dist.sample(&mut rng)
 }
 
 #[macro_export]
