@@ -1,6 +1,6 @@
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
-use crate::{SimpleSimulator, Circuit, Instruction, cart};
+use crate::{simulator::SimpleSimulator, circuit::Circuit, instruction::Instruction, cart};
 
 pub struct SimpleSimpleSimulator {
     state_vector: Vec<Complex<f32>>,

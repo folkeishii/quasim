@@ -7,7 +7,7 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::{
-    Circuit, DebugSimulator, SimpleSimulator,
+    circuit::Circuit, debug_simulator::DebugSimulator, simulator::SimpleSimulator,
     debug_terminal::parse::{into_tokens},
 };
 use crossterm::{

@@ -1,6 +1,6 @@
 use crate::debug_terminal::state::{IndexedState, StateError};
 use crate::{
-    CommandIdent,
+    debug_terminal::CommandIdent,
     debug_terminal::parse::{ParseError, ParseResult, TokenIterator},
     parse_usize,
 };
