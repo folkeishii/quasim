@@ -1,7 +1,6 @@
 mod arguments;
 mod command;
 mod parse;
-mod prev;
 mod state;
 
 pub use arguments::*;
@@ -88,6 +87,22 @@ impl DebugTerminal {
             )),
             style::Print(output.to_string())
         )
+    }
+
+    fn prev<W: Write>(&mut self, stdout: &mut W, prev_args: PrevArgs) -> io::Result<()> {
+        let step_count = match prev_args {
+            PrevArgs::Back => 1,
+            PrevArgs::Count(n) => n,
+        };
+
+        for _ in 0..step_count {
+            if self.simulator.step_backwards().is_none() {
+                Self::error(stdout, &"Already at the beginning")?;
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     fn print_state<W: Write>(&mut self, stdout: &mut W, state_args: StateArgs) -> io::Result<()> {
