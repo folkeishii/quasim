@@ -54,7 +54,7 @@ impl DebugSimulator {
         self.circuit.instructions.len()
     }
 
-    fn current_state(&self) -> &DVector<Complex<f32>> {
+    pub fn current_state(&self) -> &DVector<Complex<f32>> {
         return &self.current_state;
     }
 
