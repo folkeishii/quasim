@@ -71,6 +71,26 @@ impl DebugTerminal {
         Ok(())
     }
 
+    fn print<W: Write, T: Display>(stdout: &mut W, output: &T) -> io::Result<()> {
+        execute!(stdout, style::Print(output))
+    }
+
+    fn error<W: Write, T: Display>(stdout: &mut W, output: &T) -> io::Result<()> {
+        execute!(
+            stdout,
+            style::PrintStyledContent(StyledContent::new(
+                ContentStyle {
+                    foreground_color: Some(Color::Red),
+                    background_color: None,
+                    underline_color: None,
+                    attributes: Attributes::default()
+                },
+                "Error: "
+            )),
+            style::Print(output.to_string())
+        )
+    }
+    
     fn next(&mut self, stdout: &mut io::Stdout, next_args: NextArgs) -> io::Result<()> {
         let step_checker = 
         match next_args{
@@ -102,26 +122,6 @@ impl DebugTerminal {
         }
         Self::print(stdout, &format!("Stepped {} times", n))?;
         Ok(true)
-    }
-
-    fn print<W: Write, T: Display>(stdout: &mut W, output: &T) -> io::Result<()> {
-        execute!(stdout, style::Print(output))
-    }
-
-    fn error<W: Write, T: Display>(stdout: &mut W, output: &T) -> io::Result<()> {
-        execute!(
-            stdout,
-            style::PrintStyledContent(StyledContent::new(
-                ContentStyle {
-                    foreground_color: Some(Color::Red),
-                    background_color: None,
-                    underline_color: None,
-                    attributes: Attributes::default()
-                },
-                "Error: "
-            )),
-            style::Print(output.to_string())
-        )
     }
 
     fn prev<W: Write>(&mut self, stdout: &mut W, prev_args: PrevArgs) -> io::Result<()> {
