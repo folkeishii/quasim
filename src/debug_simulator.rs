@@ -13,10 +13,11 @@ pub struct DebugSimulator {
     current_step: usize,
 }
 
-impl BuildSimulator for DebugSimulator {
-    type E = DebugSimulatorError;
+impl TryFrom<Circuit> for DebugSimulator {
+    type Error = DebugSimulatorError;
 
-    fn build(circuit: Circuit) -> Result<Self, Self::E> {
+    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+        let circuit = value;
         let k = circuit.n_qubits();
 
         // Check for mid-cicuit measurement

@@ -11,10 +11,11 @@ pub struct SimpleSimulator {
     state_vector: Vec<Complex<f32>>,
 }
 
-impl BuildSimulator for SimpleSimulator {
-    type E = SimpleError;
+impl TryFrom<Circuit> for SimpleSimulator {
+    type Error = SimpleError;
 
-    fn build(circuit: Circuit) -> Result<Self, Self::E> {
+    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+        let circuit = value;
         let k = circuit.n_qubits();
         let mut init_state_vector = vec![cart!(0.0); 1 << k];
         init_state_vector[0] = cart!(1.0);
