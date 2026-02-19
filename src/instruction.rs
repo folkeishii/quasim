@@ -1,6 +1,4 @@
-use crate::{cart, gate::{Gate, QBits}};
-use nalgebra::{Complex, DMatrix};
-use std::{f32::consts::FRAC_1_SQRT_2, vec};
+use crate::{gate::{Gate, QBits}};
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
