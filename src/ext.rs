@@ -2,7 +2,7 @@ use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, Dim, Matrix, RawStorage};
 
-use crate::{Gate, GateType};
+use crate::gate::{Gate, GateType};
 
 /// Compares two complex numbers
 ///

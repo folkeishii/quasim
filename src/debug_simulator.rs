@@ -1,8 +1,5 @@
 use crate::{
-    cart,
-    circuit::Circuit,
-    instruction::Instruction,
-    simulator::{DebuggableSimulator, DoubleEndedSimulator},
+    cart, circuit::Circuit, ext::get_gate_matrix, gate::Gate, instruction::Instruction, simulator::{DebuggableSimulator, DoubleEndedSimulator}
 };
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 
@@ -49,16 +46,21 @@ impl TryFrom<Circuit> for DebugSimulator {
 
 impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
-        if self.current_step >= self.n_instructions() {
-            return None;
+        match &self.circuit.instructions()[self.current_step] {
+            Instruction::Gate(gate) => {
+                if self.current_step >= self.n_instructions() {
+                    return None;
+                }
+                let mat = Self::expand_matrix_from_gate(
+                    &gate,
+                    self.circuit.n_qubits(),
+                );
+                self.current_state = mat * self.current_state.clone();
+                self.current_step += 1;
+                Some(&self.current_state)
+            },
+            Instruction::Measurement(qbits) => todo!(),
         }
-        let mat = Self::expand_matrix_from_instruction(
-            &self.circuit.instructions()[self.current_step],
-            self.circuit.n_qubits(),
-        );
-        self.current_state = mat * self.current_state.clone();
-        self.current_step += 1;
-        Some(&self.current_state)
     }
 
     fn current_instruction(&self) -> Option<(usize, &Instruction)> {
@@ -75,19 +77,24 @@ impl DebuggableSimulator for DebugSimulator {
 
 impl DoubleEndedSimulator for DebugSimulator {
     fn prev(&mut self) -> Option<&DVector<Complex<f32>>> {
-        if self.current_step <= 0 {
-            return None;
+        match &self.circuit.instructions()[self.current_step] {
+            Instruction::Gate(gate) => {
+                if self.current_step <= 0 {
+                    return None;
+                }
+        
+                self.current_step -= 1;
+                let mut mat = Self::expand_matrix_from_gate(
+                    &gate,
+                    self.circuit.n_qubits(),
+                );
+                mat = mat
+                    .try_inverse()
+                    .expect("Unitary matricies should be invertible.");
+                self.current_state = mat * self.current_state.clone();
+            },
+            Instruction::Measurement(qbits) => todo!(),
         }
-
-        self.current_step -= 1;
-        let mut mat = Self::expand_matrix_from_instruction(
-            &self.circuit.instructions()[self.current_step],
-            self.circuit.n_qubits(),
-        );
-        mat = mat
-            .try_inverse()
-            .expect("Unitary matricies should be invertible.");
-        self.current_state = mat * self.current_state.clone();
         Some(&self.current_state)
     }
 }
@@ -164,11 +171,7 @@ pub enum DebugSimulatorError {
 #[cfg(test)]
 mod tests {
     use crate::{
-        cart,
-        circuit::Circuit,
-        debug_simulator::DebugSimulator,
-        instruction::Instruction,
-        simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
+        cart, circuit::Circuit, debug_simulator::DebugSimulator, ext::get_gate_matrix, gate::{Gate, GateType}, instruction::Instruction, simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator}
     };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use rand::distr::{Distribution, weighted::WeightedIndex};
@@ -360,7 +363,7 @@ mod tests {
 
     #[test]
     fn test_cnot_201() {
-        let x = Gate::new(GateType::H, &[], &[0]).unwrap();
+        let x = Gate::new(GateType::X, &[], &[0]).unwrap();
         let mat = DebugSimulator::expand_matrix(get_gate_matrix(&x), &[2], &[0, 1], 3);
         assert_is_matrix_equal!(mat, cnot_201());
     }

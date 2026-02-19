@@ -1,4 +1,4 @@
-use crate::cart;
+use crate::{cart, gate::{Gate, QBits}};
 use nalgebra::{Complex, DMatrix};
 use std::{f32::consts::FRAC_1_SQRT_2, vec};
 

@@ -1,4 +1,4 @@
-use crate::instruction::Instruction;
+use crate::{gate::{Gate, GateType}, instruction::Instruction};
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
@@ -8,7 +8,7 @@ pub struct Circuit {
 
 impl Circuit {
     pub fn new(n_qubits: usize) -> Self {
-        Circuit {
+        Self {
             instructions: Vec::<Instruction>::default(),
             n_qubits,
         }

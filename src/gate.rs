@@ -139,13 +139,3 @@ impl Gate {
         self.get_target_bits().get_indices()
     }
 }
-
-mod tests {
-    use crate::{Gate, QBits};
-
-    #[test]
-    fn test() {
-        let bits = QBits::from_bitstring(0b01001011);
-        println!("{:?}", bits.get_indices());
-    }
-}
