@@ -14,13 +14,6 @@ impl Circuit {
         }
     }
 
-    pub fn from_instructions<I: Into<Vec<Instruction>>>(n_qubits: usize, instructions: I) -> Self {
-        Self {
-            instructions: instructions.into(),
-            n_qubits,
-        }
-    }
-
     pub fn instructions(&self) -> &[Instruction] {
         &self.instructions
     }

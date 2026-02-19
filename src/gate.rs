@@ -14,9 +14,12 @@ impl QBits {
     }
 
     /// Specify qubits from a list of indices
-    pub fn from_indices(indices: &[usize]) -> Self {
+    pub fn from_indices<'a, I>(indices: I) -> Self
+    where
+        I: IntoIterator<Item = &'a usize>
+    {
         let mut bits = 0;
-        for &i in indices {
+        for i in indices {
             bits |= 1 << i;
         }
         Self(bits)
