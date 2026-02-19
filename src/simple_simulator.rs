@@ -1,4 +1,4 @@
-use crate::{cart, circuit::Circuit, instruction::Instruction, simulator::RunnableSimulator};
+use crate::{cart, circuit::Circuit, ext::get_gate_matrix, instruction::Instruction, simulator::RunnableSimulator};
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
@@ -100,7 +100,14 @@ impl SimpleSimulator {
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
-        self.apply_gate(&inst.get_controls(), &inst.get_targets(), inst.get_matrix());
+        match inst {
+            Instruction::Gate(gate) => self.apply_gate(
+                &gate.get_controls(),
+                &gate.get_targets(),
+                get_gate_matrix(&gate),
+            ),
+            Instruction::Measurement(qbits) => todo!(),
+        }
     }
 }
 
@@ -121,16 +128,7 @@ mod tests {
 
     #[test]
     fn state_vector_print() {
-        let circ = Circuit::from_instructions(
-            3,
-            vec![
-                Instruction::H(0),
-                Instruction::CNOT(0, 2),
-                Instruction::X(0),
-                Instruction::H(0),
-                Instruction::Y(1),
-            ],
-        );
+        let circ = Circuit::new(3).hadamard(0).cnot(0, 2).x(0).hadamard(0).y(1);
 
         let sim = SimpleSimulator::build(circ).unwrap();
         println!("{}", sim.final_state());
@@ -139,7 +137,7 @@ mod tests {
 
     #[test]
     fn bell_state_test() {
-        let circ = Circuit::from_instructions(2, vec![Instruction::H(0), Instruction::CNOT(0, 1)]);
+        let circ = Circuit::new(2).hadamard(0).cnot(0, 1);
 
         let sim = SimpleSimulator::build(circ).unwrap();
         println!("{:02b}", sim.run());
@@ -147,7 +145,7 @@ mod tests {
 
     #[test]
     fn swap_gate_test() {
-        let circ = Circuit::from_instructions(2, vec![Instruction::X(1), Instruction::SWAP(0, 1)]);
+        let circ = Circuit::new(2).x(1).swap(0, 1);
 
         let sim = SimpleSimulator::build(circ).unwrap();
         println!("{}", sim.final_state());
