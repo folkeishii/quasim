@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::debug_terminal::{
-    BreakArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, StateArgs,
+    BreakArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs, StateArgs,
     parse::{ParseError, ParseResult, Token, TokenIterator},
 };
 
@@ -46,6 +46,13 @@ pub enum Command {
     /// next            # Execute the next gate
     /// next [count]    # Executes next `count` times
     Next(NextArgs),
+
+    /// Go back a set number of gates.
+    ///
+    /// Usage (previous can be substituted with `p` or `prev`)
+    /// previous         # Go back a gate
+    /// previous [count] # Go back `count` gates
+    Previous(PrevArgs),
 
     /// TODO
     ///
@@ -94,6 +101,7 @@ impl Command {
             CommandIdent::Continue => Command::Continue(ContinueArgs::parse_arguments(tokens)?),
             CommandIdent::Run => Command::Continue(ContinueArgs::parse_arguments(tokens)?),
             CommandIdent::Next => Command::Next(NextArgs::parse_arguments(tokens)?),
+            CommandIdent::Previous => Command::Previous(PrevArgs::parse_arguments(tokens)?),
             CommandIdent::Break => Command::Break(BreakArgs::parse_arguments(tokens)?),
             CommandIdent::Enable => Command::Break(BreakArgs::parse_enable_arguments(tokens)?),
             CommandIdent::Delete => Command::Delete(DeleteArgs::parse_arguments(tokens)?),
@@ -127,6 +135,8 @@ pub enum CommandIdent {
     Run,
     /// next or n
     Next,
+    /// previous, prev, or p
+    Previous,
     /// break
     Break,
     /// enable
@@ -153,6 +163,7 @@ impl CommandIdent {
             CommandIdent::Continue => "continue".into(),
             CommandIdent::Run => "run".into(),
             CommandIdent::Next => "next".into(),
+            CommandIdent::Previous => "previous".into(),
             CommandIdent::Break => "break".into(),
             CommandIdent::Enable => "enable".into(),
             CommandIdent::Delete => "delete".into(),
@@ -171,6 +182,7 @@ impl TryFrom<Token<'_>> for CommandIdent {
             "continue" | "c" => Ok(Self::Continue),
             "run" => Ok(Self::Run),
             "next" | "n" => Ok(Self::Next),
+            "previous" | "prev" | "p" => Ok(Self::Previous),
             "break" => Ok(Self::Break),
             "enable" => Ok(Self::Enable),
             "delete" => Ok(Self::Delete),
