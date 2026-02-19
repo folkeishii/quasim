@@ -1,10 +1,11 @@
-use std::ops::RangeInclusive;
-
+use crate::debug_terminal::state::{IndexedState, StateError};
 use crate::{
-    CommandIdent,
+    debug_terminal::CommandIdent,
     debug_terminal::parse::{ParseError, ParseResult, TokenIterator},
     parse_usize,
 };
+use nalgebra::{Complex, DVector};
+use std::ops::RangeInclusive;
 
 #[derive(Debug, Clone, Copy)]
 pub enum HelpArgs {
@@ -83,6 +84,28 @@ impl NextArgs {
         }
 
         Ok(NextArgs::Count(parse_usize!(arg)?))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum PrevArgs {
+    Back,
+    Count(usize),
+}
+impl PrevArgs {
+    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
+        let mut tokens = tokens;
+        let arg = if let Some(token) = tokens.next() {
+            token
+        } else {
+            return Ok(PrevArgs::Back);
+        };
+
+        if let Some(token) = tokens.next() {
+            return Err(ParseError::UnexpectedArgument(token.into()));
+        };
+
+        Ok(PrevArgs::Count(parse_usize!(arg)?))
     }
 }
 
@@ -186,5 +209,67 @@ impl StateArgs {
                 .chain(tokens.map(|token| parse_usize!(token)))
                 .collect::<ParseResult<Vec<_>>>()?,
         ))
+    }
+
+    pub fn from_state(
+        current_state: &DVector<Complex<f32>>,
+        state_args: StateArgs,
+    ) -> Result<Vec<IndexedState>, StateError> {
+        let state_size = current_state.len() - 1;
+
+        match &state_args {
+            StateArgs::All => {}
+            StateArgs::Range(r) => {
+                if *r.start() > state_size {
+                    return Err(StateError::IllegalState(*r.start(), state_size));
+                } else if *r.end() > state_size {
+                    return Err(StateError::IllegalState(*r.end(), state_size));
+                }
+            }
+            StateArgs::Multiple(ms) => {
+                for m in ms {
+                    if *m > state_size {
+                        return Err(StateError::IllegalState(*m, state_size));
+                    }
+                }
+            }
+            StateArgs::Single(s) => {
+                if *s > state_size {
+                    return Err(StateError::IllegalState(*s, state_size));
+                }
+            }
+        }
+
+        let to_show = match state_args {
+            StateArgs::All => current_state
+                .into_iter()
+                .enumerate()
+                .map(|(i, f)| IndexedState {
+                    index: i,
+                    state: f.to_string(),
+                })
+                .collect(),
+            StateArgs::Range(r) => r
+                .map(|r| IndexedState {
+                    index: r,
+                    state: current_state[r].to_string(),
+                })
+                .collect(),
+            StateArgs::Multiple(ms) => ms
+                .into_iter()
+                .map(|m| IndexedState {
+                    index: m,
+                    state: current_state[m].to_string(),
+                })
+                .collect(),
+            StateArgs::Single(s) => {
+                vec![IndexedState {
+                    index: s,
+                    state: current_state[s].to_string(),
+                }]
+            }
+        };
+
+        Ok(to_show)
     }
 }

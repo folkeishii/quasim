@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
-use crate::{
-    BreakArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, StateArgs,
-    debug_terminal::parse::{ParseError, ParseResult, Token, TokenIterator},
+use crate::debug_terminal::{
+    BreakArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs, StateArgs,
+    parse::{ParseError, ParseResult, Token, TokenIterator},
 };
 
 #[derive(Debug, Clone)]
@@ -47,6 +47,13 @@ pub enum Command {
     /// next [count]    # Executes next `count` times
     Next(NextArgs),
 
+    /// Go back a set number of gates.
+    ///
+    /// Usage (previous can be substituted with `p` or `prev`)
+    /// previous         # Go back a gate
+    /// previous [count] # Go back `count` gates
+    Previous(PrevArgs),
+
     /// TODO
     ///
     /// Creates a breakpoint or enables a disabled breakpoint
@@ -76,14 +83,12 @@ pub enum Command {
     /// disable [gate index...]    # Disable breakpoints at indices
     Disable(DisableArgs),
 
-    /// TODO
-    ///
-    /// Gives information about specified state or
-    /// breakpoint
+    /// Print out the current state vector
     ///
     /// Usage:
     /// state                # Get all states (if possible)
-    /// state [states...]    # Get specific states
+    /// state state1         # Get a specific state (if possible)
+    /// state [state1, ...]  # Get specific states (if possible)
     /// state state1..state2 # Get a range of states (if possible)
     State(StateArgs),
 }
@@ -96,6 +101,7 @@ impl Command {
             CommandIdent::Continue => Command::Continue(ContinueArgs::parse_arguments(tokens)?),
             CommandIdent::Run => Command::Continue(ContinueArgs::parse_arguments(tokens)?),
             CommandIdent::Next => Command::Next(NextArgs::parse_arguments(tokens)?),
+            CommandIdent::Previous => Command::Previous(PrevArgs::parse_arguments(tokens)?),
             CommandIdent::Break => Command::Break(BreakArgs::parse_arguments(tokens)?),
             CommandIdent::Enable => Command::Break(BreakArgs::parse_enable_arguments(tokens)?),
             CommandIdent::Delete => Command::Delete(DeleteArgs::parse_arguments(tokens)?),
@@ -129,6 +135,8 @@ pub enum CommandIdent {
     Run,
     /// next or n
     Next,
+    /// previous, prev, or p
+    Previous,
     /// break
     Break,
     /// enable
@@ -155,6 +163,7 @@ impl CommandIdent {
             CommandIdent::Continue => "continue".into(),
             CommandIdent::Run => "run".into(),
             CommandIdent::Next => "next".into(),
+            CommandIdent::Previous => "previous".into(),
             CommandIdent::Break => "break".into(),
             CommandIdent::Enable => "enable".into(),
             CommandIdent::Delete => "delete".into(),
@@ -173,6 +182,7 @@ impl TryFrom<Token<'_>> for CommandIdent {
             "continue" | "c" => Ok(Self::Continue),
             "run" => Ok(Self::Run),
             "next" | "n" => Ok(Self::Next),
+            "previous" | "prev" | "p" => Ok(Self::Previous),
             "break" => Ok(Self::Break),
             "enable" => Ok(Self::Enable),
             "delete" => Ok(Self::Delete),
