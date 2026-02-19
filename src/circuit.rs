@@ -1,4 +1,4 @@
-use std::fs::read_to_string;
+use std::{fs::read_to_string, io};
 
 use oq3_syntax::{SourceFile, SyntaxNode, SyntaxText, ast::AstNode};
 
@@ -10,8 +10,21 @@ pub struct Circuit {
     pub n_qubits: usize,
 }
 
-// TODO: Make this a proper error type
-type QuasimParseError = String;
+#[derive(Debug, thiserror::Error)]
+pub enum QASMParseError {
+    #[error("could not read QASM source file: {0}")]
+    FileError(#[from] io::Error),
+    #[error("a gate call was missing qubits")]
+    GateCallMissingQubits,
+    #[error("gate {0} was called with {1} qubits, but it requires {2}")]
+    WrongNumberOfQubits(String, usize, usize), // gate name, number of qubits provided, number of qubits required
+    #[error("unrecognized gate: {0}")]
+    UnrecognizedGate(String),
+    #[error("gate call was missing the name of the gate to call, how even..?")]
+    UnlabeledGateCall,
+    #[error("tried to parse '{0}' as a qubit index, but it wasn't a valid number")]
+    FailedToParseQubitIndex(String),
+}
 
 impl Circuit {
     pub fn new(n_qubits: usize) -> Self {
@@ -33,8 +46,8 @@ impl Circuit {
         }
     }
 
-    pub fn from_qasm_file(file_name: &str) -> Result<Self, QuasimParseError> {
-        let file_string = read_to_string(file_name).map_err(|e| e.to_string())?;
+    pub fn from_qasm_file(file_name: &str) -> Result<Self, QASMParseError> {
+        let file_string = read_to_string(file_name)?;
         let parsed_source = SourceFile::parse(&file_string);
         let parse_tree: SourceFile = parsed_source.tree();
         println!(
@@ -57,7 +70,7 @@ impl Circuit {
 
     fn instructions_from_syntax_tree(
         node: &SyntaxNode,
-    ) -> Result<Vec<Instruction>, QuasimParseError> {
+    ) -> Result<Vec<Instruction>, QASMParseError> {
         use oq3_syntax::SyntaxKind::*;
         let recurse = Self::instructions_from_syntax_tree;
         let mut instructions = Vec::<Instruction>::default();
@@ -85,7 +98,7 @@ impl Circuit {
 
     // This may have to return a Vec instead, depending on if OpenQASM gate calls
     // can represent multiple gates in a circuit...
-    fn parse_gate_call_expr(node: &SyntaxNode) -> Result<Instruction, QuasimParseError> {
+    fn parse_gate_call_expr(node: &SyntaxNode) -> Result<Instruction, QASMParseError> {
         use oq3_syntax::SyntaxKind::*;
 
         let mut gate_name: Option<SyntaxText> = None;
@@ -103,7 +116,7 @@ impl Circuit {
 
         if let Some(name) = gate_name {
             if qubit_indexes.len() == 0 {
-                return Err("Failed to find any qubits in gate call".into());
+                return Err(QASMParseError::GateCallMissingQubits);
             }
 
             // TODO: Is there a more "automatic" way to do this?
@@ -114,14 +127,18 @@ impl Circuit {
                 "h" => return Ok(Instruction::H(qubit_indexes[0])),
                 "cx" => {
                     if qubit_indexes.len() != 2 {
-                        return Err("CNOT gate call must have 2 qubits".into());
+                        return Err(QASMParseError::WrongNumberOfQubits(
+                            name.to_string(),
+                            qubit_indexes.len(),
+                            2,
+                        ));
                     }
                     return Ok(Instruction::CNOT(qubit_indexes[0], qubit_indexes[1]));
                 }
-                _ => return Err(format!("Unknown gate name: '{}'", name).into()),
+                _ => return Err(QASMParseError::UnrecognizedGate(name.to_string())),
             }
         } else {
-            return Err("Failed to find gate name".into());
+            return Err(QASMParseError::UnlabeledGateCall);
         }
     }
 
@@ -138,7 +155,7 @@ impl Circuit {
         return None;
     }
 
-    fn indexes_in_qubit_list(node: &SyntaxNode) -> Result<Vec<usize>, QuasimParseError> {
+    fn indexes_in_qubit_list(node: &SyntaxNode) -> Result<Vec<usize>, QASMParseError> {
         let mut result: Vec<usize> = vec![];
 
         for child in node.children() {
@@ -148,7 +165,9 @@ impl Circuit {
                     if let Ok(index) = parse_attempt {
                         result.push(index);
                     } else {
-                        return Err("Failed to parse qubit index".into());
+                        return Err(QASMParseError::FailedToParseQubitIndex(
+                            child.text().to_string(),
+                        ));
                     }
                 }
                 _ => {
