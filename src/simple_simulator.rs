@@ -1,34 +1,23 @@
-use crate::{cart, circuit::Circuit, ext::get_gate_matrix, instruction::Instruction, simulator::RunnableSimulator};
+use crate::{
+    cart,
+    circuit::Circuit,
+    ext::get_gate_matrix,
+    gate::{Gate, QBits},
+    instruction::Instruction,
+    simulator::{DebuggableSimulator, RunnableSimulator},
+};
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
-pub struct SimpleSimulator {
-    state_vector: Vec<Complex<f32>>,
+struct SVExecutor<'a> {
+    state_vector: DVector<Complex<f32>>,
+    sim: &'a SimpleSimulator,
+    pc: usize,
 }
 
-impl TryFrom<Circuit> for SimpleSimulator {
-    type Error = SimpleError;
-
-    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
-        let circuit = value;
-        let k = circuit.n_qubits();
-        let mut init_state_vector = vec![cart!(0.0); 1 << k];
-        init_state_vector[0] = cart!(1.0);
-
-        let mut sim = SimpleSimulator {
-            state_vector: init_state_vector,
-        };
-
-        for inst in circuit.instructions() {
-            sim.apply_instruction(inst);
-        }
-
-        Ok(sim)
-    }
-}
-
-impl RunnableSimulator for SimpleSimulator {
-    fn run(&self) -> usize {
+impl<'a> SVExecutor<'a> {
+    /// Gets a collapsed result from the current state vector
+    fn get_collapsed_state(&self) -> usize {
         let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
 
         let dist = WeightedIndex::new(probs)
@@ -38,18 +27,16 @@ impl RunnableSimulator for SimpleSimulator {
         dist.sample(&mut rng)
     }
 
-    fn final_state(&self) -> DVector<Complex<f32>> {
-        return DVector::from_vec(self.state_vector.clone());
-    }
-}
-
-impl SimpleSimulator {
-    fn controls_active(i: usize, controls: &[usize]) -> bool {
-        controls.iter().all(|&c| ((i >> c) & 1) == 1)
+    /// Checks that all control bits are 1
+    fn controls_active(i: usize, controls: QBits) -> bool {
+        let control_mask = controls.get_bitstring();
+        (i & control_mask) == control_mask
     }
 
-    fn is_block_base(i: usize, targets: &[usize]) -> bool {
-        targets.iter().all(|&t| ((i >> t) & 1) == 0)
+    /// Checks that all target bits are 0
+    fn is_block_base(i: usize, targets: QBits) -> bool {
+        let target_mask = targets.get_bitstring();
+        (i & target_mask) == 0
     }
 
     fn block_indices(base: usize, targets: &[usize]) -> Vec<usize> {
@@ -70,18 +57,23 @@ impl SimpleSimulator {
         indices
     }
 
-    fn apply_gate(&mut self, controls: &[usize], targets: &[usize], u: DMatrix<Complex<f32>>) {
+    fn gate(&mut self, gate: &Gate) {
+        let controls = gate.get_control_bits();
+        let targets = gate.get_target_bits();
+        let u: DMatrix<Complex<f32>> = get_gate_matrix(gate);
+        let target_indices = targets.get_indices();
+
         // State vector is length 2^n , n=num qubits
         for i in 0..self.state_vector.len() {
-            if !SimpleSimulator::is_block_base(i, targets) {
+            if !Self::is_block_base(i, targets) {
                 continue;
             }
 
-            if !SimpleSimulator::controls_active(i, controls) {
+            if !Self::controls_active(i, controls) {
                 continue;
             }
 
-            let indices = SimpleSimulator::block_indices(i, targets);
+            let indices = Self::block_indices(i, &target_indices);
 
             // Read amplitudes
             let v = DVector::from_iterator(
@@ -99,15 +91,115 @@ impl SimpleSimulator {
         }
     }
 
+    // This function should probably maybe return something indicating which bits collapsed to what
+    // For like debugging purposes ig
+    fn measure(&mut self, targets: QBits) {
+        let measurement = self.get_collapsed_state();
+        let mask = targets.get_bitstring();
+        let collapsed_bitstring = measurement & mask;
+
+        // Go through state vector and remove amplitude for all states that do not align with measurement
+        for (i, amp) in self.state_vector.iter_mut().enumerate() {
+            if (i & mask) != collapsed_bitstring {
+                *amp = Complex::ZERO;
+            }
+        }
+
+        // Renormalize state vector
+        let norm = self
+            .state_vector
+            .iter()
+            .map(|x| x.norm_sqr())
+            .sum::<f32>()
+            .sqrt();
+        self.state_vector.iter_mut().for_each(|x| *x /= norm);
+    }
+
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
-            Instruction::Gate(gate) => self.apply_gate(
-                &gate.get_controls(),
-                &gate.get_targets(),
-                get_gate_matrix(&gate),
-            ),
-            Instruction::Measurement(qbits) => todo!(),
+            Instruction::Gate(gate) => self.gate(gate),
+            Instruction::Measurement(qbits) => self.measure(*qbits),
         }
+    }
+
+    pub fn step(&mut self) -> Option<&DVector<Complex<f32>>> {
+        if self.pc >= self.sim.circuit.instructions().len() {
+            return None;
+        }
+
+        let inst = &self.sim.circuit.instructions()[self.pc];
+        self.apply_instruction(inst);
+
+        self.pc += 1;
+
+        Some(&self.state_vector)
+    }
+
+    pub fn step_all(&mut self) -> &Self {
+        while let Some(_) = self.step() {}
+        self
+    }
+}
+
+pub struct SimpleSimulator {
+    circuit: Circuit,
+}
+
+impl TryFrom<Circuit> for SimpleSimulator {
+    type Error = SimpleError;
+
+    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+        Ok(Self { circuit: value })
+    }
+}
+
+impl RunnableSimulator for SimpleSimulator {
+    fn run(&self) -> usize {
+        self.get_executor().step_all().get_collapsed_state()
+    }
+
+    fn final_state(&self) -> DVector<Complex<f32>> {
+        self.get_executor().step_all().state_vector.clone()
+    }
+}
+
+impl SimpleSimulator {
+    fn get_executor(&self) -> SVExecutor<'_> {
+        let size = 1 << self.circuit.n_qubits();
+        let mut init_state_vector: DVector<Complex<f32>> = DVector::from_element(size, cart![0.0]);
+        init_state_vector[0] = cart![1.0];
+
+        SVExecutor {
+            state_vector: init_state_vector,
+            sim: self,
+            pc: 0,
+        }
+    }
+
+    fn attach_debugger(&self) -> SimpleSimulatorDebugger<'_> {
+        SimpleSimulatorDebugger { executor: self.get_executor() }
+    }
+}
+
+pub struct SimpleSimulatorDebugger<'a> {
+    executor: SVExecutor<'a>,
+}
+
+impl<'a> DebuggableSimulator for SimpleSimulatorDebugger<'a> {
+    fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
+        self.executor.step()
+    }
+
+    fn current_instruction(&self) -> Option<(usize, &Instruction)> {
+        let pc = self.executor.pc;
+        if pc >= self.executor.sim.circuit.instructions().len() {
+            return None;
+        }
+        Some((pc, &self.executor.sim.circuit.instructions()[pc]))
+    }
+
+    fn current_state(&self) -> &DVector<Complex<f32>> {
+        &self.executor.state_vector
     }
 }
 
@@ -121,9 +213,8 @@ pub enum SimpleError {
 mod tests {
     use crate::{
         circuit::Circuit,
-        instruction::Instruction,
-        simple_simulator::SimpleSimulator,
-        simulator::{BuildSimulator, RunnableSimulator},
+        simple_simulator::{SimpleSimulator, SimpleSimulatorDebugger},
+        simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator},
     };
 
     #[test]
@@ -131,24 +222,12 @@ mod tests {
         let circ = Circuit::new(3).hadamard(0).cnot(0, 2).x(0).hadamard(0).y(1);
 
         let sim = SimpleSimulator::build(circ).unwrap();
+        let mut dbg = sim.attach_debugger();
+        println!("{}", dbg.next().unwrap());
+        println!("{}", dbg.next().unwrap());
+        println!("{}", dbg.next().unwrap());
+        
         println!("{}", sim.final_state());
         println!("{:03b}", sim.run());
-    }
-
-    #[test]
-    fn bell_state_test() {
-        let circ = Circuit::new(2).hadamard(0).cnot(0, 1);
-
-        let sim = SimpleSimulator::build(circ).unwrap();
-        println!("{:02b}", sim.run());
-    }
-
-    #[test]
-    fn swap_gate_test() {
-        let circ = Circuit::new(2).x(1).swap(0, 1);
-
-        let sim = SimpleSimulator::build(circ).unwrap();
-        println!("{}", sim.final_state());
-        println!("{:02b}", sim.run());
     }
 }
