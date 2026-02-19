@@ -90,9 +90,9 @@ impl DebugSimulator {
     }
 
     fn measure(
+        target: usize,
         state: DVector<Complex<f32>>,
         n_qubits: usize,
-        target: usize,
     ) -> DVector<Complex<f32>> {
         // Choose a collapsed state
         let prob_target_eq_zero = state
@@ -104,12 +104,12 @@ impl DebugSimulator {
 
         let mut rng = rand::rng();
         let random_value = rng.random_range(0.0..1.0);
-        let mut result = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
+        let mut result = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
         if random_value < prob_target_eq_zero {
-            result = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
+            result = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
         }
 
-        // Calculate projection operator, M
+        // Calculate projection operator, M_m
         let mut projection_operator_prod = DebugSimulator::identity_tensor_factors(n_qubits);
         projection_operator_prod[target] = result;
         let projection_operator = DebugSimulator::eval_tensor_product(projection_operator_prod);
@@ -123,12 +123,12 @@ impl DebugSimulator {
          * {\sqrt{\bra{\psi_0}M_mM_m^\dagger\ket{\psi_0}}}
          *
          * */
-        let bra = state.adjoint(); // <\psi|
-        let proj_ket_state = projection_operator * state; //M_m|\psi>
-        // No need to find adjoint of proj_ket_state as it is hermitian
-        let normalization = (bra * proj_ket_state.clone())[(0, 0)].sqrt(); // sqrt(<\psi|M_m|\psi>), Will be 1x1-matrix
-
-        proj_ket_state / normalization
+        let bra_state = state.adjoint(); // <\psi|
+        let proj_times_ket_state = projection_operator * state; //M_m|\psi>
+        // No need to find adjoint of proj_times_ket_state as it is hermitian
+        let normalization = (bra_state * proj_times_ket_state.clone())[(0, 0)].sqrt(); // sqrt(<\psi|M_m|\psi>), Will be 1x1-matrix
+                                                                                       //
+        proj_times_ket_state / normalization
     }
 
     fn expand_matrix_from_instruction(
@@ -237,19 +237,168 @@ mod tests {
     }
 
     #[test]
-    fn measure1() {
-        let res = DebugSimulator::measure(
-            dvector![
-                cart!(0.5, 0.0),
-                cart!(0.5, 0.0),
-                cart!(0.5, 0.0),
-                cart!(0.5, 0.0)
-            ],
-            2,
-            1,
+    fn measure_hadamard_all() {
+        let circ = Circuit {
+            instructions: vec![Instruction::H(0), Instruction::H(1), Instruction::H(2)],
+            n_qubits: 3,
+        };
+        let sim = DebugSimulator::build(circ).expect("Circuit should be valid");
+        let mut res = sim.final_state();
+        let plus_plus_plus: DVector<Complex<f32>> = dvector![
+            cart!(0.5 * FRAC_1_SQRT_2), // |000>
+            cart!(0.5 * FRAC_1_SQRT_2), // |001>
+            cart!(0.5 * FRAC_1_SQRT_2), // |010>
+            cart!(0.5 * FRAC_1_SQRT_2), // |011>
+            cart!(0.5 * FRAC_1_SQRT_2), // |100>
+            cart!(0.5 * FRAC_1_SQRT_2), // |101>
+            cart!(0.5 * FRAC_1_SQRT_2), // |110>
+            cart!(0.5 * FRAC_1_SQRT_2), // |111>
+        ];
+        assert_is_vector_equal!(res.clone(), plus_plus_plus);
+        let plus_plus_measure0: DVector<Complex<f32>> = dvector![
+            cart!(0.5), // |000>
+            cart!(0.0), // |001>
+            cart!(0.5), // |010>
+            cart!(0.0), // |011>
+            cart!(0.5), // |100>
+            cart!(0.0), // |101>
+            cart!(0.5), // |110>
+            cart!(0.0), // |111>
+        ];
+        let plus_plus_measure1: DVector<Complex<f32>> = dvector![
+            cart!(0.0), // |000>
+            cart!(0.5), // |001>
+            cart!(0.0), // |010>
+            cart!(0.5), // |011>
+            cart!(0.0), // |100>
+            cart!(0.5), // |101>
+            cart!(0.0), // |110>
+            cart!(0.5), // |111>
+        ];
+        res = DebugSimulator::measure(0, res, 3);
+        assert!(
+            is_vector_equal_to(res.clone(), plus_plus_measure0)
+                || is_vector_equal_to(res.clone(), plus_plus_measure1)
+        );
+        let plus_measure0_measure0: DVector<Complex<f32>> = dvector![
+            cart!(FRAC_1_SQRT_2), // |000>
+            cart!(0.0),           // |001>
+            cart!(0.0),           // |010>
+            cart!(0.0),           // |011>
+            cart!(FRAC_1_SQRT_2), // |100>
+            cart!(0.0),           // |101>
+            cart!(0.0),           // |110>
+            cart!(0.0),           // |111>
+        ];
+        let plus_measure0_measure1: DVector<Complex<f32>> = dvector![
+            cart!(0.0),           // |000>
+            cart!(FRAC_1_SQRT_2), // |001>
+            cart!(0.0),           // |010>
+            cart!(0.0),           // |011>
+            cart!(0.0),           // |100>
+            cart!(FRAC_1_SQRT_2), // |101>
+            cart!(0.0),           // |110>
+            cart!(0.0),           // |111>
+        ];
+        let plus_measure1_measure0: DVector<Complex<f32>> = dvector![
+            cart!(0.0),           // |000>
+            cart!(0.0),           // |001>
+            cart!(FRAC_1_SQRT_2), // |010>
+            cart!(0.0),           // |011>
+            cart!(0.0),           // |100>
+            cart!(0.0),           // |101>
+            cart!(FRAC_1_SQRT_2), // |110>
+            cart!(0.0),           // |111>
+        ];
+        let plus_measure1_measure1: DVector<Complex<f32>> = dvector![
+            cart!(0.0),           // |000>
+            cart!(0.0),           // |001>
+            cart!(0.0),           // |010>
+            cart!(FRAC_1_SQRT_2), // |011>
+            cart!(0.0),           // |100>
+            cart!(0.0),           // |101>
+            cart!(0.0),           // |110>
+            cart!(FRAC_1_SQRT_2), // |111>
+        ];
+        res = DebugSimulator::measure(1, res, 3);
+        assert!(
+            is_vector_equal_to(res.clone(), plus_measure0_measure0)
+                || is_vector_equal_to(res.clone(), plus_measure0_measure1)
+                || is_vector_equal_to(res.clone(), plus_measure1_measure0)
+                || is_vector_equal_to(res.clone(), plus_measure1_measure1)
+        );
+        res = DebugSimulator::measure(2, res, 3);
+        // Now collapsed to any 3-bit-string.
+        assert!(state_is_collapsed(res));
+    }
+
+    fn state_is_collapsed(vector: DVector<Complex<f32>>) -> bool {
+        let mut one_count = 0;
+
+        for &value in vector.iter() {
+            if nalgebra::ComplexField::abs(value - cart!(1.0)) < 0.001 {
+                one_count += 1;
+            } else if nalgebra::ComplexField::abs(value - cart!(0.0)) > 0.001 {
+                return false; // Found a value not equal to 0.0
+            }
+        }
+
+        one_count == 1
+    }
+
+    #[test]
+    fn measure_entanglement() {
+        let circ = Circuit {
+            instructions: vec![Instruction::H(0), Instruction::CNOT(0, 1)],
+            n_qubits: 3,
+        };
+        let sim = DebugSimulator::build(circ).expect("Circuit should be valid");
+        let mut res = sim.final_state();
+        // Expected state vector before any measurments
+        let bell: DVector<Complex<f32>> = dvector![
+            cart!(FRAC_1_SQRT_2), // |000>
+            cart!(0.0),
+            cart!(0.0),
+            cart!(FRAC_1_SQRT_2), // |011>
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+        ];
+        assert_is_vector_equal!(bell, res.clone());
+        // When any qubit is measured, state vector should collapse to either |00> or |11>.
+        let colapse_00: DVector<Complex<f32>> = dvector![
+            cart!(1.0), // |000>
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+        ];
+        let colapse_11: DVector<Complex<f32>> = dvector![
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(1.0), // |011>
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.0),
+        ];
+        res = DebugSimulator::measure(0, res, 3);
+
+        assert!(
+            is_vector_equal_to(res.clone(), colapse_00.clone())
+                || is_vector_equal_to(res.clone(), colapse_11.clone())
         );
 
-        println!("{}", res);
+        res = DebugSimulator::measure(1, res, 3);
+        assert!(
+            is_vector_equal_to(res.clone(), colapse_00.clone())
+                || is_vector_equal_to(res.clone(), colapse_11.clone())
+        );
     }
 
     #[test]
