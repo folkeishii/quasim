@@ -17,7 +17,6 @@ use crossterm::{
     execute,
     style::{self, Attributes, Color, ContentStyle, StyledContent},
 };
-use std::collections::HashMap;
 use std::ops::Div;
 use std::{
     fmt::Display,
@@ -188,28 +187,41 @@ impl DebugTerminal {
         collapse_args: CollapseArgs,
     ) -> io::Result<()> {
         let state = self.simulator.current_state();
-        let mut count_map: HashMap<usize, usize> = HashMap::new();
+        let mut count_map: Vec<(usize, usize)> = Vec::new();
         let count = match collapse_args {
             CollapseArgs::Collapse => 1,
             CollapseArgs::Count(n) => n,
         };
 
+        let mut max_state = 0; // Only used for formatting
+        let mut max_count = 0; // Only used for formatting
         for _ in 0..count {
             let collapsed = collapse(state.as_ref());
-            *count_map.entry(collapsed).or_insert(0) += 1;
+            max_state = max_state.max(collapsed);
+            let new_count = match count_map.binary_search_by_key(&collapsed, |(state, _)| *state) {
+                // state already recorded
+                Ok(index) => {
+                    count_map[index].1 += 1;
+                    count_map[index].1
+                }
+                // New state
+                Err(index) => {
+                    count_map.insert(index, (collapsed, 1));
+                    count_map[index].1
+                }
+            };
+            max_count = max_count.max(new_count)
         }
 
-        let mut counts = count_map.iter().collect::<Vec<_>>();
-        counts.sort_by(|a, b| b.1.cmp(&a.1));
+        // Resort by count
+        count_map.sort_by(|a, b| b.1.cmp(&a.1));
 
-        let max_index = counts.iter().map(|i| i.0).max().unwrap_or(&0);
-        let decimal_width = (max_index.checked_ilog10().unwrap_or(0) + 1) as usize;
-        let binary_width = (max_index.checked_ilog2().unwrap_or(0) + 1) as usize;
+        let decimal_width = (max_state.checked_ilog10().unwrap_or(0) + 1) as usize;
+        let binary_width = (max_state.checked_ilog2().unwrap_or(0) + 1) as usize;
 
-        let max_count = counts.iter().map(|i| i.1).max().unwrap_or(&1);
         let max_width = (max_count.checked_ilog10().unwrap_or(0) + 1) as usize;
 
-        let mut count_peekable = counts.iter().peekable();
+        let mut count_peekable = count_map.iter().peekable();
         while let Some(c) = count_peekable.next() {
             Self::print(
                 stdout,
@@ -218,7 +230,7 @@ impl DebugTerminal {
                     c.0,
                     c.0,
                     c.1,
-                    ((*c.1 as f64).div(count as f64) * 100.0).round(),
+                    ((c.1 as f64).div(count as f64) * 100.0).round(),
                 ),
             )?;
 
