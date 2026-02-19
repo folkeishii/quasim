@@ -80,51 +80,6 @@ impl DebugTerminal {
         Ok(())
     }
 
-    fn handle_break<W: Write>(&mut self, stdout: &mut W, args: &BreakArgs) -> io::Result<()> {
-        let mut enable_only = false;
-        let gate_indices = match args {
-            BreakArgs::GateIndices(gate_indices) => gate_indices,
-            BreakArgs::GateIndicesEnable(gate_indices) => {
-                enable_only = true;
-                gate_indices
-            }
-        };
-
-        // *
-        // TODO:
-        // Check that all indices are actual gates
-        // *
-
-        for &gate_index in gate_indices {
-            let status = if !enable_only {
-                self.breakpoints.insert_or_enable(gate_index)
-            } else if let Some(status) = self.breakpoints.enable(gate_index) {
-                status
-            } else {
-                Self::error(
-                    stdout,
-                    &format!(
-                        "Could not enable breakpoint at {}, breakpoint does not exist",
-                        gate_index
-                    ),
-                )?;
-                continue;
-            };
-
-            match status {
-                PEBreakpoint::Enabled => {
-                    Self::print(stdout, &format!("Enabled breakpoint at {}", gate_index))?
-                }
-                PEBreakpoint::Inserted => Self::print(
-                    stdout,
-                    &format!("Inserted new breakpoint at {}", gate_index),
-                )?,
-            }
-        }
-
-        Ok(())
-    }
-
     fn print<W: Write, T: Display>(stdout: &mut W, output: &T) -> io::Result<()> {
         execute!(stdout, style::Print(output))
     }
@@ -188,6 +143,58 @@ impl DebugTerminal {
             if self.simulator.prev().is_none() {
                 Self::error(stdout, &"Already at the beginning")?;
                 break;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_break<W: Write>(&mut self, stdout: &mut W, args: &BreakArgs) -> io::Result<()> {
+        let (enable_only, gate_indices) = match args {
+            BreakArgs::GateIndices(gate_indices) => (false, gate_indices),
+            BreakArgs::GateIndicesEnable(gate_indices) => (true, gate_indices),
+        };
+
+        // Check that all indices are actual gates
+        let gate_range = 0..self.simulator.instruction_count();
+        for gate_index in gate_indices {
+            if !gate_range.contains(gate_index) {
+                Self::error(
+                    stdout,
+                    &format!(
+                        "Unable to set or enable breakpoint at index {}, no gate at index",
+                        gate_index
+                    ),
+                )?;
+                return Ok(());
+            }
+        }
+
+        // Insert or enable breakpoints
+        for &gate_index in gate_indices {
+            let status = if !enable_only {
+                self.breakpoints.insert_or_enable(gate_index)
+            } else if let Some(status) = self.breakpoints.enable(gate_index) {
+                status
+            } else {
+                Self::error(
+                    stdout,
+                    &format!(
+                        "Could not enable breakpoint at {}, breakpoint does not exist",
+                        gate_index
+                    ),
+                )?;
+                continue;
+            };
+
+            match status {
+                PEBreakpoint::Enabled => {
+                    Self::print(stdout, &format!("Enabled breakpoint at {}", gate_index))?
+                }
+                PEBreakpoint::Inserted => Self::print(
+                    stdout,
+                    &format!("Inserted new breakpoint at {}", gate_index),
+                )?,
             }
         }
 
