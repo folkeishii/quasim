@@ -2,8 +2,8 @@ use crate::instruction::Instruction;
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
-    pub instructions: Vec<Instruction>,
-    pub n_qubits: usize,
+    instructions: Vec<Instruction>,
+    n_qubits: usize,
 }
 
 impl Circuit {
@@ -12,6 +12,21 @@ impl Circuit {
             instructions: Vec::<Instruction>::default(),
             n_qubits,
         }
+    }
+
+    pub fn from_instructions<I: Into<Vec<Instruction>>>(n_qubits: usize, instructions: I) -> Self {
+        Self {
+            instructions: instructions.into(),
+            n_qubits,
+        }
+    }
+
+    pub fn instructions(&self) -> &[Instruction] {
+        &self.instructions
+    }
+
+    pub fn n_qubits(&self) -> usize {
+        self.n_qubits
     }
 
     pub fn x(mut self, target: usize) -> Self {

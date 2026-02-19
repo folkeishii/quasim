@@ -7,8 +7,10 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::{
-    circuit::Circuit, debug_simulator::DebugSimulator, debug_terminal::parse::into_tokens,
-    simulator::SimpleSimulator,
+    circuit::Circuit,
+    debug_simulator::DebugSimulator,
+    debug_terminal::parse::into_tokens,
+    simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
 };
 use crossterm::{
     execute,
@@ -24,7 +26,7 @@ pub struct DebugTerminal {
 }
 
 impl DebugTerminal {
-    pub fn new(circuit: Circuit) -> Result<Self, <DebugSimulator as SimpleSimulator>::E> {
+    pub fn new(circuit: Circuit) -> Result<Self, <DebugSimulator as BuildSimulator>::E> {
         Ok(Self {
             simulator: DebugSimulator::build(circuit)?,
         })
@@ -96,7 +98,7 @@ impl DebugTerminal {
         };
 
         for _ in 0..step_count {
-            if self.simulator.step_backwards().is_none() {
+            if self.simulator.prev().is_none() {
                 Self::error(stdout, &"Already at the beginning")?;
                 break;
             }
