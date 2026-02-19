@@ -1,6 +1,6 @@
 use std::fs::read_to_string;
 
-use oq3_syntax::{SourceFile, SyntaxNode, ast::AstNode, SyntaxText};
+use oq3_syntax::{SourceFile, SyntaxNode, SyntaxText, ast::AstNode};
 
 use crate::instruction::Instruction;
 
@@ -10,6 +10,7 @@ pub struct Circuit {
     pub n_qubits: usize,
 }
 
+// TODO: Make this a proper error type
 type QuasimParseError = String;
 
 impl Circuit {
@@ -46,87 +47,106 @@ impl Circuit {
             syntax_errors.len(),
             syntax_errors
         );
-        Self::instructions_from_syntax_tree(parse_tree.syntax());
-        // Self::print_children(parse_tree);
-        return Ok(Circuit::new(2));
+        let instructions = Self::instructions_from_syntax_tree(parse_tree.syntax())?;
+        return Ok(Circuit {
+            instructions,
+            n_qubits: 5,
+        }); // dummy n_qubits for testing, DO NOT MERGE
     }
 
-    fn instructions_from_syntax_tree(node: &SyntaxNode) -> Vec<Instruction> {
+    fn instructions_from_syntax_tree(
+        node: &SyntaxNode,
+    ) -> Result<Vec<Instruction>, QuasimParseError> {
         use oq3_syntax::SyntaxKind::*;
         let recurse = Self::instructions_from_syntax_tree;
         let mut instructions = Vec::<Instruction>::default();
-        node.children().for_each(|child| match child.kind() {
-            VERSION_STRING => (),
-            EXPR_STMT => {
-                //println!("Expression statement: {:?}", child);
-                recurse(&child);
-            },
-            GATE_CALL_EXPR => {
-                Self::parse_gate_call_expr(&child);
-            },
-            /*
-            INDEX_OPERATOR => {
-                println!("Index operator: {:?}", child);
-                recurse(&child);
-            },
-            EXPRESSION_LIST => {
-                println!("Expression list: {:?}", child);
-                recurse(&child);
-            },
-            */
-            LITERAL => {
-                println!("Literal, literally: {:?}", child.text());
-                recurse(&child);
+        for child in node.children() {
+            match child.kind() {
+                VERSION_STRING => (),
+                EXPR_STMT => {
+                    //println!("Expression statement: {:?}", child);
+                    recurse(&child)?;
+                }
+                GATE_CALL_EXPR => {
+                    instructions.push(Self::parse_gate_call_expr(&child)?);
+                }
+                LITERAL => {
+                    println!("Literal, literally: {:?}", child.text());
+                    recurse(&child)?;
+                }
+                _ => {
+                    // println!("Unknown instruction: {:?}", child),
+                }
             }
-            _ => {
-                // println!("Unknown instruction: {:?}", child),
-            }
-        });
+        }
         println!(""); // Just a blank line to separate groups
-        return instructions;
+        return Ok(instructions);
     }
 
     // This may have to return a Vec instead, depending on if OpenQASM gate calls
     // can represent multiple gates in a circuit...
-    fn parse_gate_call_expr(node: &SyntaxNode) -> Result<Instruction, ()> {
+    fn parse_gate_call_expr(node: &SyntaxNode) -> Result<Instruction, QuasimParseError> {
         use oq3_syntax::SyntaxKind::*;
-        let mess = Self::instructions_from_syntax_tree;
-    
-        let Some(gate_name) = Self::check_first_for_identifier(node) else {return Err(())};
-        println!("Identifier found, literally: '{}'", gate_name);
 
-        node.children().for_each(|child| match child.kind() {
-            IDENTIFIER => (), // Handled seperately before this 
-            QUBIT_LIST => { 
-                println!("- Indexes in qubit list: {:?}", Self::indexes_in_qubit_list(&child)); 
-            },
-            _ => {
-                //println!("Unknown instruction: {:?}", child);
-                mess(&child);
+        let mut gate_name: Option<SyntaxText> = None;
+        let mut qubit_indexes: Vec<usize> = vec![];
+
+        for child in node.children() {
+            match child.kind() {
+                IDENTIFIER => gate_name = Some(child.text()),
+                QUBIT_LIST => {
+                    qubit_indexes = Self::indexes_in_qubit_list(&child)?;
+                    println!("Qubit list found, indexes: {:?}", qubit_indexes);
+                }
+                _ => (),
             }
-        });
+        }
+
+        if let Some(name) = gate_name {
+            println!("Gate call name: '{}'", name);
+
+            if qubit_indexes.len() == 0 {
+                return Err("Failed to find any qubits in gate call".into());
+            }
+        } else {
+            return Err("Failed to find gate name".into());
+        }
 
         Ok(Instruction::X(0)) // dummy for testing, DO NOT MERGE
     }
-    
-    fn check_first_for_identifier(node: &SyntaxNode) -> Option<SyntaxText> {
-        if let Some(ident) = node.first_child() {
-            if ident.kind() == oq3_syntax::SyntaxKind::IDENTIFIER {
-                return Some(ident.text());
+
+    fn find_first_identifier(node: &SyntaxNode) -> Option<SyntaxText> {
+        for child in node.children() {
+            if child.kind() == oq3_syntax::SyntaxKind::IDENTIFIER {
+                return Some(child.text());
+            } else {
+                if let Some(ident) = Self::find_first_identifier(&child) {
+                    return Some(ident);
+                }
             }
         }
         return None;
     }
 
-    fn indexes_in_qubit_list(node: &SyntaxNode) -> Vec<usize> {
+    fn indexes_in_qubit_list(node: &SyntaxNode) -> Result<Vec<usize>, QuasimParseError> {
         let mut result: Vec<usize> = vec![];
-        node.children().for_each(|child| match child.kind() {
-            oq3_syntax::SyntaxKind::LITERAL => {
-                result.push(child.text().to_string().parse::<usize>().unwrap()); // SUPER BADDDDDDDDD
-            },
-            _ => { result.append(&mut Self::indexes_in_qubit_list(&child)); },
-        });
-        return result;
+
+        for child in node.children() {
+            match child.kind() {
+                oq3_syntax::SyntaxKind::LITERAL => {
+                    let parse_attempt = child.text().to_string().parse::<usize>();
+                    if let Ok(index) = parse_attempt {
+                        result.push(index);
+                    } else {
+                        return Err("Failed to parse qubit index".into());
+                    }
+                }
+                _ => {
+                    result.append(&mut Self::indexes_in_qubit_list(&child)?);
+                }
+            }
+        }
+        return Ok(result);
     }
 
     // Under here are all the builder functions.
