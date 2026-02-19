@@ -7,15 +7,15 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::{
-    circuit::Circuit, debug_simulator::DebugSimulator, simulator::SimpleSimulator,
-    debug_terminal::parse::{into_tokens},
+    circuit::Circuit, debug_simulator::DebugSimulator, debug_terminal::parse::into_tokens,
+    simulator::SimpleSimulator,
 };
 use crossterm::{
     execute,
     style::{self, Attributes, Color, ContentStyle, StyledContent},
 };
 use std::{
-    fmt::{Display},
+    fmt::Display,
     io::{self, Write},
 };
 

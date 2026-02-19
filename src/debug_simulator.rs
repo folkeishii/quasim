@@ -161,7 +161,7 @@ pub enum SimpleError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{cart, Circuit, DebugSimulator, Instruction, SimpleSimulator};
+    use crate::{Circuit, DebugSimulator, Instruction, SimpleSimulator, cart};
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f32::consts::FRAC_1_SQRT_2;
 
