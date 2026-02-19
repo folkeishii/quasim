@@ -92,10 +92,10 @@ impl DebugTerminal {
     }
 
     fn next(&mut self, stdout: &mut io::Stdout, next_args: NextArgs) -> io::Result<()> {
-        let step_checker = match next_args {
+        let next_step_exists = match next_args {
             NextArgs::Step => {
-                let res = self.simulator.next().is_none();
-                if !res {
+                let res = !self.simulator.next().is_none();
+                if res {
                     Self::print(stdout, &"Stepped 1 time")?;
                 }
                 res
@@ -103,10 +103,10 @@ impl DebugTerminal {
             NextArgs::Count(n) => self.next_n_steps(stdout, n)?,
         };
 
-        if !step_checker {
+        if !next_step_exists {
             Self::error(
                 stdout,
-                &format!("Cannot step further, end of circuit reached"),
+                &("Cannot step further, end of circuit reached"),
             )?;
         }
 
