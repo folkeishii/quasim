@@ -63,7 +63,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Measurement(qbits) => {
                 for qbit in qbits.get_indices() {
                     self.current_state =
-                        Self::measure(qbit, self.current_state.clone(), self.circuit.n_qubits());
+                        Self::measure(qbit, &self.current_state, self.circuit.n_qubits());
                 }
             }
         }
@@ -92,9 +92,7 @@ impl DoubleEndedSimulator for DebugSimulator {
         match &self.circuit.instructions()[self.current_step] {
             Instruction::Gate(gate) => {
                 let mut mat = Self::expand_matrix_from_gate(&gate, self.circuit.n_qubits());
-                mat = mat
-                    .try_inverse()
-                    .expect("Unitary matricies should be invertible.");
+                mat.try_inverse_mut();
                 self.current_state = mat * self.current_state.clone();
             }
             Instruction::Measurement(_) => todo!(),
@@ -110,7 +108,7 @@ impl DebugSimulator {
 
     fn measure(
         target: usize,
-        state: DVector<Complex<f32>>,
+        state: &DVector<Complex<f32>>,
         n_qubits: usize,
     ) -> DVector<Complex<f32>> {
         // Choose a collapsed state
@@ -296,7 +294,7 @@ mod tests {
             cart!(0.0), // |110>
             cart!(0.5), // |111>
         ];
-        res = DebugSimulator::measure(0, res, 3);
+        res = DebugSimulator::measure(0, &res, 3);
         assert!(
             is_vector_equal_to(res.clone(), plus_plus_measure0)
                 || is_vector_equal_to(res.clone(), plus_plus_measure1)
@@ -341,14 +339,14 @@ mod tests {
             cart!(0.0),           // |110>
             cart!(FRAC_1_SQRT_2), // |111>
         ];
-        res = DebugSimulator::measure(1, res, 3);
+        res = DebugSimulator::measure(1, &res, 3);
         assert!(
             is_vector_equal_to(res.clone(), plus_measure0_measure0)
                 || is_vector_equal_to(res.clone(), plus_measure0_measure1)
                 || is_vector_equal_to(res.clone(), plus_measure1_measure0)
                 || is_vector_equal_to(res.clone(), plus_measure1_measure1)
         );
-        res = DebugSimulator::measure(2, res, 3);
+        res = DebugSimulator::measure(2, &res, 3);
         // Now collapsed to any 3-bit-string.
         assert!(state_is_collapsed(res));
     }
@@ -405,14 +403,14 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
         ];
-        res = DebugSimulator::measure(0, res, 3);
+        res = DebugSimulator::measure(0, &res, 3);
 
         assert!(
             is_vector_equal_to(res.clone(), colapse_00.clone())
                 || is_vector_equal_to(res.clone(), colapse_11.clone())
         );
 
-        res = DebugSimulator::measure(1, res, 3);
+        res = DebugSimulator::measure(1, &res, 3);
         assert!(
             is_vector_equal_to(res.clone(), colapse_00.clone())
                 || is_vector_equal_to(res.clone(), colapse_11.clone())
