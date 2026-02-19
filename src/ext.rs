@@ -1,6 +1,8 @@
 use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, Dim, Matrix, RawStorage};
+use rand::distr::weighted::WeightedIndex;
+use rand::prelude::Distribution;
 
 /// Compares two complex numbers
 ///
@@ -48,6 +50,17 @@ pub fn reverse_indices(
     len: usize,
 ) -> Map<Range<usize>, impl FnMut(usize) -> usize> {
     range.map(move |i| len - i - 1)
+}
+
+/// Collapse a state vector into a value
+pub fn collapse(state: &Vec<Complex<f32>>) -> usize {
+    let probs = state.iter().map(|&c| c.norm_sqr());
+
+    let dist = WeightedIndex::new(probs)
+        .expect("Failed to create probability distribution. Invalid or empty state vector?");
+    let mut rng = rand::rng();
+
+    dist.sample(&mut rng)
 }
 
 #[macro_export]

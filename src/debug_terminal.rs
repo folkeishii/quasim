@@ -6,6 +6,7 @@ mod state;
 pub use arguments::*;
 pub use command::*;
 
+use crate::ext::collapse;
 use crate::{
     circuit::Circuit,
     debug_simulator::DebugSimulator,
@@ -161,7 +162,7 @@ impl DebugTerminal {
         };
 
         for _ in 0..count {
-            let collapsed = DebugSimulator::collapse(state);
+            let collapsed = collapse(state.data.as_vec());
             *count_map.entry(collapsed).or_insert(0) += 1;
         }
 
