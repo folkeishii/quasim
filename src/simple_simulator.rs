@@ -1,9 +1,4 @@
-use crate::{
-    cart,
-    circuit::Circuit,
-    instruction::Instruction,
-    simulator::{BuildSimulator, RunnableSimulator},
-};
+use crate::{cart, circuit::Circuit, instruction::Instruction, simulator::RunnableSimulator};
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 

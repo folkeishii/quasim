@@ -2,7 +2,7 @@ use crate::{
     cart,
     circuit::Circuit,
     instruction::Instruction,
-    simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
+    simulator::{DebuggableSimulator, DoubleEndedSimulator},
 };
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 
