@@ -1,6 +1,10 @@
-use crate::{Circuit, Gate, Instruction, SimpleSimulator, cart, get_gate_matrix};
+use crate::{
+    cart,
+    circuit::Circuit,
+    instruction::Instruction,
+    simulator::{DebuggableSimulator, DoubleEndedSimulator},
+};
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
-use rand::{distr::weighted::WeightedIndex, prelude::*};
 
 #[derive(Debug, Clone)]
 pub struct DebugSimulator {
@@ -9,11 +13,25 @@ pub struct DebugSimulator {
     current_step: usize,
 }
 
-impl SimpleSimulator for DebugSimulator {
-    type E = SimpleError;
+impl TryFrom<Circuit> for DebugSimulator {
+    type Error = DebugSimulatorError;
 
-    fn build(circuit: Circuit) -> Result<Self, Self::E> {
-        let k = circuit.n_qubits;
+    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+        let circuit = value;
+        let k = circuit.n_qubits();
+
+        // Check for mid-cicuit measurement
+        let mut encountered = false;
+        for inst in circuit.instructions() {
+            let _ = inst; // avoid warning for now
+            let is_measurement = false; // matches!(inst, Instruction::Measurement(_));
+            if is_measurement {
+                encountered = true;
+            } else if encountered {
+                // There was a gate between measurements
+                return Err(DebugSimulatorError::MidCircuitMeasurement);
+            }
+        }
 
         // Initial state assumed to be |000..>
         let mut init_state = vec![cart!(0.0); 1 << k];
@@ -27,51 +45,56 @@ impl SimpleSimulator for DebugSimulator {
 
         Ok(sim)
     }
+}
 
-    fn final_state(&self) -> DVector<nalgebra::Complex<f32>> {
-        let mut sim = self.clone();
-
-        while sim.current_step < sim.n_instructions() {
-            sim.step_forwards();
+impl DebuggableSimulator for DebugSimulator {
+    fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
+        if self.current_step >= self.n_instructions() {
+            return None;
         }
-        return sim.current_state;
+        let mat = Self::expand_matrix_from_instruction(
+            &self.circuit.instructions()[self.current_step],
+            self.circuit.n_qubits(),
+        );
+        self.current_state = mat * self.current_state.clone();
+        self.current_step += 1;
+        Some(&self.current_state)
     }
 
-    fn run(&self) -> usize {
-        let final_state = self.final_state();
-        let probs = final_state.iter().map(|&c| c.norm_sqr());
+    fn current_instruction(&self) -> Option<(usize, &Instruction)> {
+        self.circuit
+            .instructions()
+            .get(self.current_step)
+            .map(|inst| (self.current_step, inst))
+    }
 
-        let dist = WeightedIndex::new(probs)
-            .expect("Failed to create probability distribution. Invalid or empty state vector?");
-        let mut rng = rand::rng();
+    fn current_state(&self) -> &DVector<Complex<f32>> {
+        &self.current_state
+    }
+}
 
-        dist.sample(&mut rng)
+impl DoubleEndedSimulator for DebugSimulator {
+    fn prev(&mut self) -> Option<&DVector<Complex<f32>>> {
+        if self.current_step <= 0 {
+            return None;
+        }
+
+        self.current_step -= 1;
+        let mut mat = Self::expand_matrix_from_instruction(
+            &self.circuit.instructions()[self.current_step],
+            self.circuit.n_qubits(),
+        );
+        mat = mat
+            .try_inverse()
+            .expect("Unitary matricies should be invertible.");
+        self.current_state = mat * self.current_state.clone();
+        Some(&self.current_state)
     }
 }
 
 impl DebugSimulator {
     fn n_instructions(&self) -> usize {
-        self.circuit.instructions.len()
-    }
-
-    fn current_state(&self) -> &DVector<Complex<f32>> {
-        return &self.current_state;
-    }
-
-    fn step_forwards(&mut self) -> Option<&DVector<Complex<f32>>> {
-        match &self.circuit.instructions[self.current_step] {
-            Instruction::Gate(gate) => {
-                if self.current_step >= self.n_instructions() {
-                    return None;
-                }
-                let mat = Self::expand_matrix_from_gate(&gate, self.circuit.n_qubits);
-                self.current_state = mat * self.current_state.clone();
-                self.current_step += 1;
-                return Some(&self.current_state);
-            }
-
-            Instruction::Measurement(qbits) => todo!(),
-        }
+        self.circuit.instructions().len()
     }
 
     fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<f32>> {
@@ -88,7 +111,7 @@ impl DebugSimulator {
     }
 
     fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f32>>>) -> DMatrix<Complex<f32>> {
-        tensor_factors.iter().fold(
+        tensor_factors.iter().rev().fold(
             DMatrix::<Complex<f32>>::identity(1, 1),
             |product, factor| product.kronecker(factor),
         )
@@ -133,22 +156,22 @@ impl DebugSimulator {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum SimpleError {
+pub enum DebugSimulatorError {
     #[error("Measurement mid-circuit")]
     MidCircuitMeasurement,
-    #[error("Stepped forwards out of bounds")]
-    DebugStepForwardsOutOfBounds,
-    #[error("Stepped backwards out of bounds")]
-    DebugStepBackwardsOutOfBounds,
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        Circuit, DebugSimulator, Gate, GateType, Instruction, SimpleSimulator, cart,
-        get_gate_matrix,
+        cart,
+        circuit::Circuit,
+        debug_simulator::DebugSimulator,
+        instruction::Instruction,
+        simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
     };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
+    use rand::distr::{Distribution, weighted::WeightedIndex};
     use std::f32::consts::FRAC_1_SQRT_2;
 
     fn is_matrix_equal_to(m1: DMatrix<Complex<f32>>, m2: DMatrix<Complex<f32>>) -> bool {
@@ -180,8 +203,14 @@ mod tests {
     fn bell_state_test() {
         let circ = Circuit::new(2).hadamard(0).cnot(0, 1);
 
-        let sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
-        let collapsed = sim.run();
+        let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
+        let probs = sim.continue_until(None).iter().map(|&c| c.norm_sqr());
+
+        let dist = WeightedIndex::new(probs)
+            .expect("Failed to create probability distribution. Invalid or empty state vector?");
+        let mut rng = rand::rng();
+
+        let collapsed = dist.sample(&mut rng);
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
         assert!(collapsed == 0b00 || collapsed == 0b11);
     }
@@ -189,10 +218,10 @@ mod tests {
     fn textbook_cnot() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let textbook_cnot: DMatrix::<Complex<f32>> = dmatrix![
-            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
-            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
+            cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
+            cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
+            cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
         ];
         textbook_cnot
     }
@@ -207,14 +236,14 @@ mod tests {
     fn textbook_toffoli() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let textbook_toffoli: DMatrix::<Complex<f32>> = dmatrix![
-            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
+            cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
         ];
         textbook_toffoli
     }
@@ -230,14 +259,14 @@ mod tests {
     fn cnot_01() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let cnot_01: DMatrix::<Complex<f32>> = dmatrix![
-            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
+            cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
         ];
         cnot_01
     }
@@ -252,14 +281,14 @@ mod tests {
     fn cnot_02() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let cnot_02: DMatrix::<Complex<f32>> = dmatrix![
-            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
+            cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
         ];
         cnot_02
     }
@@ -274,14 +303,14 @@ mod tests {
     fn cnot_12() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let cnot_12: DMatrix::<Complex<f32>> = dmatrix![
-            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
+            cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
         ];
         cnot_12
     }
@@ -296,14 +325,14 @@ mod tests {
     fn h_0() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
         let h_0: DMatrix::<Complex<f32>> = dmatrix![
-            cart!(FRAC_1_SQRT_2),cart!(0.0),cart!(0.0),cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0);
-            cart!(0.0),cart!(FRAC_1_SQRT_2),cart!(0.0),cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(FRAC_1_SQRT_2),cart!(0.0), cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2);
-            cart!(FRAC_1_SQRT_2),cart!(0.0),cart!(0.0),cart!(0.0),-cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0);
-            cart!(0.0),cart!(FRAC_1_SQRT_2),cart!(0.0),cart!(0.0), cart!(0.0),-cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(FRAC_1_SQRT_2),cart!(0.0), cart!(0.0), cart!(0.0),-cart!(FRAC_1_SQRT_2), cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0),-cart!(FRAC_1_SQRT_2);
+            cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(FRAC_1_SQRT_2), -cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), -cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), -cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), -cart!(FRAC_1_SQRT_2);
         ];
         h_0
     }
@@ -317,14 +346,14 @@ mod tests {
 
     fn cnot_201() -> DMatrix<Complex<f32>> {
         let cnot_201: DMatrix<Complex<f32>> = dmatrix![
-            cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0);
-            cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0),cart!(0.0);
-            cart!(0.0),cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
         ];
         cnot_201
     }
@@ -352,10 +381,10 @@ mod tests {
         ];
         let psi1: DVector<Complex<f32>> = dvector![
             cart!(FRAC_1_SQRT_2), //|000>
+            cart!(FRAC_1_SQRT_2), //|001>
             cart!(0.0),
             cart!(0.0),
             cart!(0.0),
-            cart!(FRAC_1_SQRT_2), //|100>
             cart!(0.0),
             cart!(0.0),
             cart!(0.0)
@@ -364,10 +393,10 @@ mod tests {
             cart!(FRAC_1_SQRT_2), // |000>
             cart!(0.0),
             cart!(0.0),
+            cart!(FRAC_1_SQRT_2), // |011>
             cart!(0.0),
             cart!(0.0),
             cart!(0.0),
-            cart!(FRAC_1_SQRT_2), // |110>
             cart!(0.0)
         ];
         let psi3: DVector<Complex<f32>> = dvector![
@@ -382,17 +411,30 @@ mod tests {
         ];
         let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
         assert_is_vector_equal!(psi0.clone(), sim.current_state().clone());
-        sim.step_forwards().expect("Apply Hadamard.");
+        sim.next().expect("Apply Hadamard.");
         assert_is_vector_equal!(psi1.clone(), sim.current_state().clone());
-        sim.step_forwards().expect("Apply first CNOT.");
+        sim.next().expect("Apply first CNOT.");
         assert_is_vector_equal!(psi2.clone(), sim.current_state().clone());
-        sim.step_forwards().expect("Apply second CNOT.");
+        sim.next().expect("Apply second CNOT.");
         assert_is_vector_equal!(psi3.clone(), sim.current_state().clone());
 
-        let res = sim.step_forwards();
+        let res = sim.next();
         match res {
             Some(_) => panic!("Does not err correctly when stepping forwards."),
             None => println!("Errs correctly when stepping forwards"),
+        }
+
+        sim.prev().expect("Revert second CNOT");
+        assert_is_vector_equal!(psi2.clone(), sim.current_state().clone());
+        sim.prev().expect("Revert first CNOT");
+        assert_is_vector_equal!(psi1.clone(), sim.current_state().clone());
+        sim.prev().expect("Revert Hadamard");
+        assert_is_vector_equal!(psi0.clone(), sim.current_state().clone());
+
+        let res = sim.prev();
+        match res {
+            Some(_) => panic!("Does not err correctly when stepping forwards."),
+            None => println!("Errs correctly when stepping backwards"),
         }
     }
 }

@@ -1,7 +1,11 @@
 use std::f32::consts::FRAC_1_SQRT_2;
 
 use nalgebra::{Complex, Const, DVector, Dyn, SVector};
-use quasim::{AT_00, AT_11, Gate2x2, ID, SQsystem, ST, STATE_0, TP, TPV, cart, equal_to_matrix_c};
+use quasim::{
+    cart,
+    ext::equal_to_matrix_c,
+    gate_dsl::{AT_00, AT_11, Gate2x2, ID, SQsystem, ST, STATE_0, TP, TPV},
+};
 
 extern crate quasim;
 fn main() {
