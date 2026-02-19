@@ -1,5 +1,5 @@
-use nalgebra::{Complex, DMatrix, dmatrix};
-use std::{f32::consts::{FRAC_1_SQRT_2, PI}, vec};
+use nalgebra::{Complex, DMatrix};
+use std::{f32::consts::{FRAC_1_SQRT_2}, vec};
 use crate::cart;
 
 #[derive(Debug, Clone)]
