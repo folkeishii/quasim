@@ -48,6 +48,7 @@ impl Circuit {
             syntax_errors
         );
         let instructions = Self::instructions_from_syntax_tree(parse_tree.syntax())?;
+        println!("Parsed instructions: {:?}", instructions);
         return Ok(Circuit {
             instructions,
             n_qubits: 5,
@@ -62,24 +63,23 @@ impl Circuit {
         let mut instructions = Vec::<Instruction>::default();
         for child in node.children() {
             match child.kind() {
-                VERSION_STRING => (),
                 EXPR_STMT => {
-                    //println!("Expression statement: {:?}", child);
-                    recurse(&child)?;
+                    // Expression statements can contain gate calls!
+                    instructions.append(&mut recurse(&child)?);
                 }
                 GATE_CALL_EXPR => {
                     instructions.push(Self::parse_gate_call_expr(&child)?);
                 }
                 LITERAL => {
+                    // A literal has no children
                     println!("Literal, literally: {:?}", child.text());
-                    recurse(&child)?;
                 }
                 _ => {
+                    // Ignore everything else at top level for now... Huge TODO
                     // println!("Unknown instruction: {:?}", child),
                 }
             }
         }
-        println!(""); // Just a blank line to separate groups
         return Ok(instructions);
     }
 
@@ -96,23 +96,33 @@ impl Circuit {
                 IDENTIFIER => gate_name = Some(child.text()),
                 QUBIT_LIST => {
                     qubit_indexes = Self::indexes_in_qubit_list(&child)?;
-                    println!("Qubit list found, indexes: {:?}", qubit_indexes);
                 }
                 _ => (),
             }
         }
 
         if let Some(name) = gate_name {
-            println!("Gate call name: '{}'", name);
-
             if qubit_indexes.len() == 0 {
                 return Err("Failed to find any qubits in gate call".into());
+            }
+
+            // TODO: Is there a more "automatic" way to do this?
+            match name.to_string().as_str() {
+                "x" => return Ok(Instruction::X(qubit_indexes[0])),
+                "y" => return Ok(Instruction::Y(qubit_indexes[0])),
+                "z" => return Ok(Instruction::Z(qubit_indexes[0])),
+                "h" => return Ok(Instruction::H(qubit_indexes[0])),
+                "cx" => {
+                    if qubit_indexes.len() != 2 {
+                        return Err("CNOT gate call must have 2 qubits".into());
+                    }
+                    return Ok(Instruction::CNOT(qubit_indexes[0], qubit_indexes[1]));
+                }
+                _ => return Err(format!("Unknown gate name: '{}'", name).into()),
             }
         } else {
             return Err("Failed to find gate name".into());
         }
-
-        Ok(Instruction::X(0)) // dummy for testing, DO NOT MERGE
     }
 
     fn find_first_identifier(node: &SyntaxNode) -> Option<SyntaxText> {
