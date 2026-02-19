@@ -1,30 +1,37 @@
-use crate::{cart, circuit::Circuit, instruction::Instruction, simulator::SimpleSimulator};
+use crate::{
+    cart,
+    circuit::Circuit,
+    instruction::Instruction,
+    simulator::{BuildSimulator, RunnableSimulator},
+};
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::{distr::weighted::WeightedIndex, prelude::*};
 
-pub struct SimpleSimpleSimulator {
+pub struct SimpleSimulator {
     state_vector: Vec<Complex<f32>>,
 }
 
-impl SimpleSimulator for SimpleSimpleSimulator {
+impl BuildSimulator for SimpleSimulator {
     type E = SimpleError;
 
     fn build(circuit: Circuit) -> Result<Self, Self::E> {
-        let k = circuit.n_qubits;
+        let k = circuit.n_qubits();
         let mut init_state_vector = vec![cart!(0.0); 1 << k];
         init_state_vector[0] = cart!(1.0);
 
-        let mut sim = SimpleSimpleSimulator {
+        let mut sim = SimpleSimulator {
             state_vector: init_state_vector,
         };
 
-        for inst in circuit.instructions {
+        for inst in circuit.instructions() {
             sim.apply_instruction(inst);
         }
 
         Ok(sim)
     }
+}
 
+impl RunnableSimulator for SimpleSimulator {
     fn run(&self) -> usize {
         let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
 
@@ -40,7 +47,7 @@ impl SimpleSimulator for SimpleSimpleSimulator {
     }
 }
 
-impl SimpleSimpleSimulator {
+impl SimpleSimulator {
     fn controls_active(i: usize, controls: &[usize]) -> bool {
         controls.iter().all(|&c| ((i >> c) & 1) == 1)
     }
@@ -70,15 +77,15 @@ impl SimpleSimpleSimulator {
     fn apply_gate(&mut self, controls: &[usize], targets: &[usize], u: DMatrix<Complex<f32>>) {
         // State vector is length 2^n , n=num qubits
         for i in 0..self.state_vector.len() {
-            if !SimpleSimpleSimulator::is_block_base(i, targets) {
+            if !SimpleSimulator::is_block_base(i, targets) {
                 continue;
             }
 
-            if !SimpleSimpleSimulator::controls_active(i, controls) {
+            if !SimpleSimulator::controls_active(i, controls) {
                 continue;
             }
 
-            let indices = SimpleSimpleSimulator::block_indices(i, targets);
+            let indices = SimpleSimulator::block_indices(i, targets);
 
             // Read amplitudes
             let v = DVector::from_iterator(
@@ -96,7 +103,7 @@ impl SimpleSimpleSimulator {
         }
     }
 
-    fn apply_instruction(&mut self, inst: Instruction) {
+    fn apply_instruction(&mut self, inst: &Instruction) {
         self.apply_gate(&inst.get_controls(), &inst.get_targets(), inst.get_matrix());
     }
 }
@@ -110,47 +117,43 @@ pub enum SimpleError {
 #[cfg(test)]
 mod tests {
     use crate::{
-        circuit::Circuit, instruction::Instruction, simple_simulator::SimpleSimpleSimulator,
-        simulator::SimpleSimulator,
+        circuit::Circuit,
+        instruction::Instruction,
+        simple_simulator::SimpleSimulator,
+        simulator::{BuildSimulator, RunnableSimulator},
     };
 
     #[test]
     fn state_vector_print() {
-        let circ = Circuit {
-            instructions: vec![
+        let circ = Circuit::from_instructions(
+            3,
+            vec![
                 Instruction::H(0),
                 Instruction::CNOT(0, 2),
                 Instruction::X(0),
                 Instruction::H(0),
                 Instruction::Y(1),
             ],
-            n_qubits: 3,
-        };
+        );
 
-        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        let sim = SimpleSimulator::build(circ).unwrap();
         println!("{}", sim.final_state());
         println!("{:03b}", sim.run());
     }
 
     #[test]
     fn bell_state_test() {
-        let circ = Circuit {
-            instructions: vec![Instruction::H(0), Instruction::CNOT(0, 1)],
-            n_qubits: 2,
-        };
+        let circ = Circuit::from_instructions(2, vec![Instruction::H(0), Instruction::CNOT(0, 1)]);
 
-        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        let sim = SimpleSimulator::build(circ).unwrap();
         println!("{:02b}", sim.run());
     }
 
     #[test]
     fn swap_gate_test() {
-        let circ = Circuit {
-            instructions: vec![Instruction::X(1), Instruction::SWAP(0, 1)],
-            n_qubits: 2,
-        };
+        let circ = Circuit::from_instructions(2, vec![Instruction::X(1), Instruction::SWAP(0, 1)]);
 
-        let sim = SimpleSimpleSimulator::build(circ).unwrap();
+        let sim = SimpleSimulator::build(circ).unwrap();
         println!("{}", sim.final_state());
         println!("{:02b}", sim.run());
     }
