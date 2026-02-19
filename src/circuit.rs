@@ -61,11 +61,28 @@ impl Circuit {
             syntax_errors
         );
         let instructions = Self::instructions_from_syntax_tree(parse_tree.syntax())?;
-        println!("Parsed instructions: {:?}", instructions);
+        let n_qubits = Self::number_of_qubits(&instructions);
         return Ok(Circuit {
             instructions,
-            n_qubits: 5,
-        }); // dummy n_qubits for testing, DO NOT MERGE
+            n_qubits,
+        });
+    }
+
+    fn number_of_qubits(instructions: &Vec<Instruction>) -> usize {
+        let mut greatest_found: usize = 0;
+        for instruction in instructions {
+            for index in instruction.get_controls() {
+                if index > greatest_found {
+                    greatest_found = index;
+                }
+            }
+            for index in instruction.get_targets() {
+                if index > greatest_found {
+                    greatest_found = index;
+                }
+            }
+        }
+        return greatest_found + 1; // +1 because qubits are 0-indexed
     }
 
     fn instructions_from_syntax_tree(
