@@ -107,6 +107,8 @@ impl DebugSimulator {
         self.circuit.instructions().len()
     }
 
+    /// # measure
+    /// Returns a probable state vector after measurement.
     fn measure(
         target: usize,
         state: &DVector<Complex<f32>>,
@@ -148,6 +150,8 @@ impl DebugSimulator {
         proj_times_ket_state / normalization
     }
 
+    /// # expand_matrix_from_gate
+    /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
     fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<f32>> {
         DebugSimulator::expand_matrix(
             get_gate_matrix(gate),
@@ -157,10 +161,14 @@ impl DebugSimulator {
         )
     }
 
+    /// # identity_tensor_factors
+    /// A `Vec` of `n_factor` number of 2 by 2 identity matricies.
     fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f32>>> {
         vec![DMatrix::<Complex<f32>>::identity(2, 2); n_factors]
     }
 
+    /// # eval_tensor_product
+    /// Evaluates the tensor product of a `Vec` of matricies.
     fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f32>>>) -> DMatrix<Complex<f32>> {
         tensor_factors.iter().rev().fold(
             DMatrix::<Complex<f32>>::identity(1, 1),
@@ -168,10 +176,11 @@ impl DebugSimulator {
         )
     }
 
-    //TODO: Allow for neg_controls.
+    /// # expand_matrix
+    /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
     fn expand_matrix(
         matrix_2x2: DMatrix<Complex<f32>>,
-        controls: &[usize],
+        controls: &[usize], //TODO: Allow for neg_controls.
         targets: &[usize],
         n_qubits: usize,
     ) -> DMatrix<Complex<f32>> {
@@ -182,9 +191,9 @@ impl DebugSimulator {
         let n_controls = controls.len();
 
         // Create one term for each entry as in a 'classical truth-table'.
-        // ex: |0><0| * |0><0| * I +   
-        //   + |0><0| * |1><1| * I + 
-        //   + |1><1| * |0><0| * I + 
+        // ex: |0><0| * |0><0| * I +
+        //   + |0><0| * |1><1| * I +
+        //   + |1><1| * |0><0| * I +
         //   + |1><1| * |1><1| * U
         let n_terms = 1 << n_controls;
         let mut terms = vec![DebugSimulator::identity_tensor_factors(n_qubits); n_terms];
