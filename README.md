@@ -1,2 +1,2 @@
-# Kandidatarbete
-Kandidatarbete kvantdator
+# Quasim - Quantum Computer Simulator
+The purpose of the project is to develop a program in which a quantum computer can be simulated, with a goal to explore different strategies for optimizing the program in order to maximize the performance of the simulator. A user should be able to describe a quantum algorithm in some way and then the simulation will provide the output state and measurements during and after running the algorithm. However, the main purpose of the simulation program should be to make learning about the internals of a quantum computer and quantum algorithms more accessible to students and researchers.
