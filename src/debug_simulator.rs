@@ -116,7 +116,7 @@ impl DebugSimulator {
         let prob_target_eq_zero = state
             .iter()
             .enumerate()
-            .filter(|&(idx, _)| (1 << target) & idx == 0) // Using 'little endian' convetion
+            .filter(|&(idx, _)| (1 << target) & idx == 0) // Using |..q_1q_0> convetion
             .map(|(_, c)| c.norm_sqr())
             .sum::<f32>();
 
