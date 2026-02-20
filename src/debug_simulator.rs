@@ -95,7 +95,8 @@ impl DoubleEndedSimulator for DebugSimulator {
                 mat.try_inverse_mut();
                 self.current_state = mat * self.current_state.clone();
             }
-            Instruction::Measurement(_) => todo!(),
+            Instruction::Measurement(_) => todo!(), //Not possible without saving states before
+                                                    //measurements.
         }
         Some(&self.current_state)
     }
@@ -115,7 +116,7 @@ impl DebugSimulator {
         let prob_target_eq_zero = state
             .iter()
             .enumerate()
-            .filter(|&(idx, _)| (1 << target) & idx == 0)
+            .filter(|&(idx, _)| (1 << target) & idx == 0) // Using 'little endian' convetion
             .map(|(_, c)| c.norm_sqr())
             .sum::<f32>();
 
@@ -123,10 +124,11 @@ impl DebugSimulator {
         let random_value = rng.random_range(0.0..1.0);
         let mut result = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
         if random_value < prob_target_eq_zero {
+            // 0 was chosen as collapsed state.
             result = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
         }
 
-        // Calculate projection operator, M_m
+        // Calculate projection operator, M
         let mut projection_operator_prod = DebugSimulator::identity_tensor_factors(n_qubits);
         projection_operator_prod[target] = result;
         let projection_operator = DebugSimulator::eval_tensor_product(projection_operator_prod);
@@ -134,16 +136,14 @@ impl DebugSimulator {
         /*
          * Use formula for next state,
          *
-         * \ket{\psi_1} =
-         * \frac
-         * {M_m\ket{\psi_0}}
-         * {\sqrt{\bra{\psi_0}M_mM_m^\dagger\ket{\psi_0}}}
-         *
+         *                 M|s>
+         *  |s'>  ==   ___________
+         *              _________
+         *             √ <s|M|s>
          * */
-        let bra_state = state.adjoint(); // <\psi|
-        let proj_times_ket_state = projection_operator * state; //M_m|\psi>
-        // No need to find adjoint of proj_times_ket_state as it is hermitian
-        let normalization = (bra_state * proj_times_ket_state.clone())[(0, 0)].sqrt(); // sqrt(<\psi|M_m|\psi>), Will be 1x1-matrix
+        let bra_state = state.adjoint(); // <s|
+        let proj_times_ket_state = projection_operator * state; // M|s>
+        let normalization = (bra_state * proj_times_ket_state.clone())[(0, 0)].sqrt(); // √ <s|M|s>
 
         proj_times_ket_state / normalization
     }
@@ -181,7 +181,11 @@ impl DebugSimulator {
         ];
         let n_controls = controls.len();
 
-        // one term for each entry in a 'classical truth-table'
+        // Create one term for each entry as in a 'classical truth-table'.
+        // ex: |0><0| * |0><0| * I +   
+        //   + |0><0| * |1><1| * I + 
+        //   + |1><1| * |0><0| * I + 
+        //   + |1><1| * |1><1| * U
         let n_terms = 1 << n_controls;
         let mut terms = vec![DebugSimulator::identity_tensor_factors(n_qubits); n_terms];
         for i in 0..n_terms {
@@ -192,11 +196,12 @@ impl DebugSimulator {
             }
         }
 
-        // Several controls -> all controls == 1 for gates to be applied.
+        // For several controls, all controls must equal 1 for gates to be applied.
         for &target in targets {
             terms[n_terms - 1][target] = matrix_2x2.clone();
         }
 
+        // Evaluate sum of tensor products.
         let dim = 1 << n_qubits;
         terms
             .iter()
