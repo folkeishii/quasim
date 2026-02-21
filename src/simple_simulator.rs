@@ -2,10 +2,10 @@ use nalgebra::{Complex, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::{
-    circuit::{self, Circuit},
+    circuit::{Circuit},
     instruction::Instruction,
     simulator::{BuildSimulator, RunnableSimulator},
-    sv_simulator::{SVExecutor, SVSimulator},
+    sv_simulator::{SVSimulator},
 };
 
 struct SimpleSimulator {
