@@ -178,7 +178,7 @@ impl DebugSimulator {
 
     /// # expand_matrix
     /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
-    fn expand_matrix(
+    pub fn expand_matrix(
         matrix_2x2: DMatrix<Complex<f32>>,
         controls: &[usize], //TODO: Allow for neg_controls.
         targets: &[usize],
@@ -188,35 +188,32 @@ impl DebugSimulator {
             dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)], // |0><0|
             dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)], // |1><1|
         ];
-        let n_controls = controls.len();
 
         // Create one term for each entry as in a 'classical truth-table'.
         // ex: |0><0| * |0><0| * I +
         //   + |0><0| * |1><1| * I +
         //   + |1><1| * |0><0| * I +
         //   + |1><1| * |1><1| * U
-        let n_terms = 1 << n_controls;
-        let mut terms = vec![DebugSimulator::identity_tensor_factors(n_qubits); n_terms];
+        let n_terms = 1 << controls.len();
+        let dim = 1 << n_qubits;
+        let mut sum = DMatrix::<Complex<f32>>::zeros(dim, dim);
+
         for i in 0..n_terms {
+            let mut term = Self::identity_tensor_factors(n_qubits);
             let mut j: usize = 0;
             for &control in controls {
-                terms[i][control] = ketbra[(i >> j) & 1].clone();
+                term[control] = ketbra[(i >> j) & 1].clone();
                 j += 1;
             }
+            if i == n_terms - 1 {
+                // Last term, all controls == 1.
+                for &target in targets {
+                    term[target] = matrix_2x2.clone();
+                }
+            }
+            sum += Self::eval_tensor_product(term);
         }
-
-        // For several controls, all controls must equal 1 for gates to be applied.
-        for &target in targets {
-            terms[n_terms - 1][target] = matrix_2x2.clone();
-        }
-
-        // Evaluate sum of tensor products.
-        let dim = 1 << n_qubits;
-        terms
-            .iter()
-            .fold(DMatrix::<Complex<f32>>::zeros(dim, dim), |sum, term| {
-                sum + DebugSimulator::eval_tensor_product(term.clone())
-            })
+        sum
     }
 }
 
