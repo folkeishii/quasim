@@ -3,6 +3,7 @@
 pub mod circuit;
 pub mod debug_simulator;
 pub mod debug_terminal;
+pub mod expr_dsl;
 pub mod ext;
 pub mod gate;
 pub mod gate_dsl;

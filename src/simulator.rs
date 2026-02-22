@@ -1,4 +1,4 @@
-use crate::{circuit::Circuit, instruction::Instruction};
+use crate::{circuit::Circuit, expr_dsl::{BoolExpr, ValueExpr}, instruction::Instruction};
 use nalgebra::{Complex, DVector};
 
 /// # BuildSimulator
@@ -83,5 +83,44 @@ mod tests {
             sim2.continue_until(None),
             0.001
         ))
+    }
+}
+
+/// # HybridSimulator
+/// Any simulator that contains classical registers and can
+/// evaluate expressions from the contents of its registers
+pub trait HybridSimulator {
+    fn allocate(&mut self, reg_count: usize);
+    fn get(&self, idx: usize) -> i32;
+
+    fn eval(&self, expr: &ValueExpr) -> i32 {
+        match expr {
+            ValueExpr::Val(i) => *i,
+            ValueExpr::Reg(r) => self.get(*r),
+
+            ValueExpr::Not(e) => !self.eval(e),
+            ValueExpr::And(e1, e2) => self.eval(e1) & self.eval(e2),
+            ValueExpr::Or(e1, e2) => self.eval(e1) | self.eval(e2),
+            ValueExpr::Xor(e1, e2) => self.eval(e1) ^ self.eval(e2),
+
+            ValueExpr::Add(e1, e2) => self.eval(e1) + self.eval(e2),
+            ValueExpr::Sub(e1, e2) => self.eval(e1) - self.eval(e2),
+            ValueExpr::Mul(e1, e2) => self.eval(e1) * self.eval(e2),
+        }
+    }
+
+    fn eval_bool(&self, expr: &BoolExpr) -> bool {
+        match expr {
+            BoolExpr::True => true,
+            BoolExpr::False => false,
+
+            BoolExpr::NonZero(e) => self.eval(e) != 0,
+            BoolExpr::Eq(e1, e2) => self.eval(e1) == self.eval(e2),
+            BoolExpr::Lt(e1, e2) => self.eval(e1) < self.eval(e2),
+
+            BoolExpr::Not(e) => !self.eval_bool(e),
+            BoolExpr::And(e1, e2) => self.eval_bool(e1) && self.eval_bool(e2),
+            BoolExpr::Or(e1, e2) => self.eval_bool(e1) || self.eval_bool(e2),
+        }
     }
 }
