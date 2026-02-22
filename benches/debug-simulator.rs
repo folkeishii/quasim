@@ -8,7 +8,6 @@ fn main() {
 }
 
 #[divan::bench(
-    name = "debug-simulator",
     args = [2,3,4,5,6,7,8,9,10,11,12,13,14,15],
     sample_count = 1,
     sample_size = 1,
