@@ -95,77 +95,24 @@ mod tests {
 /// evaluate expressions from the contents of its registers
 pub trait HybridSimulator {
     // fn allocate(&mut self, reg_count: usize);
-    fn get(&self, idx: usize) -> Value;
+    fn get(&self, reg: usize) -> Value;
 
     fn eval(&self, expr: &Expr) -> Value {
         match expr {
-            Expr::Val(v) => v.clone(),
+            Expr::Val(v) => *v,
+            Expr::Reg(i) => self.get(*i),
 
-            Expr::Reg(idx) => self.get(*idx),
+            Expr::Not(e) => self.eval(e).not(),
+            Expr::And(a, b) => self.eval(a).and(self.eval(b)),
+            Expr::Or(a, b) => self.eval(a).or(self.eval(b)),
+            Expr::Xor(a, b) => self.eval(a).xor(self.eval(b)),
 
-            Expr::Not(e) => match self.eval(e) {
-                Value::Int(x) => Value::Int(!x),
-                Value::Bool(x) => Value::Bool(!x),
-                _ => Value::Err,
-            },
+            Expr::Add(a, b) => self.eval(a).add(self.eval(b)),
+            Expr::Sub(a, b) => self.eval(a).sub(self.eval(b)),
+            Expr::Mul(a, b) => self.eval(a).mul(self.eval(b)),
 
-            Expr::And(a, b) => match (self.eval(a), self.eval(b)) {
-                (Value::Int(x), Value::Int(y)) => Value::Int(x & y),
-                (Value::Bool(x), Value::Bool(y)) => Value::Bool(x && y),
-                (Value::Int(x), Value::Bool(y)) => Value::Bool((x != 0) && y),
-                (Value::Bool(x), Value::Int(y)) => Value::Bool(x && (y != 0)),
-                _ => Value::Err,
-            },
-
-            Expr::Or(a, b) => match (self.eval(a), self.eval(b)) {
-                (Value::Int(x), Value::Int(y)) => Value::Int(x | y),
-                (Value::Bool(x), Value::Bool(y)) => Value::Bool(x || y),
-                (Value::Int(x), Value::Bool(y)) => Value::Bool((x != 0) || y),
-                (Value::Bool(x), Value::Int(y)) => Value::Bool(x || (y != 0)),
-                _ => Value::Err,
-            },
-
-            Expr::Xor(a, b) => match (self.eval(a), self.eval(b)) {
-                (Value::Int(x), Value::Int(y)) => Value::Int(x ^ y),
-                (Value::Bool(x), Value::Bool(y)) => Value::Bool(x ^ y),
-                (Value::Int(x), Value::Bool(y)) => Value::Bool((x != 0) ^ y),
-                (Value::Bool(x), Value::Int(y)) => Value::Bool(x ^ (y != 0)),
-                _ => Value::Err,
-            },
-
-            Expr::Add(a, b) => match (self.eval(a), self.eval(b)) {
-                (Value::Int(x), Value::Int(y)) => Value::Int(x + y),
-                (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
-                (Value::Int(x), Value::Float(y)) => Value::Float(x as f32 + y),
-                (Value::Float(x), Value::Int(y)) => Value::Float(x + y as f32),
-                _ => Value::Err,
-            },
-
-            Expr::Sub(a, b) => match (self.eval(a), self.eval(b)) {
-                (Value::Int(x), Value::Int(y)) => Value::Int(x - y),
-                (Value::Float(x), Value::Float(y)) => Value::Float(x - y),
-                (Value::Int(x), Value::Float(y)) => Value::Float(x as f32 - y),
-                (Value::Float(x), Value::Int(y)) => Value::Float(x - y as f32),
-                _ => Value::Err,
-            },
-
-            Expr::Mul(a, b) => match (self.eval(a), self.eval(b)) {
-                (Value::Int(x), Value::Int(y)) => Value::Int(x * y),
-                (Value::Float(x), Value::Float(y)) => Value::Float(x * y),
-                (Value::Int(x), Value::Float(y)) => Value::Float(x as f32 * y),
-                (Value::Float(x), Value::Int(y)) => Value::Float(x * y as f32),
-                _ => Value::Err,
-            },
-
-            Expr::Eq(a, b) => Value::Bool(self.eval(a) == self.eval(b)),
-
-            Expr::Lt(a, b) => match (self.eval(a), self.eval(b)) {
-                (Value::Int(x), Value::Int(y)) => Value::Bool(x < y),
-                (Value::Float(x), Value::Float(y)) => Value::Bool(x < y),
-                (Value::Int(x), Value::Float(y)) => Value::Bool((x as f32) < y),
-                (Value::Float(x), Value::Int(y)) => Value::Bool(x < (y as f32)),
-                _ => Value::Err,
-            },
+            Expr::Eq(a, b) => self.eval(a).eq(self.eval(b)),
+            Expr::Lt(a, b) => self.eval(a).lt(self.eval(b)),
         }
     }
 }

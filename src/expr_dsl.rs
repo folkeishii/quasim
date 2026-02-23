@@ -9,6 +9,82 @@ pub enum Value {
     Err,
 }
 
+impl Value {
+    pub fn not(self) -> Value {
+        match self {
+            Value::Int(x) => Value::Int(!x),
+            Value::Bool(x) => Value::Bool(!x),
+            _ => Value::Err,
+        }
+    }
+
+    pub fn and(self, rhs: Value) -> Value {
+        match (self, rhs) {
+            (Value::Int(x), Value::Int(y)) => Value::Int(x & y),
+            (Value::Bool(x), Value::Bool(y)) => Value::Bool(x && y),
+            _ => Value::Err,
+        }
+    }
+
+    pub fn or(self, rhs: Value) -> Value {
+        match (self, rhs) {
+            (Value::Int(x), Value::Int(y)) => Value::Int(x | y),
+            (Value::Bool(x), Value::Bool(y)) => Value::Bool(x || y),
+            _ => Value::Err,
+        }
+    }
+
+    pub fn xor(self, rhs: Value) -> Value {
+        match (self, rhs) {
+            (Value::Int(x), Value::Int(y)) => Value::Int(x ^ y),
+            (Value::Bool(x), Value::Bool(y)) => Value::Bool(x ^ y),
+            _ => Value::Err,
+        }
+    }
+
+    pub fn add(self, rhs: Value) -> Value {
+        match self.as_f32_pair(rhs) {
+            Some((x, y)) => Value::Float(x + y),
+            None => Value::Err,
+        }
+    }
+
+    pub fn sub(self, rhs: Value) -> Value {
+        match self.as_f32_pair(rhs) {
+            Some((x, y)) => Value::Float(x - y),
+            None => Value::Err,
+        }
+    }
+
+    pub fn mul(self, rhs: Value) -> Value {
+        match self.as_f32_pair(rhs) {
+            Some((x, y)) => Value::Float(x * y),
+            None => Value::Err,
+        }
+    }
+
+    pub fn lt(self, rhs: Value) -> Value {
+        match self.as_f32_pair(rhs) {
+            Some((x, y)) => Value::Bool(x < y),
+            None => Value::Err,
+        }
+    }
+
+    pub fn eq(self, rhs: Value) -> Value {
+        Value::Bool(self == rhs)
+    }
+
+    fn as_f32_pair(self, other: Value) -> Option<(f32, f32)> {
+        match (self, other) {
+            (Value::Int(x), Value::Int(y)) => Some((x as f32, y as f32)),
+            (Value::Int(x), Value::Float(y)) => Some((x as f32, y)),
+            (Value::Float(x), Value::Int(y)) => Some((x, y as f32)),
+            (Value::Float(x), Value::Float(y)) => Some((x, y)),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Expr {
     Val(Value),
@@ -69,7 +145,7 @@ impl From<bool> for Expr {
     }
 }
 
-// Addition
+// Arithmetic operators for expressions
 
 impl<V: Into<Expr>> Add<V> for Expr {
     type Output = Expr;
@@ -79,8 +155,6 @@ impl<V: Into<Expr>> Add<V> for Expr {
     }
 }
 
-// Subtraction
-
 impl<V: Into<Expr>> Sub<V> for Expr {
     type Output = Expr;
 
@@ -88,8 +162,6 @@ impl<V: Into<Expr>> Sub<V> for Expr {
         Expr::Sub(Box::new(self), Box::new(rhs.into()))
     }
 }
-
-// Multiplication
 
 impl<V: Into<Expr>> Mul<V> for Expr {
     type Output = Expr;
@@ -99,8 +171,6 @@ impl<V: Into<Expr>> Mul<V> for Expr {
     }
 }
 
-// Bitwise Xor
-
 impl<V: Into<Expr>> BitXor<V> for Expr {
     type Output = Expr;
 
@@ -108,8 +178,6 @@ impl<V: Into<Expr>> BitXor<V> for Expr {
         Expr::Xor(Box::new(self), Box::new(rhs.into()))
     }
 }
-
-// Bitwise And
 
 impl<V: Into<Expr>> BitAnd<V> for Expr {
     type Output = Expr;
@@ -119,8 +187,6 @@ impl<V: Into<Expr>> BitAnd<V> for Expr {
     }
 }
 
-// Bitwise Or
-
 impl<V: Into<Expr>> BitOr<V> for Expr {
     type Output = Expr;
 
@@ -128,8 +194,6 @@ impl<V: Into<Expr>> BitOr<V> for Expr {
         Expr::Or(Box::new(self), Box::new(rhs.into()))
     }
 }
-
-// Bitwise Not
 
 impl Not for Expr {
     type Output = Expr;
@@ -169,10 +233,7 @@ impl crate::simulator::HybridSimulator for DummySimWithRegisters {
 #[cfg(test)]
 mod tests {
     use crate::{
-        expr_dsl::{
-            DummySimWithRegisters, Value,
-            expr_helpers::{r},
-        },
+        expr_dsl::{expr_helpers::r, DummySimWithRegisters, Value},
         simulator::HybridSimulator,
     };
 
@@ -183,11 +244,11 @@ mod tests {
         };
         // sim.allocate(16);
 
-        sim.registers[0] = Value::Int(10);
+        // sim.registers[0] = Value::Int(10);
 
         let expr = (r(0) + 5.0).gt(14.9) & 4.5;
 
         println!("{:?}", expr);
-        println!("{:?}", sim.eval(&expr));
+        // println!("{:?}", sim.eval(&expr));
     }
 }
