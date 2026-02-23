@@ -1,4 +1,4 @@
-use std::ops::{Add, BitAnd, BitOr, BitXor, Mul, Not, Sub};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Sub};
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Value {
@@ -54,6 +54,14 @@ impl Value {
         self.numeric_binop(rhs, |a, b| Value::Int(a * b), |x, y| Value::Float(x * y))
     }
 
+    pub fn div(self, rhs: Value) -> Value {
+        self.numeric_binop(rhs, |a, b| Value::Int(a / b), |x, y| Value::Float(x / y))
+    }
+
+    pub fn rem(self, rhs: Value) -> Value {
+        self.numeric_binop(rhs, |a, b| Value::Int(a % b), |x, y| Value::Float(x % y))
+    }
+
     pub fn lt(self, rhs: Value) -> Value {
         self.numeric_binop(rhs, |a, b| Value::Bool(a < b), |x, y| Value::Bool(x < y))
     }
@@ -90,6 +98,8 @@ pub enum Expr {
     Add(Box<Expr>, Box<Expr>),
     Sub(Box<Expr>, Box<Expr>),
     Mul(Box<Expr>, Box<Expr>),
+    Div(Box<Expr>, Box<Expr>),
+    Rem(Box<Expr>, Box<Expr>),
 
     Eq(Box<Expr>, Box<Expr>),
     Lt(Box<Expr>, Box<Expr>),
@@ -160,6 +170,22 @@ impl<V: Into<Expr>> Mul<V> for Expr {
 
     fn mul(self, rhs: V) -> Self::Output {
         Expr::Mul(Box::new(self), Box::new(rhs.into()))
+    }
+}
+
+impl<V: Into<Expr>> Div<V> for Expr {
+    type Output = Expr;
+
+    fn div(self, rhs: V) -> Self::Output {
+        Expr::Div(Box::new(self), Box::new(rhs.into()))
+    }
+}
+
+impl<V: Into<Expr>> Rem<V> for Expr {
+    type Output = Expr;
+
+    fn rem(self, rhs: V) -> Self::Output {
+        Expr::Rem(Box::new(self), Box::new(rhs.into()))
     }
 }
 
@@ -238,7 +264,7 @@ mod tests {
 
         // sim.registers[0] = Value::Int(10);
 
-        let expr = (r(0) + 5.0).gt(14.9) & 4.5;
+        let expr = (r(0) % 5.0).gt(14.9) & 4.5;
 
         println!("{:?}", expr);
         // println!("{:?}", sim.eval(&expr));

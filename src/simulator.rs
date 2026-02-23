@@ -110,6 +110,8 @@ pub trait HybridSimulator {
             Expr::Add(a, b) => self.eval(a).add(self.eval(b)),
             Expr::Sub(a, b) => self.eval(a).sub(self.eval(b)),
             Expr::Mul(a, b) => self.eval(a).mul(self.eval(b)),
+            Expr::Div(a, b) => self.eval(a).div(self.eval(b)),
+            Expr::Rem(a, b) => self.eval(a).rem(self.eval(b)),
 
             Expr::Eq(a, b) => self.eval(a).eq(self.eval(b)),
             Expr::Lt(a, b) => self.eval(a).lt(self.eval(b)),
