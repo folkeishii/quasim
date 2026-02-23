@@ -251,7 +251,7 @@ impl crate::simulator::HybridSimulator for DummySimWithRegisters {
 #[cfg(test)]
 mod tests {
     use crate::{
-        expr_dsl::{expr_helpers::r, DummySimWithRegisters, Value},
+        expr_dsl::{DummySimWithRegisters, Value, expr_helpers::r},
         simulator::HybridSimulator,
     };
 

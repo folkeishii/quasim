@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use crate::{
+    classic_fn::FnClassic,
     gate::{Gate, GateType},
     instruction::Instruction,
 };
@@ -77,6 +80,21 @@ impl Circuit {
     pub fn fredkin(mut self, control: usize, target1: usize, target2: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::SWAP, &[control], &[target1, target2]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn fn_classic<F: FnClassic<Output = ()> + 'static>(mut self, f: F) -> Self {
+        self.instructions.push(Instruction::FnClassic(
+            Arc::new(f) as Arc<dyn FnClassic<Output = ()>>
+        ));
+        self
+    }
+
+    pub fn jump_if<F: FnClassic<Output = bool> + 'static>(mut self, f: F, label: String) -> Self {
+        self.instructions.push(Instruction::JumpIf(
+            Arc::new(f) as Arc<dyn FnClassic<Output = bool>>,
+            label,
         ));
         self
     }

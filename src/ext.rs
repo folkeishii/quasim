@@ -66,6 +66,13 @@ pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f32>> {
     return DMatrix::from_row_slice(dim, dim, data);
 }
 
+pub fn call_unary<F, T, U>(f: &F, arg: T) -> U
+where
+    F: Fn(T) -> U,
+{
+    f(arg)
+}
+
 #[macro_export]
 macro_rules! cart {
     ($re:expr) => {
@@ -87,5 +94,63 @@ macro_rules! polar {
 macro_rules! cexp {
     ($exp: expr) => {
         Complex::exp($exp)
+    };
+}
+
+#[macro_export]
+macro_rules! impl_deref {
+    ($cont:ident<$generic:ident$(,$gg:ident)*>) => {
+        impl<$generic$(,$gg)*> std::ops::Deref for $cont<$generic$(,$gg)*> {
+            type Target = $generic;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+    };
+    ($cont:ident($target:ty)) => {
+        impl std::ops::Deref for $cont {
+            type Target = $target;
+
+            fn deref(&self) -> &Self::Target {
+                &self.0
+            }
+        }
+    };
+}
+#[macro_export]
+macro_rules! impl_deref_mut {
+    ($cont:ident<$generic:ident$(,$gg:ident)*>) => {
+        impl_deref!($cont<$generic$(,$gg)*>);
+        impl<$generic$(,$gg)*> std::ops::DerefMut for $cont<$generic$(,$gg)*> {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+    };
+    ($cont:ident($target:ty)) => {
+        impl_deref!($cont($target));
+        impl std::ops::DerefMut for $cont {
+            fn deref_mut(&mut self) -> &mut Self::Target {
+                &mut self.0
+            }
+        }
+    };
+}
+#[macro_export]
+macro_rules! impl_from {
+    ($cont:ident<$generic:ident$(,$gg:ident)*> $(,$other:expr)*) => {
+        impl<$generic$(,$gg)*> From<$generic> for $cont<$generic$(,$gg)*> {
+            fn from(value: $generic) -> Self {
+                Self(value$(,$other)*)
+            }
+        }
+    };
+    ($cont:ident($target:ty) $(,$other:expr)*) => {
+        impl From<$target> for $cont {
+            fn from(value: $target) -> Self {
+                Self(value $(,$other)*)
+            }
+        }
     };
 }
