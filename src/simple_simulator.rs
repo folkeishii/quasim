@@ -1,11 +1,11 @@
 use nalgebra::{Complex, DVector};
-use rand::distr::{Distribution, weighted::WeightedIndex};
+use rand::distr::{weighted::WeightedIndex, Distribution};
 
 use crate::{
-    circuit::{Circuit},
+    circuit::Circuit,
     instruction::Instruction,
     simulator::{BuildSimulator, RunnableSimulator},
-    sv_simulator::{SVSimulator},
+    sv_simulator::{SVError, SVSimulator},
 };
 
 struct SimpleSimulator {
@@ -26,22 +26,16 @@ impl TryFrom<Circuit> for SimpleSimulator {
             return Err(SimpleError::UnsupportedInstruction);
         }
 
-        match SVSimulator::build(value) {
-            Ok(sv_sim) => {
-                let state_vector = sv_sim.final_state();
+        let sv_sim = SVSimulator::build(value)?;
+        let state_vector = sv_sim.final_state();
+        let probs = state_vector.iter().map(|&c| c.norm_sqr());
+        let dist = WeightedIndex::new(probs)
+            .expect("Failed to create probability distribution. Invalid or empty state vector?");
 
-                let probs = state_vector.iter().map(|&c| c.norm_sqr());
-                let dist = WeightedIndex::new(probs).expect(
-                    "Failed to create probability distribution. Invalid or empty state vector?",
-                );
-
-                Ok(Self {
-                    state_vector: state_vector,
-                    dist: dist,
-                })
-            }
-            Err(_) => Err(SimpleError::StateVectorSimCreationFailed),
-        }
+        Ok(Self {
+            state_vector: state_vector,
+            dist: dist,
+        })
     }
 }
 
@@ -58,8 +52,8 @@ impl RunnableSimulator for SimpleSimulator {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SimpleError {
-    #[error("Failed to create a state vector simulator from circuit")]
-    StateVectorSimCreationFailed,
+    #[error("{0}")]
+    SVError(#[from] SVError),
     #[error("Unsupported instruction in circuit")]
     UnsupportedInstruction,
 }
