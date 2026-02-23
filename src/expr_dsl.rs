@@ -43,44 +43,36 @@ impl Value {
     }
 
     pub fn add(self, rhs: Value) -> Value {
-        match self.as_f32_pair(rhs) {
-            Some((x, y)) => Value::Float(x + y),
-            None => Value::Err,
-        }
+        self.numeric_binop(rhs, |a, b| Value::Int(a + b), |x, y| Value::Float(x + y))
     }
 
     pub fn sub(self, rhs: Value) -> Value {
-        match self.as_f32_pair(rhs) {
-            Some((x, y)) => Value::Float(x - y),
-            None => Value::Err,
-        }
+        self.numeric_binop(rhs, |a, b| Value::Int(a - b), |x, y| Value::Float(x - y))
     }
 
     pub fn mul(self, rhs: Value) -> Value {
-        match self.as_f32_pair(rhs) {
-            Some((x, y)) => Value::Float(x * y),
-            None => Value::Err,
-        }
+        self.numeric_binop(rhs, |a, b| Value::Int(a * b), |x, y| Value::Float(x * y))
     }
 
     pub fn lt(self, rhs: Value) -> Value {
-        match self.as_f32_pair(rhs) {
-            Some((x, y)) => Value::Bool(x < y),
-            None => Value::Err,
-        }
+        self.numeric_binop(rhs, |a, b| Value::Bool(a < b), |x, y| Value::Bool(x < y))
     }
 
     pub fn eq(self, rhs: Value) -> Value {
         Value::Bool(self == rhs)
     }
 
-    fn as_f32_pair(self, other: Value) -> Option<(f32, f32)> {
-        match (self, other) {
-            (Value::Int(x), Value::Int(y)) => Some((x as f32, y as f32)),
-            (Value::Int(x), Value::Float(y)) => Some((x as f32, y)),
-            (Value::Float(x), Value::Int(y)) => Some((x, y as f32)),
-            (Value::Float(x), Value::Float(y)) => Some((x, y)),
-            _ => None,
+    fn numeric_binop<FInt, FFloat>(self, rhs: Value, int_fn: FInt, float_fn: FFloat) -> Value
+    where
+        FInt: Fn(i32, i32) -> Value,
+        FFloat: Fn(f32, f32) -> Value,
+    {
+        match (self, rhs) {
+            (Value::Int(x), Value::Int(y)) => int_fn(x, y),
+            (Value::Float(x), Value::Float(y)) => float_fn(x, y),
+            (Value::Int(x), Value::Float(y)) => float_fn(x as f32, y),
+            (Value::Float(x), Value::Int(y)) => float_fn(x, y as f32),
+            _ => Value::Err,
         }
     }
 }
