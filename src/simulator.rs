@@ -47,6 +47,7 @@ pub trait DebuggableSimulator {
             if Some(index) == breakpoint {
                 break;
             }
+            self.next();
         }
         self.current_state()
     }
@@ -57,4 +58,30 @@ pub trait DebuggableSimulator {
 /// one gate at a time should implement this trait
 pub trait DoubleEndedSimulator: DebuggableSimulator {
     fn prev(&mut self) -> Option<&DVector<Complex<f32>>>;
+}
+
+#[cfg(test)]
+mod tests {
+
+    use crate::{
+        circuit::Circuit,
+        debug_simulator::DebugSimulator,
+        ext::equal_to_matrix_c,
+        simulator::{BuildSimulator, DebuggableSimulator},
+    };
+
+    #[test]
+    fn test_continue_until() {
+        let circ = Circuit::new(3).hadamard(0).hadamard(1).hadamard(2);
+        let mut sim1 = DebugSimulator::build(circ).unwrap();
+        let mut sim2 = sim1.clone();
+
+        sim1.next().unwrap();
+        sim1.next().unwrap();
+        assert!(equal_to_matrix_c(
+            sim1.next().unwrap(),
+            sim2.continue_until(None),
+            0.001
+        ))
+    }
 }
