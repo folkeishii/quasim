@@ -106,7 +106,7 @@ impl SimpleSimulator {
                 &gate.get_targets(),
                 get_gate_matrix(&gate),
             ),
-            Instruction::Measurement(qbits) => todo!(),
+            Instruction::Measurement(_qbits) => todo!(),
         }
     }
 }
