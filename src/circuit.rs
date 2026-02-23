@@ -1,17 +1,27 @@
-use crate::{gate::{Gate, GateType}, instruction::Instruction};
+use crate::{
+    gate::{Gate, GateType},
+    instruction::Instruction,
+};
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
     instructions: Vec<Instruction>,
     n_qubits: usize,
+    n_cregs: usize,
 }
 
 impl Circuit {
     pub fn new(n_qubits: usize) -> Self {
         Self {
             instructions: Vec::<Instruction>::default(),
-            n_qubits,
+            n_qubits: n_qubits,
+            n_cregs: 0,
         }
+    }
+
+    pub fn classical_regs(mut self, count: usize) -> Self {
+        self.n_cregs = count;
+        self
     }
 
     pub fn instructions(&self) -> &[Instruction] {

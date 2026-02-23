@@ -1,252 +1,193 @@
-use std::{ops::{Add, BitAnd, BitOr, BitXor, Mul, Not, Sub}};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Mul, Not, Sub};
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Value {
+    Int(i32),
+    Float(f32),
+    Bool(bool),
+
+    Err,
+}
 
 #[derive(Debug, Clone)]
-pub enum ValueExpr {
-    Val(i32),
+pub enum Expr {
+    Val(Value),
     Reg(usize),
 
-    Not(Box<ValueExpr>),
-    And(Box<ValueExpr>, Box<ValueExpr>),
-    Or(Box<ValueExpr>, Box<ValueExpr>),
-    Xor(Box<ValueExpr>, Box<ValueExpr>),
+    Not(Box<Expr>),
+    And(Box<Expr>, Box<Expr>),
+    Or(Box<Expr>, Box<Expr>),
+    Xor(Box<Expr>, Box<Expr>),
 
-    Add(Box<ValueExpr>, Box<ValueExpr>),
-    Sub(Box<ValueExpr>, Box<ValueExpr>),
-    Mul(Box<ValueExpr>, Box<ValueExpr>),
+    Add(Box<Expr>, Box<Expr>),
+    Sub(Box<Expr>, Box<Expr>),
+    Mul(Box<Expr>, Box<Expr>),
+
+    Eq(Box<Expr>, Box<Expr>),
+    Lt(Box<Expr>, Box<Expr>),
 }
 
-#[derive(Debug, Clone)]
-pub enum BoolExpr {
-    True,
-    False,
-
-    NonZero(ValueExpr),
-
-    Eq(ValueExpr, ValueExpr),
-    Lt(ValueExpr, ValueExpr),
-
-    Not(Box<BoolExpr>),
-    And(Box<BoolExpr>, Box<BoolExpr>),
-    Or(Box<BoolExpr>, Box<BoolExpr>),
-}
-
-impl ValueExpr {
-    pub fn eq<V: Into<ValueExpr>>(self, rhs: V) -> BoolExpr {
-        BoolExpr::Eq(self, rhs.into())
+impl Expr {
+    pub fn eq<V: Into<Expr>>(self, rhs: V) -> Expr {
+        Expr::Eq(Box::new(self), Box::new(rhs.into()))
     }
 
-    pub fn lt<V: Into<ValueExpr>>(self, rhs: V) -> BoolExpr {
-        BoolExpr::Lt(self, rhs.into())
+    pub fn lt<V: Into<Expr>>(self, rhs: V) -> Expr {
+        Expr::Lt(Box::new(self), Box::new(rhs.into()))
     }
 
-    pub fn lte<V: Into<ValueExpr>>(self, rhs: V) -> BoolExpr {
-        BoolExpr::Not(Box::new(BoolExpr::Lt(rhs.into(), self)))
+    pub fn lte<V: Into<Expr>>(self, rhs: V) -> Expr {
+        Expr::Not(Box::new(Expr::Lt(Box::new(rhs.into()), Box::new(self))))
     }
 
-    pub fn gt<V: Into<ValueExpr>>(self, rhs: V) -> BoolExpr {
-        BoolExpr::Lt(rhs.into(), self)
+    pub fn gt<V: Into<Expr>>(self, rhs: V) -> Expr {
+        Expr::Lt(Box::new(rhs.into()), Box::new(self))
     }
 
-    pub fn gte<V: Into<ValueExpr>>(self, rhs: V) -> BoolExpr {
-        BoolExpr::Not(Box::new(BoolExpr::Lt(self, rhs.into())))
+    pub fn gte<V: Into<Expr>>(self, rhs: V) -> Expr {
+        Expr::Not(Box::new(Expr::Lt(Box::new(self), Box::new(rhs.into()))))
     }
 }
 
-impl<T: Into<i32>> From<T> for ValueExpr {
-    fn from(v: T) -> Self {
-        ValueExpr::Val(v.into())
+// Into types
+
+impl From<i32> for Expr {
+    fn from(v: i32) -> Self {
+        Expr::Val(Value::Int(v))
+    }
+}
+
+impl From<f32> for Expr {
+    fn from(v: f32) -> Self {
+        Expr::Val(Value::Float(v))
+    }
+}
+
+impl From<bool> for Expr {
+    fn from(v: bool) -> Self {
+        Expr::Val(Value::Bool(v))
     }
 }
 
 // Addition
 
-impl<V: Into<ValueExpr>> Add<V> for ValueExpr {
-    type Output = ValueExpr;
+impl<V: Into<Expr>> Add<V> for Expr {
+    type Output = Expr;
 
     fn add(self, rhs: V) -> Self::Output {
-        ValueExpr::Add(Box::new(self), Box::new(rhs.into()))
-    }
-}
-
-impl Add<ValueExpr> for i32 {
-    type Output = ValueExpr;
-
-    fn add(self, rhs: ValueExpr) -> Self::Output {
-        ValueExpr::Val(self) + rhs
+        Expr::Add(Box::new(self), Box::new(rhs.into()))
     }
 }
 
 // Subtraction
 
-impl<V: Into<ValueExpr>> Sub<V> for ValueExpr {
-    type Output = ValueExpr;
+impl<V: Into<Expr>> Sub<V> for Expr {
+    type Output = Expr;
 
     fn sub(self, rhs: V) -> Self::Output {
-        ValueExpr::Sub(Box::new(self), Box::new(rhs.into()))
-    }
-}
-
-impl Sub<ValueExpr> for i32 {
-    type Output = ValueExpr;
-
-    fn sub(self, rhs: ValueExpr) -> Self::Output {
-        ValueExpr::Val(self) - rhs
+        Expr::Sub(Box::new(self), Box::new(rhs.into()))
     }
 }
 
 // Multiplication
 
-impl<V: Into<ValueExpr>> Mul<V> for ValueExpr {
-    type Output = ValueExpr;
+impl<V: Into<Expr>> Mul<V> for Expr {
+    type Output = Expr;
 
     fn mul(self, rhs: V) -> Self::Output {
-        ValueExpr::Mul(Box::new(self), Box::new(rhs.into()))
-    }
-}
-
-impl Mul<ValueExpr> for i32 {
-    type Output = ValueExpr;
-
-    fn mul(self, rhs: ValueExpr) -> Self::Output {
-        ValueExpr::Val(self) * rhs
+        Expr::Mul(Box::new(self), Box::new(rhs.into()))
     }
 }
 
 // Bitwise Xor
 
-impl<V: Into<ValueExpr>> BitXor<V> for ValueExpr {
-    type Output = ValueExpr;
+impl<V: Into<Expr>> BitXor<V> for Expr {
+    type Output = Expr;
 
     fn bitxor(self, rhs: V) -> Self::Output {
-        ValueExpr::Xor(Box::new(self), Box::new(rhs.into()))
-    }
-}
-
-impl BitXor<ValueExpr> for i32 {
-    type Output = ValueExpr;
-
-    fn bitxor(self, rhs: ValueExpr) -> Self::Output {
-        ValueExpr::Val(self) ^ rhs
+        Expr::Xor(Box::new(self), Box::new(rhs.into()))
     }
 }
 
 // Bitwise And
 
-impl<V: Into<ValueExpr>> BitAnd<V> for ValueExpr {
-    type Output = ValueExpr;
+impl<V: Into<Expr>> BitAnd<V> for Expr {
+    type Output = Expr;
 
     fn bitand(self, rhs: V) -> Self::Output {
-        ValueExpr::And(Box::new(self), Box::new(rhs.into()))
-    }
-}
-
-impl BitAnd<ValueExpr> for i32 {
-    type Output = ValueExpr;
-
-    fn bitand(self, rhs: ValueExpr) -> Self::Output {
-        ValueExpr::Val(self) & rhs
+        Expr::And(Box::new(self), Box::new(rhs.into()))
     }
 }
 
 // Bitwise Or
 
-impl<V: Into<ValueExpr>> BitOr<V> for ValueExpr {
-    type Output = ValueExpr;
+impl<V: Into<Expr>> BitOr<V> for Expr {
+    type Output = Expr;
 
     fn bitor(self, rhs: V) -> Self::Output {
-        ValueExpr::Or(Box::new(self), Box::new(rhs.into()))
-    }
-}
-
-impl BitOr<ValueExpr> for i32 {
-    type Output = ValueExpr;
-
-    fn bitor(self, rhs: ValueExpr) -> Self::Output {
-        ValueExpr::Val(self) | rhs
+        Expr::Or(Box::new(self), Box::new(rhs.into()))
     }
 }
 
 // Bitwise Not
 
-impl Not for ValueExpr {
-    type Output = ValueExpr;
+impl Not for Expr {
+    type Output = Expr;
 
     fn not(self) -> Self::Output {
-        ValueExpr::Not(Box::new(self))
-    }
-}
-
-// --- Boolean expressions ---
-
-impl Not for BoolExpr {
-    type Output = BoolExpr;
-
-    fn not(self) -> Self::Output {
-        BoolExpr::Not(Box::new(self))
-    }
-}
-
-impl BitAnd for BoolExpr {
-    type Output = BoolExpr;
-
-    fn bitand(self, rhs: BoolExpr) -> Self::Output {
-        BoolExpr::And(Box::new(self), Box::new(rhs))
-    }
-}
-
-impl BitOr for BoolExpr {
-    type Output = BoolExpr;
-
-    fn bitor(self, rhs: BoolExpr) -> Self::Output {
-        BoolExpr::Or(Box::new(self), Box::new(rhs))
+        Expr::Not(Box::new(self))
     }
 }
 
 pub mod expr_helpers {
-    use crate::expr_dsl::{BoolExpr, ValueExpr};
+    use crate::expr_dsl::Expr;
 
-    /// Read register as value
-    pub fn rv(reg: usize) -> ValueExpr {
-        ValueExpr::Reg(reg)
+    /// Read register
+    pub fn r(reg: usize) -> Expr {
+        Expr::Reg(reg)
     }
 
-    /// Read register as boolean
-    pub fn rb(reg: usize) -> BoolExpr {
-        BoolExpr::NonZero(ValueExpr::Reg(reg))
-    }
+    // pub fn rb(reg: usize) -> Expr {
+    //     !(Expr::Reg(reg).eq(0))
+    // }
 }
 
 struct DummySimWithRegisters {
-    registers: Vec<i32>,
+    registers: Vec<Value>,
 }
 
 impl crate::simulator::HybridSimulator for DummySimWithRegisters {
-    fn allocate(&mut self, classical_regs: usize) {
-        self.registers.resize(classical_regs, 0);
-    }
+    // fn allocate(&mut self, classical_regs: usize) {
+    //     self.registers.resize(classical_regs, Value::Int(0));
+    // }
 
-    fn get(&self, reg: usize) -> i32 {
+    fn get(&self, reg: usize) -> Value {
         self.registers[reg]
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{expr_dsl::{DummySimWithRegisters, expr_helpers::{rb, rv}}, simulator::HybridSimulator};
+    use crate::{
+        expr_dsl::{
+            DummySimWithRegisters, Value,
+            expr_helpers::{r},
+        },
+        simulator::HybridSimulator,
+    };
 
     #[test]
-	fn test() {
-	    let mut sim = DummySimWithRegisters { registers: Vec::new() };
-	    sim.allocate(16);
-	
-	    sim.registers[0] = 2;
+    fn test() {
+        let mut sim = DummySimWithRegisters {
+            registers: Vec::new(),
+        };
+        // sim.allocate(16);
 
-        let expr = (2 + rv(0) + 5).eq(rv(2) | 2) & rb(1);
+        sim.registers[0] = Value::Int(10);
 
-        let expr2 = rv(0) + 2i16;
+        let expr = (r(0) + 5.0).gt(14.9) & 4.5;
 
-        println!("{:#?}", expr);
-
-	}
+        println!("{:?}", expr);
+        println!("{:?}", sim.eval(&expr));
+    }
 }

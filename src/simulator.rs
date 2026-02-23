@@ -1,4 +1,8 @@
-use crate::{circuit::Circuit, expr_dsl::{BoolExpr, ValueExpr}, instruction::Instruction};
+use crate::{
+    circuit::Circuit,
+    expr_dsl::{Expr, Value},
+    instruction::Instruction,
+};
 use nalgebra::{Complex, DVector};
 
 /// # BuildSimulator
@@ -90,37 +94,78 @@ mod tests {
 /// Any simulator that contains classical registers and can
 /// evaluate expressions from the contents of its registers
 pub trait HybridSimulator {
-    fn allocate(&mut self, reg_count: usize);
-    fn get(&self, idx: usize) -> i32;
+    // fn allocate(&mut self, reg_count: usize);
+    fn get(&self, idx: usize) -> Value;
 
-    fn eval(&self, expr: &ValueExpr) -> i32 {
+    fn eval(&self, expr: &Expr) -> Value {
         match expr {
-            ValueExpr::Val(i) => *i,
-            ValueExpr::Reg(r) => self.get(*r),
+            Expr::Val(v) => v.clone(),
 
-            ValueExpr::Not(e) => !self.eval(e),
-            ValueExpr::And(e1, e2) => self.eval(e1) & self.eval(e2),
-            ValueExpr::Or(e1, e2) => self.eval(e1) | self.eval(e2),
-            ValueExpr::Xor(e1, e2) => self.eval(e1) ^ self.eval(e2),
+            Expr::Reg(idx) => self.get(*idx),
 
-            ValueExpr::Add(e1, e2) => self.eval(e1) + self.eval(e2),
-            ValueExpr::Sub(e1, e2) => self.eval(e1) - self.eval(e2),
-            ValueExpr::Mul(e1, e2) => self.eval(e1) * self.eval(e2),
-        }
-    }
+            Expr::Not(e) => match self.eval(e) {
+                Value::Int(x) => Value::Int(!x),
+                Value::Bool(x) => Value::Bool(!x),
+                _ => Value::Err,
+            },
 
-    fn eval_bool(&self, expr: &BoolExpr) -> bool {
-        match expr {
-            BoolExpr::True => true,
-            BoolExpr::False => false,
+            Expr::And(a, b) => match (self.eval(a), self.eval(b)) {
+                (Value::Int(x), Value::Int(y)) => Value::Int(x & y),
+                (Value::Bool(x), Value::Bool(y)) => Value::Bool(x && y),
+                (Value::Int(x), Value::Bool(y)) => Value::Bool((x != 0) && y),
+                (Value::Bool(x), Value::Int(y)) => Value::Bool(x && (y != 0)),
+                _ => Value::Err,
+            },
 
-            BoolExpr::NonZero(e) => self.eval(e) != 0,
-            BoolExpr::Eq(e1, e2) => self.eval(e1) == self.eval(e2),
-            BoolExpr::Lt(e1, e2) => self.eval(e1) < self.eval(e2),
+            Expr::Or(a, b) => match (self.eval(a), self.eval(b)) {
+                (Value::Int(x), Value::Int(y)) => Value::Int(x | y),
+                (Value::Bool(x), Value::Bool(y)) => Value::Bool(x || y),
+                (Value::Int(x), Value::Bool(y)) => Value::Bool((x != 0) || y),
+                (Value::Bool(x), Value::Int(y)) => Value::Bool(x || (y != 0)),
+                _ => Value::Err,
+            },
 
-            BoolExpr::Not(e) => !self.eval_bool(e),
-            BoolExpr::And(e1, e2) => self.eval_bool(e1) && self.eval_bool(e2),
-            BoolExpr::Or(e1, e2) => self.eval_bool(e1) || self.eval_bool(e2),
+            Expr::Xor(a, b) => match (self.eval(a), self.eval(b)) {
+                (Value::Int(x), Value::Int(y)) => Value::Int(x ^ y),
+                (Value::Bool(x), Value::Bool(y)) => Value::Bool(x ^ y),
+                (Value::Int(x), Value::Bool(y)) => Value::Bool((x != 0) ^ y),
+                (Value::Bool(x), Value::Int(y)) => Value::Bool(x ^ (y != 0)),
+                _ => Value::Err,
+            },
+
+            Expr::Add(a, b) => match (self.eval(a), self.eval(b)) {
+                (Value::Int(x), Value::Int(y)) => Value::Int(x + y),
+                (Value::Float(x), Value::Float(y)) => Value::Float(x + y),
+                (Value::Int(x), Value::Float(y)) => Value::Float(x as f32 + y),
+                (Value::Float(x), Value::Int(y)) => Value::Float(x + y as f32),
+                _ => Value::Err,
+            },
+
+            Expr::Sub(a, b) => match (self.eval(a), self.eval(b)) {
+                (Value::Int(x), Value::Int(y)) => Value::Int(x - y),
+                (Value::Float(x), Value::Float(y)) => Value::Float(x - y),
+                (Value::Int(x), Value::Float(y)) => Value::Float(x as f32 - y),
+                (Value::Float(x), Value::Int(y)) => Value::Float(x - y as f32),
+                _ => Value::Err,
+            },
+
+            Expr::Mul(a, b) => match (self.eval(a), self.eval(b)) {
+                (Value::Int(x), Value::Int(y)) => Value::Int(x * y),
+                (Value::Float(x), Value::Float(y)) => Value::Float(x * y),
+                (Value::Int(x), Value::Float(y)) => Value::Float(x as f32 * y),
+                (Value::Float(x), Value::Int(y)) => Value::Float(x * y as f32),
+                _ => Value::Err,
+            },
+
+            Expr::Eq(a, b) => Value::Bool(self.eval(a) == self.eval(b)),
+
+            Expr::Lt(a, b) => match (self.eval(a), self.eval(b)) {
+                (Value::Int(x), Value::Int(y)) => Value::Bool(x < y),
+                (Value::Float(x), Value::Float(y)) => Value::Bool(x < y),
+                (Value::Int(x), Value::Float(y)) => Value::Bool((x as f32) < y),
+                (Value::Float(x), Value::Int(y)) => Value::Bool(x < (y as f32)),
+                _ => Value::Err,
+            },
         }
     }
 }
