@@ -3,7 +3,6 @@ use std::{
     ops::{Deref, DerefMut, Index, IndexMut},
 };
 
-use crate::gate::QBits;
 
 #[derive(Debug, Clone, Default)]
 /// Map containing named registers

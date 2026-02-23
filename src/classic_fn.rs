@@ -1,7 +1,6 @@
 use std::{
     marker::PhantomData,
-    ops::{Add, Deref, DerefMut, Mul},
-    process::Output,
+    ops::{Add, Mul},
 };
 
 use crate::{ext::call_unary, impl_deref, impl_deref_mut, impl_from, register::RegisterFileRef};
