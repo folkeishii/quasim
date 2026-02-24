@@ -1,6 +1,5 @@
 use crate::{
-    gate::{Gate, GateType},
-    instruction::Instruction,
+    expr_dsl::Expr, gate::{Gate, GateType, QBits}, instruction::Instruction
 };
 
 #[derive(Debug, Clone)]
@@ -30,6 +29,10 @@ impl Circuit {
 
     pub fn n_qubits(&self) -> usize {
         self.n_qubits
+    }
+
+    pub fn n_cregs(&self) -> usize {
+        self.n_cregs
     }
 
     pub fn x(mut self, target: usize) -> Self {
@@ -78,6 +81,29 @@ impl Circuit {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::SWAP, &[control], &[target1, target2]).unwrap(),
         ));
+        self
+    }
+
+    pub fn measure_bit(mut self, target: usize, reg: usize) -> Self {
+        self.instructions.push(Instruction::Measurement(QBits::from_bitstring(1 << target), reg));
+        self
+    }
+
+    // takes pc directly for now
+    pub fn jump(mut self, pc: usize) -> Self {
+        self.instructions.push(Instruction::Jump(pc));
+        self
+    }
+
+    // takes pc directly for now
+    pub fn jump_if(mut self, expr: Expr, pc: usize) -> Self {
+        self.instructions.push(Instruction::JumpIf(expr, pc));
+        self
+    }
+
+    // takes register nr directly for now
+    pub fn assign(mut self, expr: Expr, reg: usize) -> Self {
+        self.instructions.push(Instruction::Assign(expr, reg));
         self
     }
 }

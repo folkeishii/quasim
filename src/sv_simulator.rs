@@ -2,18 +2,20 @@ use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::{
-    cart,
-    circuit::Circuit,
-    ext::get_gate_matrix,
-    gate::{Gate, QBits},
-    instruction::Instruction,
-    simulator::{DebuggableSimulator, RunnableSimulator},
+    cart, circuit::Circuit, expr_dsl::{Expr, Value}, ext::get_gate_matrix, gate::{Gate, QBits}, instruction::Instruction, simulator::{DebuggableSimulator, HybridSimulator, RunnableSimulator}
 };
 
 pub struct SVExecutor<'a> {
     state_vector: DVector<Complex<f32>>,
     circuit: &'a Circuit,
     pc: usize,
+    registers: Vec<Value>,
+}
+
+impl HybridSimulator for SVExecutor<'_> {
+    fn get(&self, reg: usize) -> Value {
+        self.registers[reg]
+    }
 }
 
 impl<'a> SVExecutor<'a> {
@@ -117,10 +119,24 @@ impl<'a> SVExecutor<'a> {
         }
     }
 
-    fn measure(&mut self, targets: QBits) {
+    fn measure(&mut self, targets: QBits, reg: usize) {
         let measurement = self.get_collapsed_state();
         let mask = targets.get_bitstring();
         let collapsed_bitstring = measurement & mask;
+
+        // THIS CODE IS FOR TESTING, DOESNT REALLY MAKE SENSE IN PRACTICE
+        let mut i = 0;
+        let mut bits_compacted = 0;
+        let mut mut_mask = mask;
+
+        while mut_mask != 0 {
+            let tz = mut_mask.trailing_zeros();
+            bits_compacted |= ((collapsed_bitstring >> tz) & 1) << i;
+            mut_mask &= mut_mask - 1; // clear lowest set bit
+            i += 1;
+        }
+        self.registers[reg] = Value::Int(bits_compacted as i32);
+        // ==============================================================
 
         // Go through state vector and remove amplitude for all states that do not align with measurement
         for (i, amp) in self.state_vector.iter_mut().enumerate() {
@@ -139,10 +155,29 @@ impl<'a> SVExecutor<'a> {
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
     }
 
+    fn jump(&mut self, pc: usize) {
+        self.pc = pc;
+    }
+
+    fn jump_if(&mut self, expr: &Expr, pc: usize) {
+        if let Value::Bool(b) = self.eval(expr) {
+            if b {
+                self.pc = pc;
+            }
+        }
+    }
+
+    fn assign(&mut self, expr: &Expr, reg: usize) {
+        self.registers[reg] = self.eval(expr);
+    }
+
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
-            Instruction::Measurement(qbits) => self.measure(*qbits),
+            Instruction::Measurement(qbits, reg) => self.measure(*qbits, *reg),
+            Instruction::Jump(pc) => self.jump(*pc),
+            Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
+            Instruction::Assign(expr, reg) => self.assign(expr, *reg),
         }
     }
 }
@@ -179,6 +214,7 @@ impl SVSimulator {
             state_vector: init_state_vector,
             circuit: &self.circuit,
             pc: 0,
+            registers: vec![Value::Int(0); self.circuit.n_cregs()],
         }
     }
 
@@ -213,3 +249,45 @@ impl<'a> DebuggableSimulator for SVSimulatorDebugger<'a> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SVError {}
+
+#[cfg(test)]
+mod tests {
+    use crate::{circuit::Circuit, expr_dsl::expr_helpers::r, simulator::{BuildSimulator, HybridSimulator, RunnableSimulator}, sv_simulator::SVSimulator};
+
+    #[test]
+    fn test() {
+        let circuit = Circuit::new(4).classical_regs(4)
+            // Init random state
+            .hadamard(0)
+            .hadamard(1)
+            .hadamard(2)
+            .hadamard(3)
+        
+            .measure_bit(0, 0)
+            .measure_bit(1, 1)
+            .measure_bit(2, 2)
+            .measure_bit(3, 3)
+
+            .jump_if(r(0).eq(0), 9)
+            .x(0)
+
+            .jump_if(r(1).eq(0), 11)
+            .x(1)
+
+            .jump_if(r(2).eq(0), 13)
+            .x(2)
+
+            .jump_if(r(3).eq(0), 15)
+            .x(3);
+
+        let sim = SVSimulator::build(circuit).unwrap();
+        let mut dbg = sim.attach_debugger();
+        dbg.executor.step_all();
+        println!("{:?}", dbg.executor.get(0));
+        println!("{:?}", dbg.executor.get(1));
+        println!("{:?}", dbg.executor.get(2));
+        println!("{:?}", dbg.executor.get(3));
+        println!("{:04b}", sim.run());
+        println!("{}", sim.final_state());
+    }
+}

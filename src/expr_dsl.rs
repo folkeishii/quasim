@@ -228,45 +228,4 @@ pub mod expr_helpers {
     pub fn r(reg: usize) -> Expr {
         Expr::Reg(reg)
     }
-
-    // pub fn rb(reg: usize) -> Expr {
-    //     !(Expr::Reg(reg).eq(0))
-    // }
-}
-
-struct DummySimWithRegisters {
-    registers: Vec<Value>,
-}
-
-impl crate::simulator::HybridSimulator for DummySimWithRegisters {
-    // fn allocate(&mut self, classical_regs: usize) {
-    //     self.registers.resize(classical_regs, Value::Int(0));
-    // }
-
-    fn get(&self, reg: usize) -> Value {
-        self.registers[reg]
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::{
-        expr_dsl::{expr_helpers::r, DummySimWithRegisters, Value},
-        simulator::HybridSimulator,
-    };
-
-    #[test]
-    fn test() {
-        let mut sim = DummySimWithRegisters {
-            registers: Vec::new(),
-        };
-        // sim.allocate(16);
-
-        // sim.registers[0] = Value::Int(10);
-
-        let expr = (r(0) % 5.0).gt(14.9) & 4.5;
-
-        println!("{:?}", expr);
-        // println!("{:?}", sim.eval(&expr));
-    }
 }
