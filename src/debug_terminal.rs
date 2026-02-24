@@ -70,7 +70,9 @@ impl DebugTerminal {
                 Command::Previous(prev_args) => self.handle_prev(&mut stdout, &prev_args)?,
                 Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
                 Command::Delete(_delete_args) => println!(&mut stdout; "Delete")?,
-                Command::Disable(_disable_args) => println!(&mut stdout; "Disable")?,
+                Command::Disable(disable_args) => {
+                    self.handle_disable(&mut stdout, &disable_args)?
+                }
                 Command::State(state_args) => self.handle_state(&mut stdout, &state_args)?,
                 Command::Collapse(collapse_args) => {
                     self.handle_collapse(&mut stdout, collapse_args)?
@@ -156,7 +158,46 @@ impl DebugTerminal {
                     stdout;
                     "Inserted new breakpoint at {}", gate_index
                 )?,
+                _ => {}
             }
+        }
+
+        Ok(())
+    }
+
+    fn handle_disable<W: Write>(&mut self, stdout: &mut W, args: &DisableArgs) -> io::Result<()> {
+        let disable_indexes = match args {
+            DisableArgs::GateIndices(indices) => indices,
+        };
+
+        let gate_range = 0..self.simulator.instruction_count();
+        for gate_index in disable_indexes {
+            if !gate_range.contains(gate_index) {
+                errorln!(
+                    stdout;
+                    "Unable to disable breakpoint at index {}, no gate at index", gate_index
+                )?;
+                return Ok(());
+            }
+        }
+
+        let mut disabled: Vec<String> = Vec::new();
+        for &gate_index in disable_indexes {
+            if self.breakpoints.disable(gate_index).is_none() {
+                errorln!(
+                    stdout;
+                    "Could not disable breakpoint at {}, breakpoint does not exist", gate_index
+                )?;
+                continue;
+            }
+
+            disabled.push(gate_index.to_string());
+        }
+        if !disabled.is_empty() {
+            println!(
+                stdout;
+                "Disabled breakpoints {}", disabled.join(", ")
+            )?;
         }
 
         Ok(())
