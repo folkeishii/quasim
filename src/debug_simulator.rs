@@ -107,6 +107,10 @@ impl DebugSimulator {
         self.circuit.instructions().len()
     }
 
+    pub fn current_step(&self) -> usize {
+        self.current_step
+    }
+
     /// # measure
     /// Returns a probable state vector after measurement.
     fn measure(

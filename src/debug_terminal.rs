@@ -44,7 +44,7 @@ impl DebugTerminal {
         let mut input_buffer = String::default();
 
         loop {
-            print!(stdout; "qdb> ")?;
+            print!(stdout; "[{}] qdb> ", self.simulator.current_step())?;
             input_buffer.clear();
             stdin.read_line(&mut input_buffer)?;
             if input_buffer.ends_with('\n') {
