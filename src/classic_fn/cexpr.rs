@@ -1,76 +1,85 @@
-use std::{
-    marker::PhantomData,
-    ops::{Add, Mul},
-};
-
 use crate::{
-    classic_fn::{CAdd, CAssign, CLE, CMul, CRegister, FnClassic},
+    classic_fn::{CAssign, CCmp, CRegister, FnClassic},
     impl_deref, impl_deref_mut, impl_from,
     register::RegisterFileRef,
 };
-
-#[derive(Debug, Clone)]
-pub struct CExpr<T, V>(T, PhantomData<V>);
-impl<T: FnClassic<Output = V>, V> FnClassic for CExpr<T, V> {
-    type Output = V;
-    fn classic_fn(&self, file: &mut RegisterFileRef<usize>) -> V {
-        self.0.classic_fn(file)
-    }
-}
-impl_deref_mut!(CExpr<T, V>);
-impl_from!(CExpr<T, V>, Default::default());
-pub struct CExpr2<T>(T);
-impl<T> CExpr2<T> {
+pub struct CExpr<T>(T);
+impl<T> CExpr<T> {
     pub(crate) fn inner(self) -> T {
         self.0
     }
 }
-impl<T: FnClassic<Output = V>, V> FnClassic for CExpr2<T> {
+impl<T: FnClassic<Output = V>, V> FnClassic for CExpr<T> {
     type Output = V;
     fn classic_fn(&self, file: &mut RegisterFileRef<usize>) -> V {
         self.0.classic_fn(file)
     }
 }
-impl_deref_mut!(CExpr2<T>);
-impl_from!(CExpr2<T>);
-// impl CExpr<CRegister, usize> {
-//     pub fn assign<U, W>(self, rhs: CExpr<U, usize>) -> CExpr<CAssign<U>, ()>
-//     where
-//         U: FnClassic<Output = W>,
-//     {
-//         CExpr(CAssign(self.0, rhs.0), Default::default())
-//     }
-// }
-// impl<T: FnClassic<Output = V>, V> CExpr<T, V> {
-//     pub fn le<U, W>(self, rhs: CExpr<U, W>) -> CExpr<CLE<T, U, V, W>, bool>
-//     where
-//         U: FnClassic<Output = W>,
-//         V: PartialOrd<W>,
-//     {
-//         CExpr(CLE(self.0, rhs.0, Default::default()), Default::default())
-//     }
-// }
-// impl<T, U, V, W, X> Add<CExpr<U, W>> for CExpr<T, V>
-// where
-//     T: FnClassic<Output = V>,
-//     U: FnClassic<Output = W>,
-//     V: Add<W, Output = X>,
-// {
-//     type Output = CExpr<CAdd<T, U, V, W>, X>;
+impl_deref_mut!(CExpr<T>);
+impl_from!(CExpr<T>);
+/// Assign ops
+impl CExpr<CRegister> {
+    pub fn assign<T>(self, other: CExpr<T>) -> CExpr<CAssign<T>>
+    where
+        T: FnClassic<Output = usize>,
+    {
+        CExpr::from(CAssign(self.inner(), other.inner()))
+    }
+}
 
-//     fn add(self, rhs: CExpr<U, W>) -> Self::Output {
-//         CExpr(CAdd(self.0, rhs.0, Default::default()), Default::default())
-//     }
-// }
-// impl<T, U, V, W, X> Mul<CExpr<U, W>> for CExpr<T, V>
-// where
-//     T: FnClassic<Output = V>,
-//     U: FnClassic<Output = W>,
-//     V: Mul<W, Output = X>,
-// {
-//     type Output = CExpr<CMul<T, U, V, W>, X>;
+/// Eq ops
+impl<T> CExpr<T> {
+    pub fn eq<U, V, W>(self, other: CExpr<U>) -> CExpr<CCmp<T, U>>
+    where
+        T: FnClassic<Output = V>,
+        U: FnClassic<Output = W>,
+        V: PartialEq<W>,
+    {
+        CExpr::from(CCmp::Eq(self.inner(), other.inner()))
+    }
 
-//     fn mul(self, rhs: CExpr<U, W>) -> Self::Output {
-//         CExpr(CMul(self.0, rhs.0, Default::default()), Default::default())
-//     }
-// }
+    pub fn ne<U, V, W>(self, other: CExpr<U>) -> CExpr<CCmp<T, U>>
+    where
+        T: FnClassic<Output = V>,
+        U: FnClassic<Output = W>,
+        V: PartialEq<W>,
+    {
+        CExpr::from(CCmp::Ne(self.inner(), other.inner()))
+    }
+}
+
+/// Ord ops
+impl<T> CExpr<T> {
+    pub fn lt<U, V, W>(self, other: CExpr<U>) -> CExpr<CCmp<T, U>>
+    where
+        T: FnClassic<Output = V>,
+        U: FnClassic<Output = W>,
+        V: Ord + PartialOrd<W>,
+    {
+        CExpr::from(CCmp::Lt(self.inner(), other.inner()))
+    }
+    pub fn le<U, V, W>(self, other: CExpr<U>) -> CExpr<CCmp<T, U>>
+    where
+        T: FnClassic<Output = V>,
+        U: FnClassic<Output = W>,
+        V: Ord + PartialOrd<W>,
+    {
+        CExpr::from(CCmp::Le(self.inner(), other.inner()))
+    }
+    pub fn gt<U, V, W>(self, other: CExpr<U>) -> CExpr<CCmp<T, U>>
+    where
+        T: FnClassic<Output = V>,
+        U: FnClassic<Output = W>,
+        V: Ord + PartialOrd<W>,
+    {
+        CExpr::from(CCmp::Gt(self.inner(), other.inner()))
+    }
+    pub fn ge<U, V, W>(self, other: CExpr<U>) -> CExpr<CCmp<T, U>>
+    where
+        T: FnClassic<Output = V>,
+        U: FnClassic<Output = W>,
+        V: Ord + PartialOrd<W>,
+    {
+        CExpr::from(CCmp::Ge(self.inner(), other.inner()))
+    }
+}

@@ -1,24 +1,19 @@
 mod cadd;
 mod cassign;
+mod ccmp;
 mod cconst;
 mod cexpr;
-mod cle;
 mod cmul;
 mod cregister;
 pub use cadd::*;
 pub use cassign::*;
+pub use ccmp::*;
 pub use cconst::*;
 pub use cexpr::*;
-pub use cle::*;
 pub use cmul::*;
 pub use cregister::*;
 
-use std::{
-    marker::PhantomData,
-    ops::{Add, Mul},
-};
-
-use crate::{ext::call_unary, impl_deref, impl_deref_mut, impl_from, register::RegisterFileRef};
+use crate::{ext::call_unary, register::RegisterFileRef};
 
 pub trait FnClassic {
     type Output;

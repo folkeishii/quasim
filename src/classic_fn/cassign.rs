@@ -4,7 +4,7 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct CAssign<T>(CRegister, T);
+pub struct CAssign<T>(pub(crate) CRegister, pub(crate) T);
 impl<T: FnClassic<Output = usize>> FnClassic for CAssign<T> {
     type Output = ();
     fn classic_fn(&self, file: &mut RegisterFileRef<usize>) -> () {

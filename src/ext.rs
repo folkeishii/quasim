@@ -73,23 +73,6 @@ where
     f(arg)
 }
 
-pub trait DSLEq<Rhs = Self> {
-    type Output;
-    // Required method
-    fn eq(&self, other: &Rhs) -> Self::Output;
-
-    // Provided method
-    fn ne(&self, other: &Rhs) -> Self::Output;
-}
-pub trait DSLOrd<Rhs = Self>: DSLEq<Rhs> {
-    fn lt(&self, other: &Rhs) -> Self::Output;
-    fn le(&self, other: &Rhs) -> Self::Output;
-    fn gt(&self, other: &Rhs) -> Self::Output;
-    fn ge(&self, other: &Rhs) -> Self::Output;
-    fn max(self, other: Self) -> Self::Output;
-    fn min(self, other: Self) -> Self::Output;
-    fn clamp(self, min: Self, max: Self) -> Self::Output;
-}
 #[macro_export]
 macro_rules! cart {
     ($re:expr) => {
