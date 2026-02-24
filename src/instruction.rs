@@ -1,4 +1,4 @@
-use crate::{gate::{Gate, QBits}};
+use crate::gate::{Gate, QBits};
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
