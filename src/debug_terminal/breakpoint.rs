@@ -43,6 +43,17 @@ impl BreakpointList {
         }
     }
 
+    /// Returns Ok if breakpoint was deleted
+    pub fn delete(&mut self, gate_index: usize) -> Option<PEBreakpoint> {
+        match self.binary_search_by_key(&gate_index, |b| b.gate_index()) {
+            Ok(index) => {
+                self.inner_mut().remove(index);
+                Some(PEBreakpoint::Deleted)
+            }
+            Err(_) => None,
+        }
+    }
+
     fn inner(&self) -> &Vec<Breakpoint> {
         &self.0
     }
@@ -105,4 +116,5 @@ pub enum PEBreakpoint {
     Inserted,
     Enabled,
     Disabled,
+    Deleted,
 }
