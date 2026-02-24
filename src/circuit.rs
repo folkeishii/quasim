@@ -1,4 +1,7 @@
-use crate::{gate::{Gate, GateType}, instruction::Instruction};
+use crate::{
+    gate::{Gate, GateType},
+    instruction::Instruction,
+};
 
 #[derive(Debug, Clone)]
 pub struct Circuit {

@@ -52,7 +52,7 @@ impl TryFrom<Circuit> for DebugSimulator {
 
 impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
-        if self.current_step >= self.n_instructions() {
+        if self.current_step >= self.instruction_count() {
             return None;
         }
         match &self.circuit.instructions()[self.current_step] {
@@ -103,7 +103,7 @@ impl DoubleEndedSimulator for DebugSimulator {
 }
 
 impl DebugSimulator {
-    fn n_instructions(&self) -> usize {
+    pub fn instruction_count(&self) -> usize {
         self.circuit.instructions().len()
     }
 
