@@ -1,6 +1,10 @@
 use std::{iter::Map, ops::Range};
 
-use nalgebra::{Complex, Dim, Matrix, RawStorage};
+use nalgebra::{Complex, DMatrix, Dim, Matrix, RawStorage};
+use rand::distr::weighted::WeightedIndex;
+use rand::prelude::Distribution;
+
+use crate::gate::{Gate, GateType};
 
 /// Compares two complex numbers
 ///
@@ -48,6 +52,33 @@ pub fn reverse_indices(
     len: usize,
 ) -> Map<Range<usize>, impl FnMut(usize) -> usize> {
     range.map(move |i| len - i - 1)
+}
+
+pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f32>> {
+    let data: &[Complex<f32>] = match gate.get_type() {
+        GateType::X => &Gate::PAULI_X_DATA,
+        GateType::Y => &Gate::PAULI_Y_DATA,
+        GateType::Z => &Gate::PAULI_Z_DATA,
+        GateType::H => &Gate::HADAMARD_DATA,
+        GateType::SWAP => &Gate::SWAP_DATA,
+    };
+
+    let dim = 1 << gate.get_type().arity();
+
+    return DMatrix::from_row_slice(dim, dim, data);
+}
+
+/// Collapse a state vector into a value
+///
+/// The sum of the squares of each item should equal to one
+pub fn collapse(state: &[Complex<f32>]) -> usize {
+    let probs = state.iter().map(|&c| c.norm_sqr());
+
+    let dist = WeightedIndex::new(probs)
+        .expect("Failed to create probability distribution. Invalid or empty state vector?");
+    let mut rng = rand::rng();
+
+    dist.sample(&mut rng)
 }
 
 #[macro_export]
