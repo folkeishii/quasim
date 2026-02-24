@@ -6,6 +6,7 @@ mod state;
 pub use arguments::*;
 pub use command::*;
 
+use crate::ext::collapse;
 use crate::{
     circuit::Circuit,
     debug_simulator::DebugSimulator,
@@ -16,6 +17,7 @@ use crossterm::{
     execute,
     style::{self, Attributes, Color, ContentStyle, StyledContent},
 };
+use std::ops::Div;
 use std::{
     fmt::Display,
     io::{self, Write},
@@ -66,6 +68,9 @@ impl DebugTerminal {
                 Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
                 Command::Disable(_disable_args) => Self::print(&mut stdout, &"Disable")?,
                 Command::State(state_args) => self.print_state(&mut stdout, state_args)?,
+                Command::Collapse(collapse_args) => {
+                    self.collapse_state(&mut stdout, collapse_args)?
+                }
             }
         }
         Ok(())
@@ -172,6 +177,67 @@ impl DebugTerminal {
             )?;
         }
         Self::print(stdout, &format!("└ {} ┘\n", " ".repeat(state_width)))?;
+
+        Ok(())
+    }
+
+    fn collapse_state<W: Write>(
+        &mut self,
+        stdout: &mut W,
+        collapse_args: CollapseArgs,
+    ) -> io::Result<()> {
+        let state = self.simulator.current_state();
+        let mut count_map: Vec<(usize, usize)> = Vec::new();
+        let count = match collapse_args {
+            CollapseArgs::Collapse => 1,
+            CollapseArgs::Count(n) => n,
+        };
+
+        let mut max_state = 0; // Only used for formatting
+        let mut max_count = 0; // Only used for formatting
+        for _ in 0..count {
+            let collapsed = collapse(state.as_ref());
+            max_state = max_state.max(collapsed);
+            let new_count = match count_map.binary_search_by_key(&collapsed, |(state, _)| *state) {
+                // state already recorded
+                Ok(index) => {
+                    count_map[index].1 += 1;
+                    count_map[index].1
+                }
+                // New state
+                Err(index) => {
+                    count_map.insert(index, (collapsed, 1));
+                    count_map[index].1
+                }
+            };
+            max_count = max_count.max(new_count)
+        }
+
+        // Resort by count
+        count_map.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let decimal_width = (max_state.checked_ilog10().unwrap_or(0) + 1) as usize;
+        let binary_width = (max_state.checked_ilog2().unwrap_or(0) + 1) as usize;
+
+        let max_width = (max_count.checked_ilog10().unwrap_or(0) + 1) as usize;
+
+        let mut count_peekable = count_map.iter().peekable();
+        while let Some(c) = count_peekable.next() {
+            Self::print(
+                stdout,
+                &format!(
+                    "{: >decimal_width$} ({:0binary_width$b}) - {: >max_width$} ({: >2}%)",
+                    c.0,
+                    c.0,
+                    c.1,
+                    ((c.1 as f64).div(count as f64) * 100.0).round(),
+                ),
+            )?;
+
+            if count_peekable.peek().is_some() {
+                Self::print(stdout, &"\n")?;
+            }
+        }
 
         Ok(())
     }
