@@ -1,9 +1,4 @@
-use quasim::{
-    c, cconst,
-    circuit::Circuit,
-    classic_fn::{CConstant, CExpr, CRegister},
-    register::RegisterFileRef,
-};
+use quasim::{c, cconst, circuit::Circuit, register::RegisterFileRef};
 
 fn main() {
     let _circ1_1 = Circuit::new(2)
