@@ -1,5 +1,5 @@
 use nalgebra::{Complex, DVector};
-use rand::distr::{weighted::WeightedIndex, Distribution};
+use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::{
     circuit::Circuit,

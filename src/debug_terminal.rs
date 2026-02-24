@@ -70,7 +70,9 @@ impl DebugTerminal {
             match command {
                 Command::Quit => break,
                 Command::Help(_help_args) => Self::print(&mut stdout, &"Help")?,
-                Command::Continue(_continue_args) => Self::print(&mut stdout, &"Continue")?,
+                Command::Continue(continue_args) => {
+                    self.handle_continue(&mut stdout, &continue_args)?
+                }
                 Command::Next(next_args) => self.handle_next(&mut stdout, &next_args)?,
                 Command::Previous(prev_args) => self.handle_prev(&mut stdout, &prev_args)?,
                 Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
@@ -103,6 +105,109 @@ impl DebugTerminal {
             )),
             style::Print(output.to_string())
         )
+    }
+
+    fn handle_continue(
+        &mut self,
+        stdout: &mut io::Stdout,
+        continue_args: &ContinueArgs,
+    ) -> io::Result<()> {
+        match continue_args {
+            ContinueArgs::UntilBreak => {
+                let next_break = self
+                    .breakpoints
+                    .iter()
+                    .find(|b| b.enabled())
+                    .map(|b| b.gate_index());
+
+                loop {
+                    if self.simulator.next().is_none() {
+                        Self::error(stdout, &"End of Circuit reached, continued until end")?;
+                        return Ok(());
+                    }
+
+                    if let Some(next_break) = next_break {
+                        if let Some((instruction_index, _instruction)) =
+                            self.simulator.current_instruction()
+                        {
+                            if instruction_index == next_break {
+                                self.breakpoints.disable(next_break);
+                                Self::print(
+                                    stdout,
+                                    &format!("Continued until breakpoint at index {}", next_break),
+                                )?;
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+            ContinueArgs::SkipBreaks(n) => {
+                let mut breakpoints_skipped = 0;
+                let mut skipped_index = 0;
+                for _breaks in 0..*n {
+                    let next_break = self
+                        .breakpoints
+                        .iter()
+                        .find(|b| b.enabled())
+                        .map(|b| b.gate_index());
+
+                    loop {
+                        if self.simulator.next().is_none() {
+                            Self::error(stdout, &"End of Circuit reached, continued until end")?;
+                            return Ok(());
+                        }
+
+                        if next_break.is_none() {
+                            Self::error(
+                                stdout,
+                                &format!(
+                                    "Skipped {} breakpoints, continuing until end",
+                                    breakpoints_skipped
+                                ),
+                            )?;
+                            loop {
+                                if self.simulator.next().is_none() {
+                                    return Ok(());
+                                }
+                                self.simulator.next();
+                            }
+                        }
+
+                        if let Some(next_break) = next_break {
+                            if let Some((instruction_index, _instruction)) =
+                                self.simulator.current_instruction()
+                            {
+                                if instruction_index == next_break {
+                                    self.breakpoints.disable(next_break);
+                                    breakpoints_skipped += 1;
+                                    skipped_index = next_break;
+                                    break;
+                                }
+                            }
+                        }
+                        self.simulator.next();
+                    }
+                }
+                Self::print(
+                    stdout,
+                    &format!(
+                        "Skipped {} breakpoints, continued to index {}",
+                        breakpoints_skipped, skipped_index
+                    ),
+                )?;
+            }
+            ContinueArgs::IgnoreBreak => loop {
+                if self.simulator.next().is_none() {
+                    Self::error(stdout, &"End of Circuit reached, continued until end")?;
+                    return Ok(());
+                }
+
+                self.simulator.next();
+            },
+        }
+
+        Ok(())
     }
 
     fn handle_next(&mut self, stdout: &mut io::Stdout, next_args: &NextArgs) -> io::Result<()> {
