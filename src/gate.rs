@@ -1,6 +1,6 @@
 use std::f32::consts::FRAC_1_SQRT_2;
 
-use nalgebra::{Complex};
+use nalgebra::Complex;
 
 use crate::cart;
 
@@ -16,7 +16,7 @@ impl QBits {
     /// Specify qubits from a list of indices
     pub fn from_indices<'a, I>(indices: I) -> Self
     where
-        I: IntoIterator<Item = &'a usize>
+        I: IntoIterator<Item = &'a usize>,
     {
         let mut bits = 0;
         for i in indices {
