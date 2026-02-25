@@ -73,7 +73,7 @@ impl DebugTerminal {
                 Command::Disable(_disable_args) => println!(&mut stdout; "Disable")?,
                 Command::State(state_args) => self.handle_state(&mut stdout, &state_args)?,
                 Command::Collapse(collapse_args) => {
-                    self.collapse_state(&mut stdout, collapse_args)?
+                    self.handle_collapse(&mut stdout, collapse_args)?
                 }
             }
         }
@@ -196,7 +196,7 @@ impl DebugTerminal {
         Ok(())
     }
 
-    fn collapse_state<W: Write>(
+    fn handle_collapse<W: Write>(
         &mut self,
         stdout: &mut W,
         collapse_args: CollapseArgs,
