@@ -1,76 +1,88 @@
-use std::io::stdout;
 
 use crossterm::{
-    execute,
-    style::{Color, ContentStyle, PrintStyledContent},
+    style::{Attributes, Color, ContentStyle},
 };
-macro_rules! expand_print {
+
+pub const ERROR_STYLE: ContentStyle = ContentStyle {
+    foreground_color: Some(Color::Red),
+    background_color: None,
+    underline_color: None,
+    attributes: Attributes::none(),
+};
+
+macro_rules! print_args {
     ($cs:expr => $form:literal, $($disp:expr),+) => {
-        expand_print!($cs => format!($form, $($disp),+))
+        print_args!($cs => format!($form, $($disp),+))
     };
     ($cs:expr => $disp:expr) => {
         crossterm::style::PrintStyledContent(crossterm::style::StyledContent::new($cs, $disp))
     };
     ($form:literal, $($disp:expr),+) => {
-        expand_print!(format!($form, $($disp),+))
+        print_args!(format!($form, $($disp),+))
     };
     ($disp:expr) => {
         crossterm::style::Print($disp)
     };
-    // arg1 is displayed content
-    // if arg2 is defined then arg2
-    // is displayed content and arg1 is
-    // contentstyle
-    // ($arg1:expr $(, $arg2:expr)?) => {
-    //     expand_print!($arg1 $(, $arg2)?)
-    // };
 }
 
-// macro_rules! print {
-//     ($w) => {
-//         $crate::crossterm::execute!($w, "{} {}", $lol, $skib)
-//     };
-// }
-
-#[test]
-fn tprint() {
-    let stdout = &mut stdout();
-    execute!(
-        stdout,
-        expand_print!(
-            ContentStyle {
-                foreground_color: Some(Color::Blue),
-                ..Default::default()
-            } =>
-            "lol\n"
+/// # Print
+/// Implements print using crossterm, and with styling.
+///
+/// Styling is done via `crossterm::style::ContentStyle`
+/// ```Rust
+/// let red = ContentStyle {
+///     foreground_color: Some(Color::Red),
+///     background_color: None,
+///     underline_color: None,
+///     attributes: Attributes::none(),
+/// };
+/// let green = ContentStyle {
+///     foreground_color: Some(Color::Green),
+///     background_color: None,
+///     underline_color: None,
+///     attributes: Attributes::none(),
+/// };
+///
+/// let stdout = &mut stdout();
+/// // Print simple message
+/// print!(stdout; "Hello World!\n")?;
+///
+/// // Print styled message
+/// print!(stdout; green => "Green text!\n")?;
+///
+/// // Format message
+/// print!(stdout; green => "{} {} {}!\n", 1, 2, 3)?;
+///
+/// // Style different parts of a message
+/// print!(stdout; red => "{}!\n", 1; blue => "2!"; "3...")?;
+/// ```
+///
+/// ## Syntax
+/// The syntax is: `print!(stdout; Statement 1; Statement2; ...)`
+///
+/// And a statement consists of styling and the content.
+///
+/// If there is no styling then the statement is formatted like
+macro_rules! print {
+    ($w:expr; $($arg1:expr $(=> $arg2:expr)? $(, $disp:expr)*);+) => {
+        crossterm::execute!($w, $(print_args!($arg1 $(=> $arg2)? $(, $disp)*)),+)
+    };
+}
+macro_rules! println {
+    ($w:expr; $($arg1:expr $(=> $arg2:expr)? $(, $disp:expr)*);+) => {
+        print!($w; $($arg1 $(=> $arg2)? $(, $disp)*);+; "\r\n")
+    };
+}
+macro_rules! error {
+    ($w:expr; $($arg1:expr $(=> $arg2:expr)? $(, $disp:expr)*);+) => {
+        print!($w;
+            $crate::debug_terminal::print::ERROR_STYLE => "Error: ";
+            $($arg1 $(=> $arg2)? $(, $disp)*);+
         )
-    )
-    .unwrap();
-    execute!(stdout, expand_print!("lol\n")).unwrap();
-    execute!(stdout, expand_print!("lol\n")).unwrap();
-    execute!(
-        stdout,
-        expand_print!(
-            ContentStyle {
-                foreground_color: Some(Color::Blue),
-                ..Default::default()
-            } =>
-            "lol\n"
-        )
-    )
-    .unwrap();
-    execute!(stdout, expand_print!("{} {}\n", "lol", 3)).unwrap();
-    execute!(
-        stdout,
-        expand_print!(
-            ContentStyle {
-                foreground_color: Some(Color::Red),
-                ..Default::default()
-            } =>
-            "{} {}\n",
-            "lol",
-            3
-        )
-    )
-    .unwrap();
+    };
+}
+macro_rules! errorln {
+    ($w:expr; $($arg1:expr $(=> $arg2:expr)? $(, $disp:expr)*);+) => {
+        error!($w; $($arg1 $(=> $arg2)? $(, $disp)*);+; "\r\n")
+    };
 }
