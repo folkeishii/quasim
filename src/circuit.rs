@@ -73,4 +73,18 @@ impl Circuit {
         ));
         self
     }
+
+    pub fn u(mut self, theta: f32, phi: f32, lambda: f32, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, phi, lambda), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn cu(mut self, theta: f32, phi: f32, lambda: f32, control: usize, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, phi, lambda), &[control], &[target]).unwrap(),
+        ));
+        self
+    }
 }

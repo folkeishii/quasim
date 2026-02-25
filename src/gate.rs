@@ -53,12 +53,13 @@ pub enum GateType {
     Z,
     H,
     SWAP,
+    U(f32, f32, f32),
 }
 
 impl GateType {
     pub fn arity(&self) -> usize {
         match self {
-            Self::X | Self::Y | Self::Z | Self::H => 1,
+            Self::X | Self::Y | Self::Z | Self::H | Self::U(_, _, _) => 1,
             Self::SWAP => 2,
         }
     }

@@ -54,6 +54,21 @@ pub fn reverse_indices(
     range.map(move |i| len - i - 1)
 }
 
+// Helper function for get_gate_matrix
+fn u(theta: f32, phi: f32, lambda: f32) -> [Complex<f32>; 4] {
+    // https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.UGate for definition
+    let theta_half = theta / 2.0;
+
+    let cos = Complex::new(theta_half.cos(), 0.0);
+    let sin = Complex::new(theta_half.sin(), 0.0);
+
+    let e_phi = Complex::new(0.0, phi).exp();
+    let e_lambda = Complex::new(0.0, lambda).exp();
+    let e_phi_lambda = Complex::new(0.0, phi + lambda).exp();
+
+    [cos, -e_lambda * sin, e_phi * sin, e_phi_lambda * cos]
+}
+
 pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f32>> {
     let data: &[Complex<f32>] = match gate.get_type() {
         GateType::X => &Gate::PAULI_X_DATA,
@@ -61,6 +76,7 @@ pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f32>> {
         GateType::Z => &Gate::PAULI_Z_DATA,
         GateType::H => &Gate::HADAMARD_DATA,
         GateType::SWAP => &Gate::SWAP_DATA,
+        GateType::U(theta, phi, lambda) => &u(theta, phi, lambda),
     };
 
     let dim = 1 << gate.get_type().arity();
