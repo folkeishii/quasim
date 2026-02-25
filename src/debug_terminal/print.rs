@@ -1,7 +1,4 @@
-
-use crossterm::{
-    style::{Attributes, Color, ContentStyle},
-};
+use crossterm::style::{Attributes, Color, ContentStyle};
 
 pub const ERROR_STYLE: ContentStyle = ContentStyle {
     foreground_color: Some(Color::Red),
