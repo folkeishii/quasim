@@ -2,6 +2,9 @@ mod arguments;
 mod breakpoint;
 mod command;
 mod parse;
+#[cfg(test)]
+#[macro_use]
+pub mod print;
 mod state;
 
 pub use arguments::*;
