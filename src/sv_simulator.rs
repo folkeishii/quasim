@@ -147,7 +147,7 @@ impl<'a> SVExecutor<'a> {
     }
 }
 
-impl<'a> StoredCircuitSimulator for SVExecutor<'a>  {
+impl<'a> StoredCircuitSimulator for SVExecutor<'a> {
     fn circuit(&self) -> &Circuit {
         &self.circuit
     }

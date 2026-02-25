@@ -217,7 +217,7 @@ impl DebugSimulator {
     }
 }
 
-impl StoredCircuitSimulator for DebugSimulator  {
+impl StoredCircuitSimulator for DebugSimulator {
     fn circuit(&self) -> &Circuit {
         &self.circuit
     }

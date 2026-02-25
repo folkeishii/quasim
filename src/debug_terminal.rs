@@ -36,7 +36,10 @@ pub struct DebugTerminal<S = DebugSimulator> {
     breakpoints: BreakpointList,
 }
 
-impl<S> DebugTerminal<S> where S: BuildSimulator + DoubleEndedSimulator + StoredCircuitSimulator {
+impl<S> DebugTerminal<S>
+where
+    S: BuildSimulator + DoubleEndedSimulator + StoredCircuitSimulator,
+{
     pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E> {
         Ok(Self {
             simulator: S::build(circuit)?,
