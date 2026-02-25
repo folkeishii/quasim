@@ -63,6 +63,14 @@ macro_rules! print_args {
 /// And a statement consists of styling and the content.
 ///
 /// If there is no styling then the statement is formatted like
+/// - `print!(stdout; "literal")`
+/// - `print!(stdout; printable_object)`
+/// - `print!(stdout; "Format syntax <{}", 3)`
+///
+/// If there is styling then, it is specified with a right fat arrow
+/// - `print!(stdout; blue => "Blue literal")`
+/// - `print!(stdout; red => printable_object)`
+/// - `print!(stdout; green => "Format"; blue => "syntax <{}", 3)`
 macro_rules! print {
     ($w:expr; $($arg1:expr $(=> $arg2:expr)? $(, $disp:expr)*);+) => {
         crossterm::execute!($w, $(print_args!($arg1 $(=> $arg2)? $(, $disp)*)),+)
