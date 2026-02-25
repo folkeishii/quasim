@@ -3,7 +3,8 @@ mod breakpoint;
 mod command;
 mod parse;
 #[macro_use]
-pub mod print;
+mod print;
+mod show_circuit;
 mod state;
 
 pub use arguments::*;
