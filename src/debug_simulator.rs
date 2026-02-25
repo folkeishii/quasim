@@ -4,7 +4,7 @@ use crate::{
     ext::get_gate_matrix,
     gate::Gate,
     instruction::Instruction,
-    simulator::{DebuggableSimulator, DoubleEndedSimulator},
+    simulator::{DebuggableSimulator, DoubleEndedSimulator, StoredCircuitSimulator},
 };
 use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 use rand::prelude::*;
@@ -214,6 +214,12 @@ impl DebugSimulator {
             sum += Self::eval_tensor_product(term);
         }
         sum
+    }
+}
+
+impl StoredCircuitSimulator for DebugSimulator  {
+    fn circuit(&self) -> &Circuit {
+        &self.circuit
     }
 }
 
