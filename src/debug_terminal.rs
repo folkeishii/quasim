@@ -101,7 +101,7 @@ impl DebugTerminal {
                                     .simulator
                                     .current_instruction()
                                     .map(|(i, _)| i)
-                                    .unwrap_or(0)
+                                    .unwrap_or(usize::MAX)
                     })
                     .map(|b| b.gate_index());
 
@@ -147,7 +147,7 @@ impl DebugTerminal {
                                         .simulator
                                         .current_instruction()
                                         .map(|(i, _)| i)
-                                        .unwrap_or(0)
+                                        .unwrap_or(usize::MAX)
                         })
                         .map(|b| b.gate_index());
 
@@ -195,10 +195,9 @@ impl DebugTerminal {
             }
             ContinueArgs::IgnoreBreak => loop {
                 if self.simulator.next().is_none() {
-                    errorln!(stdout; &"End of Circuit reached, continued until end")?;
+                    println!(stdout; &"End of Circuit reached, continued until end")?;
                     return Ok(());
                 }
-
                 self.simulator.next();
             },
         }
