@@ -10,7 +10,7 @@ use crate::gate::{Gate, GateType};
 ///
 /// Two complex numbers are determined to be equal if the distance
 /// between them is at most `margin`
-pub fn equal_to_c(lhs: Complex<f32>, rhs: Complex<f32>, margin: f32) -> bool {
+pub fn equal_to_c(lhs: Complex<f64>, rhs: Complex<f64>, margin: f64) -> bool {
     (lhs - rhs).norm().le(&margin)
 }
 
@@ -24,14 +24,14 @@ pub fn equal_to_c(lhs: Complex<f32>, rhs: Complex<f32>, margin: f32) -> bool {
 /// Return `Ordering::Less` if all elements preceeding an element
 /// are equal and the same element is less
 pub fn equal_to_matrix_c<R, C, S>(
-    lhs: &Matrix<Complex<f32>, R, C, S>,
-    rhs: &Matrix<Complex<f32>, R, C, S>,
-    margin: f32,
+    lhs: &Matrix<Complex<f64>, R, C, S>,
+    rhs: &Matrix<Complex<f64>, R, C, S>,
+    margin: f64,
 ) -> bool
 where
     R: Dim,
     C: Dim,
-    S: RawStorage<Complex<f32>, R, C>,
+    S: RawStorage<Complex<f64>, R, C>,
 {
     let ((l1, l2), (r1, r2)) = (lhs.shape(), rhs.shape());
     if l1 != r1 || l2 != r2 {
@@ -55,7 +55,7 @@ pub fn reverse_indices(
 }
 
 // Helper function for get_gate_matrix
-fn u(theta: f32, phi: f32, lambda: f32) -> [Complex<f32>; 4] {
+fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
     // https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.UGate for definition
     let theta_half = theta / 2.0;
 
@@ -70,7 +70,7 @@ fn u(theta: f32, phi: f32, lambda: f32) -> [Complex<f32>; 4] {
 }
 
 pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f32>> {
-    let data: &[Complex<f32>] = match gate.get_type() {
+    let data: &[Complex<f64>] = match gate.get_type() {
         GateType::X => &Gate::PAULI_X_DATA,
         GateType::Y => &Gate::PAULI_Y_DATA,
         GateType::Z => &Gate::PAULI_Z_DATA,
@@ -87,7 +87,7 @@ pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f32>> {
 /// Collapse a state vector into a value
 ///
 /// The sum of the squares of each item should equal to one
-pub fn collapse(state: &[Complex<f32>]) -> usize {
+pub fn collapse(state: &[Complex<f64>]) -> usize {
     let probs = state.iter().map(|&c| c.norm_sqr());
 
     let dist = WeightedIndex::new(probs)

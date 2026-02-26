@@ -1,4 +1,4 @@
-use std::f32::consts::FRAC_1_SQRT_2;
+use std::f64::consts::FRAC_1_SQRT_2;
 
 use nalgebra::{Complex, Const, DVector, Dyn, SVector};
 use quasim::{

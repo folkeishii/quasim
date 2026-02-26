@@ -31,18 +31,18 @@ where
 /// should implement this trait
 pub trait RunnableSimulator {
     fn run(&self) -> usize;
-    fn final_state(&self) -> DVector<Complex<f32>>;
+    fn final_state(&self) -> DVector<Complex<f64>>;
 }
 
 /// # DebuggableSimulator
 /// Any simulator that can step through a circuit
 /// one gate at a time should implement this trait
 pub trait DebuggableSimulator {
-    fn next(&mut self) -> Option<&DVector<Complex<f32>>>;
+    fn next(&mut self) -> Option<&DVector<Complex<f64>>>;
     fn current_instruction(&self) -> Option<(usize, &Instruction)>;
-    fn current_state(&self) -> &DVector<Complex<f32>>;
+    fn current_state(&self) -> &DVector<Complex<f64>>;
 
-    fn continue_until(&mut self, breakpoint: Option<usize>) -> &DVector<Complex<f32>> {
+    fn continue_until(&mut self, breakpoint: Option<usize>) -> &DVector<Complex<f64>> {
         while let Some(index) = self.current_instruction().map(|(i, _)| i) {
             if Some(index) == breakpoint {
                 break;
@@ -57,7 +57,7 @@ pub trait DebuggableSimulator {
 /// Any simulator that can step back through a circuit
 /// one gate at a time should implement this trait
 pub trait DoubleEndedSimulator: DebuggableSimulator {
-    fn prev(&mut self) -> Option<&DVector<Complex<f32>>>;
+    fn prev(&mut self) -> Option<&DVector<Complex<f64>>>;
 }
 
 #[cfg(test)]
