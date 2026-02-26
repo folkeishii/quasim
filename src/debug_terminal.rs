@@ -122,10 +122,11 @@ impl DebugTerminal {
 
                 loop {
                     if self.simulator.next().is_none() {
-                        Self::error(stdout, &"End of Circuit reached, continued until end")?;
+                        Self::print(stdout, &"End of Circuit reached, continued until end")?;
                         return Ok(());
                     }
 
+                    //Check if a breakpoint exists, if it is at the current instruction, disable it and stop, otherwise continue
                     if let Some(next_break) = next_break {
                         if let Some((instruction_index, _instruction)) =
                             self.simulator.current_instruction()
@@ -154,12 +155,13 @@ impl DebugTerminal {
 
                     loop {
                         if self.simulator.next().is_none() {
-                            Self::error(stdout, &"End of Circuit reached, continued until end")?;
+                            Self::print(stdout, &"End of Circuit reached, continued until end")?;
                             return Ok(());
                         }
 
+                        // If there are no more breaks to skip, continue until end
                         if next_break.is_none() {
-                            Self::error(
+                            Self::print(
                                 stdout,
                                 &format!(
                                     "Skipped {} breakpoints, continuing until end",
@@ -174,6 +176,7 @@ impl DebugTerminal {
                             }
                         }
 
+                        //Check if a breakpoint exists, if it is at the current instruction, disable it and stop, otherwise continue
                         if let Some(next_break) = next_break {
                             if let Some((instruction_index, _instruction)) =
                                 self.simulator.current_instruction()
