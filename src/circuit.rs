@@ -87,4 +87,11 @@ impl Circuit {
         ));
         self
     }
+
+    pub fn s(mut self, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::S, &[], &[target]).unwrap(),
+        ));
+        self
+    }
 }
