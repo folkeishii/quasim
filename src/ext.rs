@@ -6,6 +6,30 @@ use rand::prelude::Distribution;
 
 use crate::gate::{Gate, GateType};
 
+#[macro_export]
+macro_rules! cart {
+    ($re:expr) => {
+        Complex { re: $re, im: 0.0 }
+    };
+    ($re:expr, $im:expr) => {
+        Complex { re: $re, im: $im }
+    };
+}
+
+#[macro_export]
+macro_rules! polar {
+    ($r: expr, $theta: expr) => {
+        Complex::from_polar($r, $theta)
+    };
+}
+
+#[macro_export]
+macro_rules! cexp {
+    ($exp: expr) => {
+        Complex::exp($exp)
+    };
+}
+
 /// Compares two complex numbers
 ///
 /// Two complex numbers are determined to be equal if the distance
@@ -59,14 +83,9 @@ fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
     // https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.UGate for definition
     let theta_half = theta / 2.0;
 
-    let cos = Complex::new(theta_half.cos(), 0.0);
-    let sin = Complex::new(theta_half.sin(), 0.0);
-
-    let e_phi = Complex::new(0.0, phi).exp();
-    let e_lambda = Complex::new(0.0, lambda).exp();
-    let e_phi_lambda = Complex::new(0.0, phi + lambda).exp();
-
-    [cos, -e_lambda * sin, e_phi * sin, e_phi_lambda * cos]
+    let cos = theta_half.cos();
+    let sin = theta_half.sin();
+    [cart!(cos), -polar!(sin, lambda), polar!(sin, phi), polar!(cos, lambda + phi)]
 }
 
 pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
@@ -97,26 +116,3 @@ pub fn collapse(state: &[Complex<f64>]) -> usize {
     dist.sample(&mut rng)
 }
 
-#[macro_export]
-macro_rules! cart {
-    ($re:expr) => {
-        Complex { re: $re, im: 0.0 }
-    };
-    ($re:expr, $im:expr) => {
-        Complex { re: $re, im: $im }
-    };
-}
-
-#[macro_export]
-macro_rules! polar {
-    ($r: expr, $theta: expr) => {
-        Complex::from_polar($r, $theta)
-    };
-}
-
-#[macro_export]
-macro_rules! cexp {
-    ($exp: expr) => {
-        Complex::exp($exp)
-    };
-}
