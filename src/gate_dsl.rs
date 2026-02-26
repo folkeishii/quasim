@@ -10,8 +10,8 @@ use nalgebra::{
 
 use crate::{cart, ext::reverse_indices};
 
-pub type State = SVector<Complex<f32>, 2>;
-pub type Gate2x2 = SMatrix<Complex<f32>, 2, 2>;
+pub type State = SVector<Complex<f64>, 2>;
+pub type Gate2x2 = SMatrix<Complex<f64>, 2, 2>;
 
 pub const STATE_0: State = SMatrix::from_array_storage(ArrayStorage([[cart!(1.0), cart!(0.0)]]));
 pub const ID: Gate2x2 = SMatrix::from_array_storage(ArrayStorage([
@@ -44,7 +44,7 @@ pub struct MST<QS: QSystem> {
 impl<QS: QSystem> MST<QS> {
     pub fn eval(
         &self,
-    ) -> Matrix<Complex<f32>, <QS as QSystem>::SysR, <QS as QSystem>::SysC, <QS as QSystem>::SysGS>
+    ) -> Matrix<Complex<f64>, <QS as QSystem>::SysR, <QS as QSystem>::SysC, <QS as QSystem>::SysGS>
     {
         let system = self.system;
         let mut stm: Vec<TP<QS>> = vec![TP {
@@ -233,7 +233,7 @@ pub struct TP<QS: QSystem> {
 impl<QS: QSystem> TP<QS> {
     pub fn eval(
         &self,
-    ) -> Matrix<Complex<f32>, <QS as QSystem>::SysR, <QS as QSystem>::SysC, <QS as QSystem>::SysGS>
+    ) -> Matrix<Complex<f64>, <QS as QSystem>::SysR, <QS as QSystem>::SysC, <QS as QSystem>::SysGS>
     {
         let stride_init = self.system.state_count() >> 1;
         self.system.init_system_gate(&|row, col| {
@@ -314,7 +314,7 @@ pub struct STV<QS: QSystem> {
 impl<QS: QSystem> STV<QS> {
     pub fn eval(
         &self,
-    ) -> Matrix<Complex<f32>, <QS as QSystem>::SysR, Const<1>, <QS as QSystem>::SysSS> {
+    ) -> Matrix<Complex<f64>, <QS as QSystem>::SysR, Const<1>, <QS as QSystem>::SysSS> {
         let mut ret = self.system.init_system_state(&|_| 0.0.into());
 
         for tpv in self.iter() {
@@ -358,7 +358,7 @@ pub struct TPV<QS: QSystem> {
 impl<QS: QSystem> TPV<QS> {
     pub fn eval(
         &self,
-    ) -> Matrix<Complex<f32>, <QS as QSystem>::SysR, Const<1>, <QS as QSystem>::SysSS> {
+    ) -> Matrix<Complex<f64>, <QS as QSystem>::SysR, Const<1>, <QS as QSystem>::SysSS> {
         let mut ret = self
             .system
             .init_system_state(&|_| Complex { re: 1.0, im: 0.0 });
@@ -421,8 +421,8 @@ impl<T: Sized + Add<Self> + AddAssign<Self> + Mul<Self> + MulAssign<Self> + Mul<
 pub trait QSystem: Copy {
     type SysR: Dim;
     type SysC: Dim;
-    type SysSS: StorageMut<Complex<f32>, Self::SysR, Const<1>>;
-    type SysGS: StorageMut<Complex<f32>, Self::SysR, Self::SysC>;
+    type SysSS: StorageMut<Complex<f64>, Self::SysR, Const<1>>;
+    type SysGS: StorageMut<Complex<f64>, Self::SysR, Self::SysC>;
     type Storage<T: Clone>: Clone + AsRef<[T]> + AsMut<[T]>;
 
     fn assert_bit_count(self, other: Self) {
@@ -440,22 +440,22 @@ pub trait QSystem: Copy {
     /// All arguments passed to `f` must be in the range `0..(state_count)`
     fn init_system_state(
         &self,
-        f: &impl Fn(usize) -> Complex<f32>,
-    ) -> Matrix<Complex<f32>, Self::SysR, Const<1>, Self::SysSS>;
+        f: &impl Fn(usize) -> Complex<f64>,
+    ) -> Matrix<Complex<f64>, Self::SysR, Const<1>, Self::SysSS>;
     /// All arguments passed to `f` must be in the range `0..(state_count) x 0..(state_count)`
     fn init_system_gate(
         &self,
-        f: &impl Fn(usize, usize) -> Complex<f32>,
-    ) -> Matrix<Complex<f32>, Self::SysR, Self::SysC, Self::SysGS>;
+        f: &impl Fn(usize, usize) -> Complex<f64>,
+    ) -> Matrix<Complex<f64>, Self::SysR, Self::SysC, Self::SysGS>;
     fn system_get(
         &self,
-        system_state: &Matrix<Complex<f32>, Self::SysR, Const<1>, Self::SysSS>,
+        system_state: &Matrix<Complex<f64>, Self::SysR, Const<1>, Self::SysSS>,
         index: usize,
-    ) -> Complex<f32>;
+    ) -> Complex<f64>;
     fn system_apply_f(
         &self,
-        system_state: &mut Matrix<Complex<f32>, Self::SysR, Const<1>, Self::SysSS>,
-        f: &impl Fn(usize, Complex<f32>) -> Complex<f32>,
+        system_state: &mut Matrix<Complex<f64>, Self::SysR, Const<1>, Self::SysSS>,
+        f: &impl Fn(usize, Complex<f64>) -> Complex<f64>,
     );
 
     fn bit_count(&self) -> usize;
@@ -471,8 +471,8 @@ pub trait SQsystem: QSystem {
 impl QSystem for Dyn {
     type SysR = Dyn;
     type SysC = Dyn;
-    type SysSS = VecStorage<Complex<f32>, Self::SysR, Const<1>>;
-    type SysGS = VecStorage<Complex<f32>, Self::SysR, Self::SysC>;
+    type SysSS = VecStorage<Complex<f64>, Self::SysR, Const<1>>;
+    type SysGS = VecStorage<Complex<f64>, Self::SysR, Self::SysC>;
     type Storage<T: Clone> = Vec<T>;
 
     fn init_state_storage(&self, f: &impl Fn(usize) -> State) -> Self::Storage<State> {
@@ -483,14 +483,14 @@ impl QSystem for Dyn {
         (0..self.bit_count()).into_iter().map(f).collect()
     }
 
-    fn init_system_state(&self, f: &impl Fn(usize) -> Complex<f32>) -> DVector<Complex<f32>> {
+    fn init_system_state(&self, f: &impl Fn(usize) -> Complex<f64>) -> DVector<Complex<f64>> {
         DVector::from_row_iterator(
             self.state_count(),
             (0..self.state_count()).into_iter().map(f),
         )
     }
 
-    fn init_system_gate(&self, f: &impl Fn(usize, usize) -> Complex<f32>) -> DMatrix<Complex<f32>> {
+    fn init_system_gate(&self, f: &impl Fn(usize, usize) -> Complex<f64>) -> DMatrix<Complex<f64>> {
         let row_total = self.state_count();
         let total = self.state_count().pow(2);
         DMatrix::from_row_iterator(
@@ -503,14 +503,14 @@ impl QSystem for Dyn {
         )
     }
 
-    fn system_get(&self, system_state: &DVector<Complex<f32>>, index: usize) -> Complex<f32> {
+    fn system_get(&self, system_state: &DVector<Complex<f64>>, index: usize) -> Complex<f64> {
         system_state[index]
     }
 
     fn system_apply_f(
         &self,
-        system_state: &mut DVector<Complex<f32>>,
-        f: &impl Fn(usize, Complex<f32>) -> Complex<f32>,
+        system_state: &mut DVector<Complex<f64>>,
+        f: &impl Fn(usize, Complex<f64>) -> Complex<f64>,
     ) {
         for i in 0..self.state_count() {
             system_state[i] = f(i, system_state[i])
@@ -527,8 +527,8 @@ macro_rules! impl_const_qsystem {
         impl QSystem for Const<$qc> {
             type SysR = Const<{ 1 << $qc }>;
             type SysC = Const<{ 1 << $qc }>;
-            type SysSS = ArrayStorage<Complex<f32>, { 1 << $qc }, 1>;
-            type SysGS = ArrayStorage<Complex<f32>, { 1 << $qc }, { 1 << $qc }>;
+            type SysSS = ArrayStorage<Complex<f64>, { 1 << $qc }, 1>;
+            type SysGS = ArrayStorage<Complex<f64>, { 1 << $qc }, { 1 << $qc }>;
             type Storage<T: Clone> = [T; $qc];
 
             fn init_state_storage(&self, f: &impl Fn(usize) -> State) -> Self::Storage<State> {
@@ -541,15 +541,15 @@ macro_rules! impl_const_qsystem {
 
             fn init_system_state(
                 &self,
-                f: &impl Fn(usize) -> Complex<f32>,
-            ) -> SVector<Complex<f32>, { 1 << $qc }> {
+                f: &impl Fn(usize) -> Complex<f64>,
+            ) -> SVector<Complex<f64>, { 1 << $qc }> {
                 SVector::from_row_iterator((0..self.state_count()).into_iter().map(f))
             }
 
             fn init_system_gate(
                 &self,
-                f: &impl Fn(usize, usize) -> Complex<f32>,
-            ) -> SMatrix<Complex<f32>, { 1 << $qc }, { 1 << $qc }> {
+                f: &impl Fn(usize, usize) -> Complex<f64>,
+            ) -> SMatrix<Complex<f64>, { 1 << $qc }, { 1 << $qc }> {
                 let row_total = self.state_count();
                 let total = self.state_count().pow(2);
                 SMatrix::from_row_iterator((0..total).into_iter().map(|i| {
@@ -560,16 +560,16 @@ macro_rules! impl_const_qsystem {
 
             fn system_get(
                 &self,
-                system_state: &SVector<Complex<f32>, { 1 << $qc }>,
+                system_state: &SVector<Complex<f64>, { 1 << $qc }>,
                 index: usize,
-            ) -> Complex<f32> {
+            ) -> Complex<f64> {
                 system_state[index]
             }
 
             fn system_apply_f(
                 &self,
-                system_state: &mut SVector<Complex<f32>, { 1 << $qc }>,
-                f: &impl Fn(usize, Complex<f32>) -> Complex<f32>,
+                system_state: &mut SVector<Complex<f64>, { 1 << $qc }>,
+                f: &impl Fn(usize, Complex<f64>) -> Complex<f64>,
             ) {
                 for i in 0..self.state_count() {
                     system_state[i] = f(i, system_state[i])
@@ -647,7 +647,7 @@ impl_const_qsystem!(15);
 
 #[cfg(test)]
 mod tests {
-    use std::f32::consts::FRAC_1_SQRT_2;
+    use std::f64::consts::FRAC_1_SQRT_2;
 
     use nalgebra::{Complex, Const, DVector, Dyn, SVector};
 
