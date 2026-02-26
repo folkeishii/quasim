@@ -57,8 +57,8 @@ impl DMSimulator {
         n_qubits: usize,
     ) -> DMatrix<Complex<f64>> {
         let bra = [
-            dmatrix![cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0)], // <0|
-            dmatrix![cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0)], // <0|
+            dmatrix![cart!(1.0), cart!(0.0)], // <0|
+            dmatrix![cart!(0.0), cart!(1.0)], // <0|
         ];
 
         let dim = 1 << targets.len();
@@ -69,7 +69,6 @@ impl DMSimulator {
             .collect::<Vec<usize>>();
         let n_terms = 1 << (n_qubits - targets.len());
         for i in 0..n_terms {
-            println!("TERMS: {}", n_terms);
             /* Example, targets = [2], n_qubits = 3:
              *
              * p_2 = (<0| * <0| * I)p(|0> * |0> * I) +
@@ -84,17 +83,8 @@ impl DMSimulator {
                 j += 1;
             }
             let left_of_density = eval_tensor_product(left_of_density_prod);
-            println!("{} X {}", left_of_density.nrows(), left_of_density.ncols());
             let right_of_density = left_of_density.adjoint();
-            println!(
-                "{} X {}",
-                right_of_density.nrows(),
-                right_of_density.ncols()
-            );
-            println!("before");
-            println!("{} X {}", density.nrows(), density.ncols());
             sum += left_of_density * density * right_of_density;
-            println!("after");
         }
         sum
     }
