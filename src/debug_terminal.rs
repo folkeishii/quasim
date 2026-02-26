@@ -127,19 +127,21 @@ impl DebugTerminal {
                     }
 
                     //Check if a breakpoint exists, if it is at the current instruction, disable it and stop, otherwise continue
-                    if let Some(next_break) = next_break {
-                        if let Some((instruction_index, _instruction)) =
-                            self.simulator.current_instruction()
-                        {
-                            if instruction_index == next_break {
-                                self.breakpoints.disable(next_break);
-                                Self::print(
-                                    stdout,
-                                    &format!("Continued until breakpoint at index {}", next_break),
-                                )?;
-                                return Ok(());
-                            }
-                        }
+                    let Some(next_break) = next_break else {
+                        return Ok(());
+                    };
+
+                    let Some((instruction_index, _instruction)) = self.simulator.current_instruction() else {
+                        return Ok(());
+                    };
+
+                    if instruction_index == next_break {
+                        self.breakpoints.disable(next_break);
+                        Self::print(
+                            stdout,
+                            &format!("Continued until breakpoint at index {}", next_break),
+                        )?;
+                        return Ok(());
                     }
                 }
             }
@@ -177,20 +179,22 @@ impl DebugTerminal {
                         }
 
                         //Check if a breakpoint exists, if it is at the current instruction, disable it and stop, otherwise continue
-                        if let Some(next_break) = next_break {
-                            if let Some((instruction_index, _instruction)) =
-                                self.simulator.current_instruction()
-                            {
-                                if instruction_index == next_break {
-                                    self.breakpoints.disable(next_break);
-                                    breakpoints_skipped += 1;
-                                    skipped_index = next_break;
-                                    break;
-                                }
-                            }
+                        let Some(next_break) = next_break else {
+                            return Ok(());
+                        };
+
+                        let Some((instruction_index, _instruction)) = self.simulator.current_instruction() else {
+                            return Ok(());
+                        };
+            
+                        if instruction_index == next_break {
+                            self.breakpoints.disable(next_break);
+                            breakpoints_skipped += 1;
+                            skipped_index = next_break;
+                            break;
                         }
-                        self.simulator.next();
                     }
+                        self.simulator.next();
                 }
                 Self::print(
                     stdout,
