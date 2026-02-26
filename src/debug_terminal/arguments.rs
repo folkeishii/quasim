@@ -212,7 +212,7 @@ impl StateArgs {
     }
 
     pub fn from_state(
-        current_state: &DVector<Complex<f32>>,
+        current_state: &DVector<Complex<f64>>,
         state_args: &StateArgs,
     ) -> Result<Vec<IndexedState>, StateError> {
         let state_size = current_state.len() - 1;
