@@ -9,8 +9,8 @@ use crate::{
 };
 
 struct SimpleSimulator {
-    state_vector: DVector<Complex<f32>>,
-    dist: WeightedIndex<f32>,
+    state_vector: DVector<Complex<f64>>,
+    dist: WeightedIndex<f64>,
 }
 
 impl TryFrom<Circuit> for SimpleSimulator {
@@ -45,7 +45,7 @@ impl RunnableSimulator for SimpleSimulator {
         self.dist.sample(&mut rng)
     }
 
-    fn final_state(&self) -> DVector<Complex<f32>> {
+    fn final_state(&self) -> DVector<Complex<f64>> {
         self.state_vector.clone()
     }
 }
