@@ -10,3 +10,4 @@ pub mod instruction;
 pub mod simple_simulator;
 pub mod simulator;
 pub mod sv_simulator;
+pub mod dm_simulator;
