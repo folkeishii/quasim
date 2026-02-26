@@ -131,7 +131,9 @@ impl DebugTerminal {
                         return Ok(());
                     };
 
-                    let Some((instruction_index, _instruction)) = self.simulator.current_instruction() else {
+                    let Some((instruction_index, _instruction)) =
+                        self.simulator.current_instruction()
+                    else {
                         return Ok(());
                     };
 
@@ -183,10 +185,12 @@ impl DebugTerminal {
                             return Ok(());
                         };
 
-                        let Some((instruction_index, _instruction)) = self.simulator.current_instruction() else {
+                        let Some((instruction_index, _instruction)) =
+                            self.simulator.current_instruction()
+                        else {
                             return Ok(());
                         };
-            
+
                         if instruction_index == next_break {
                             self.breakpoints.disable(next_break);
                             breakpoints_skipped += 1;
@@ -194,7 +198,7 @@ impl DebugTerminal {
                             break;
                         }
                     }
-                        self.simulator.next();
+                    self.simulator.next();
                 }
                 Self::print(
                     stdout,
