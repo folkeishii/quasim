@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::{
     expr_dsl::Expr, gate::{Gate, GateType, QBits}, instruction::Instruction
 };
@@ -6,7 +8,7 @@ use crate::{
 pub struct Circuit {
     instructions: Vec<Instruction>,
     n_qubits: usize,
-    n_cregs: usize,
+    registers: HashSet<String>,
 }
 
 impl Circuit {
@@ -14,12 +16,12 @@ impl Circuit {
         Self {
             instructions: Vec::<Instruction>::default(),
             n_qubits: n_qubits,
-            n_cregs: 0,
+            registers: HashSet::new(),
         }
     }
 
-    pub fn classical_regs(mut self, count: usize) -> Self {
-        self.n_cregs = count;
+    pub fn new_reg(mut self, name: &str) -> Self {
+        self.registers.insert(name.to_owned());
         self
     }
 
@@ -31,8 +33,8 @@ impl Circuit {
         self.n_qubits
     }
 
-    pub fn n_cregs(&self) -> usize {
-        self.n_cregs
+    pub fn registers(&self) -> &HashSet<String> {
+        &self.registers
     }
 
     pub fn x(mut self, target: usize) -> Self {
@@ -84,8 +86,8 @@ impl Circuit {
         self
     }
 
-    pub fn measure_bit(mut self, target: usize, reg: usize) -> Self {
-        self.instructions.push(Instruction::Measurement(QBits::from_bitstring(1 << target), reg));
+    pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
+        self.instructions.push(Instruction::Measurement(QBits::from_bitstring(1 << target), reg.to_owned()));
         self
     }
 
@@ -102,7 +104,10 @@ impl Circuit {
     }
 
     // takes register nr directly for now
-    pub fn assign(mut self, expr: Expr, reg: usize) -> Self {
+    pub fn assign(mut self, reg: String, expr: Expr) -> Self {
+        if !self.registers.contains(&reg) {
+            panic!("Tried to assign to nonexistent register with name '{}'.", reg)
+        }
         self.instructions.push(Instruction::Assign(expr, reg));
         self
     }

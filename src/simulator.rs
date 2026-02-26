@@ -89,32 +89,3 @@ mod tests {
         ))
     }
 }
-
-/// # HybridSimulator
-/// Any simulator that contains classical registers and can
-/// evaluate expressions from the contents of its registers
-pub trait HybridSimulator {
-    // fn allocate(&mut self, reg_count: usize);
-    fn get(&self, reg: usize) -> Value;
-
-    fn eval(&self, expr: &Expr) -> Value {
-        match expr {
-            Expr::Val(v) => *v,
-            Expr::Reg(i) => self.get(*i),
-
-            Expr::Not(e) => self.eval(e).not(),
-            Expr::And(a, b) => self.eval(a).and(self.eval(b)),
-            Expr::Or(a, b) => self.eval(a).or(self.eval(b)),
-            Expr::Xor(a, b) => self.eval(a).xor(self.eval(b)),
-
-            Expr::Add(a, b) => self.eval(a).add(self.eval(b)),
-            Expr::Sub(a, b) => self.eval(a).sub(self.eval(b)),
-            Expr::Mul(a, b) => self.eval(a).mul(self.eval(b)),
-            Expr::Div(a, b) => self.eval(a).div(self.eval(b)),
-            Expr::Rem(a, b) => self.eval(a).rem(self.eval(b)),
-
-            Expr::Eq(a, b) => self.eval(a).eq(self.eval(b)),
-            Expr::Lt(a, b) => self.eval(a).lt(self.eval(b)),
-        }
-    }
-}

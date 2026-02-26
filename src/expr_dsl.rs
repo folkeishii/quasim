@@ -1,5 +1,7 @@
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Sub};
 
+use crate::register_file::RegisterFile;
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Value {
     Int(i32),
@@ -7,6 +9,12 @@ pub enum Value {
     Bool(bool),
 
     Err,
+}
+
+impl Default for Value {
+    fn default() -> Self {
+        Value::Int(0)
+    }
 }
 
 impl Value {
@@ -88,7 +96,7 @@ impl Value {
 #[derive(Debug, Clone)]
 pub enum Expr {
     Val(Value),
-    Reg(usize),
+    Reg(String),
 
     Not(Box<Expr>),
     And(Box<Expr>, Box<Expr>),
@@ -124,6 +132,27 @@ impl Expr {
 
     pub fn gte<V: Into<Expr>>(self, rhs: V) -> Expr {
         Expr::Not(Box::new(Expr::Lt(Box::new(self), Box::new(rhs.into()))))
+    }
+
+    pub fn eval(&self, regs: &RegisterFile<Value>) -> Value {
+        match self {
+            Expr::Val(v) => *v,
+            Expr::Reg(name) => regs[name],
+
+            Expr::Not(e) => e.eval(regs).not(),
+            Expr::And(a, b) => a.eval(regs).and(b.eval(regs)),
+            Expr::Or(a, b) => a.eval(regs).or(b.eval(regs)),
+            Expr::Xor(a, b) => a.eval(regs).xor(b.eval(regs)),
+
+            Expr::Add(a, b) => a.eval(regs).add(b.eval(regs)),
+            Expr::Sub(a, b) => a.eval(regs).sub(b.eval(regs)),
+            Expr::Mul(a, b) => a.eval(regs).mul(b.eval(regs)),
+            Expr::Div(a, b) => a.eval(regs).div(b.eval(regs)),
+            Expr::Rem(a, b) => a.eval(regs).rem(b.eval(regs)),
+
+            Expr::Eq(a, b) => a.eval(regs).eq(b.eval(regs)),
+            Expr::Lt(a, b) => a.eval(regs).lt(b.eval(regs)),
+        }
     }
 }
 
@@ -225,7 +254,7 @@ pub mod expr_helpers {
     use crate::expr_dsl::Expr;
 
     /// Read register
-    pub fn r(reg: usize) -> Expr {
-        Expr::Reg(reg)
+    pub fn r(reg: &str) -> Expr {
+        Expr::Reg(reg.to_owned())
     }
 }

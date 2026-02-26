@@ -1,21 +1,17 @@
+use std::collections::HashMap;
+
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::{
-    cart, circuit::Circuit, expr_dsl::{Expr, Value}, ext::get_gate_matrix, gate::{Gate, QBits}, instruction::Instruction, simulator::{DebuggableSimulator, HybridSimulator, RunnableSimulator}
+    cart, circuit::Circuit, expr_dsl::{Expr, Value}, ext::get_gate_matrix, gate::{Gate, QBits}, instruction::Instruction, register_file::RegisterFile, simulator::{DebuggableSimulator, RunnableSimulator}
 };
 
 pub struct SVExecutor<'a> {
     state_vector: DVector<Complex<f32>>,
     circuit: &'a Circuit,
     pc: usize,
-    registers: Vec<Value>,
-}
-
-impl HybridSimulator for SVExecutor<'_> {
-    fn get(&self, reg: usize) -> Value {
-        self.registers[reg]
-    }
+    registers: RegisterFile<Value>,
 }
 
 impl<'a> SVExecutor<'a> {
@@ -119,7 +115,7 @@ impl<'a> SVExecutor<'a> {
         }
     }
 
-    fn measure(&mut self, targets: QBits, reg: usize) {
+    fn measure(&mut self, targets: QBits, reg: &str) {
         let measurement = self.get_collapsed_state();
         let mask = targets.get_bitstring();
         let collapsed_bitstring = measurement & mask;
@@ -153,24 +149,24 @@ impl<'a> SVExecutor<'a> {
     }
 
     fn jump_if(&mut self, expr: &Expr, pc: usize) {
-        if let Value::Bool(b) = self.eval(expr) {
+        if let Value::Bool(b) = expr.eval(&self.registers) {
             if b {
                 self.pc = pc;
             }
         }
     }
 
-    fn assign(&mut self, expr: &Expr, reg: usize) {
-        self.registers[reg] = self.eval(expr);
+    fn assign(&mut self, expr: &Expr, reg: &str) {
+        self.registers[reg] = expr.eval(&self.registers);
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
-            Instruction::Measurement(qbits, reg) => self.measure(*qbits, *reg),
+            Instruction::Measurement(qbits, reg) => self.measure(*qbits, reg),
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
-            Instruction::Assign(expr, reg) => self.assign(expr, *reg),
+            Instruction::Assign(expr, reg) => self.assign(expr, reg),
         }
     }
 }
@@ -207,7 +203,7 @@ impl SVSimulator {
             state_vector: init_state_vector,
             circuit: &self.circuit,
             pc: 0,
-            registers: vec![Value::Int(0); self.circuit.n_cregs()],
+            registers: RegisterFile::from(self.circuit.registers()),
         }
     }
 
@@ -245,41 +241,41 @@ pub enum SVError {}
 
 #[cfg(test)]
 mod tests {
-    use crate::{circuit::Circuit, expr_dsl::expr_helpers::r, simulator::{BuildSimulator, HybridSimulator, RunnableSimulator}, sv_simulator::SVSimulator};
+    use crate::{circuit::Circuit, expr_dsl::expr_helpers::r, simulator::{BuildSimulator, RunnableSimulator}, sv_simulator::SVSimulator};
 
     #[test]
     fn test() {
-        let circuit = Circuit::new(4).classical_regs(4)
+        let circuit = Circuit::new(4)
+            .new_reg("r0")
+            .new_reg("r1")
+            .new_reg("r2")
+            .new_reg("r3")
             // Init random state
             .hadamard(0)
             .hadamard(1)
             .hadamard(2)
             .hadamard(3)
         
-            .measure_bit(0, 0)
-            .measure_bit(1, 1)
-            .measure_bit(2, 2)
-            .measure_bit(3, 3)
+            .measure_bit(0, "r0")
+            .measure_bit(1, "r1")
+            .measure_bit(2, "r2")
+            .measure_bit(3, "r3")
 
-            .jump_if(r(0).eq(0), 9)
+            .jump_if(r("r0").eq(0), 9)
             .x(0)
 
-            .jump_if(r(1).eq(0), 11)
+            .jump_if(r("r1").eq(0), 11)
             .x(1)
 
-            .jump_if(r(2).eq(0), 13)
+            .jump_if(r("r2").eq(0), 13)
             .x(2)
 
-            .jump_if(r(3).eq(0), 15)
+            .jump_if(r("r3").eq(0), 15)
             .x(3);
 
         let sim = SVSimulator::build(circuit).unwrap();
         let mut dbg = sim.attach_debugger();
         dbg.executor.step_all();
-        println!("{:?}", dbg.executor.get(0));
-        println!("{:?}", dbg.executor.get(1));
-        println!("{:?}", dbg.executor.get(2));
-        println!("{:?}", dbg.executor.get(3));
         println!("{:04b}", sim.run());
         println!("{}", sim.final_state());
     }
