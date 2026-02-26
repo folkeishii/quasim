@@ -135,8 +135,7 @@ impl DebugTerminal {
             }
             ContinueArgs::SkipBreaks(n) => {
                 let mut breakpoints_skipped = 0;
-                let mut skipped_index = 0;
-                for _breaks in 0..*n {
+                for _breaks in 0..*n+1 {
                     let next_break = self
                         .breakpoints
                         .iter()
@@ -179,19 +178,23 @@ impl DebugTerminal {
                             continue;
                         };
 
+                        // If we have skipped the desired amount of breakpoints
+                        if breakpoints_skipped == *n {
+                            println!(
+                                stdout;
+                                "Skipped {} breakpoints, continued to index {}",
+                                breakpoints_skipped, instruction_index
+                            )?;
+                            return Ok(());
+                        }
+
                         if instruction_index == next_break {
                             breakpoints_skipped += 1;
-                            skipped_index = next_break;
                             break;
                         }
                     }
                     self.simulator.next();
                 }
-                println!(
-                    stdout;
-                    "Skipped {} breakpoints, continued to index {}",
-                    breakpoints_skipped, skipped_index
-                )?;
             }
             ContinueArgs::IgnoreBreak => loop {
                 if self.simulator.next().is_none() {
@@ -199,7 +202,7 @@ impl DebugTerminal {
                     return Ok(());
                 }
                 self.simulator.next();
-            },
+            }
         }
 
         Ok(())
