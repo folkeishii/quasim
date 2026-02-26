@@ -32,6 +32,17 @@ impl BreakpointList {
         }
     }
 
+    /// Returns Ok if breakpoint was disabled
+    pub fn disable(&mut self, gate_index: usize) -> Option<PEBreakpoint> {
+        match self.binary_search_by_key(&gate_index, |b| b.gate_index()) {
+            Ok(index) => {
+                self[index].disable();
+                Some(PEBreakpoint::Disabled)
+            }
+            Err(_) => None,
+        }
+    }
+
     fn inner(&self) -> &Vec<Breakpoint> {
         &self.0
     }
@@ -93,4 +104,5 @@ impl Breakpoint {
 pub enum PEBreakpoint {
     Inserted,
     Enabled,
+    Disabled,
 }
