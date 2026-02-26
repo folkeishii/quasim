@@ -22,6 +22,7 @@ use crate::{
 use std::io::{self, Write};
 use std::ops::Div;
 
+#[derive(Debug, Clone)]
 pub struct DebugTerminal {
     simulator: DebugSimulator,
     /// Sorted array of breakpoints

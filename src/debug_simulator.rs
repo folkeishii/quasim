@@ -217,7 +217,7 @@ impl DebugSimulator {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum DebugSimulatorError {
     #[error("Measurement mid-circuit")]
     MidCircuitMeasurement,
