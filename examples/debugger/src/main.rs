@@ -1,4 +1,4 @@
-use std::{io, thread::sleep, time::Duration};
+use std::io;
 
 use quasim::circuit::Circuit;
 use quasim::debug_terminal::DebugTerminal;

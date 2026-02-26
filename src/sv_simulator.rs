@@ -8,7 +8,7 @@ use crate::{
 };
 
 pub struct SVExecutor<'a> {
-    state_vector: DVector<Complex<f32>>,
+    state_vector: DVector<Complex<f64>>,
     circuit: &'a Circuit,
     pc: usize,
     registers: RegisterFile<Value>,
@@ -16,7 +16,7 @@ pub struct SVExecutor<'a> {
 
 impl<'a> SVExecutor<'a> {
     /// Step forward one instruction in the circuit
-    pub fn step(&mut self) -> Option<&DVector<Complex<f32>>> {
+    pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
         if self.pc >= self.circuit.instructions().len() {
             return None;
         }
@@ -47,7 +47,7 @@ impl<'a> SVExecutor<'a> {
     }
 
     /// Get current state of the quantum system
-    pub fn state_vector(&self) -> &DVector<Complex<f32>> {
+    pub fn state_vector(&self) -> &DVector<Complex<f64>> {
         &self.state_vector
     }
 
@@ -84,7 +84,7 @@ impl<'a> SVExecutor<'a> {
     fn gate(&mut self, gate: &Gate) {
         let controls = gate.get_control_bits();
         let targets = gate.get_target_bits();
-        let u: DMatrix<Complex<f32>> = get_gate_matrix(gate);
+        let u: DMatrix<Complex<f64>> = get_gate_matrix(gate);
         let target_indices = targets.get_indices();
 
         // State vector is length 2^n , n=num qubits
@@ -139,7 +139,7 @@ impl<'a> SVExecutor<'a> {
             .state_vector
             .iter()
             .map(|x| x.norm_sqr())
-            .sum::<f32>()
+            .sum::<f64>()
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
     }
@@ -188,7 +188,7 @@ impl RunnableSimulator for SVSimulator {
         self.get_executor().step_all().get_collapsed_state()
     }
 
-    fn final_state(&self) -> DVector<Complex<f32>> {
+    fn final_state(&self) -> DVector<Complex<f64>> {
         self.get_executor().step_all().state_vector().clone()
     }
 }
@@ -196,7 +196,7 @@ impl RunnableSimulator for SVSimulator {
 impl SVSimulator {
     pub fn get_executor(&self) -> SVExecutor<'_> {
         let size = 1 << self.circuit.n_qubits();
-        let mut init_state_vector: DVector<Complex<f32>> = DVector::from_element(size, cart![0.0]);
+        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
         init_state_vector[0] = cart![1.0];
 
         SVExecutor {
@@ -219,7 +219,7 @@ pub struct SVSimulatorDebugger<'a> {
 }
 
 impl<'a> DebuggableSimulator for SVSimulatorDebugger<'a> {
-    fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
+    fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         self.executor.step()
     }
 
@@ -231,7 +231,7 @@ impl<'a> DebuggableSimulator for SVSimulatorDebugger<'a> {
         Some((pc, &self.executor.circuit.instructions()[pc]))
     }
 
-    fn current_state(&self) -> &DVector<Complex<f32>> {
+    fn current_state(&self) -> &DVector<Complex<f64>> {
         &self.executor.state_vector
     }
 }
