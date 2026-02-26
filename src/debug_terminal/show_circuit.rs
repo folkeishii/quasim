@@ -383,6 +383,9 @@ mod block {
     pub trait BlockGrid<const W: usize, const H: usize> {
         fn block<'a, const X: usize, const Y: usize>() -> &'a impl BlockTrait;
     }
+    impl<B: BlockTrait> BlockGrid<1, 1> for B {
+
+    }
 
     macro_rules! impl_connect {
         (Char; North; $src:literal; $dst:literal) => {
