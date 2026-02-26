@@ -69,7 +69,7 @@ fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
     [cos, -e_lambda * sin, e_phi * sin, e_phi_lambda * cos]
 }
 
-pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f32>> {
+pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
     let data: &[Complex<f64>] = match gate.get_type() {
         GateType::X => &Gate::PAULI_X_DATA,
         GateType::Y => &Gate::PAULI_Y_DATA,

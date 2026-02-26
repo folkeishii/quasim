@@ -53,7 +53,7 @@ pub enum GateType {
     Z,
     H,
     SWAP,
-    U(f32, f32, f32),
+    U(f64, f64, f64),
 }
 
 impl GateType {
