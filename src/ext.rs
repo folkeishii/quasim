@@ -6,6 +6,30 @@ use rand::prelude::Distribution;
 
 use crate::gate::{Gate, GateType};
 
+#[macro_export]
+macro_rules! cart {
+    ($re:expr) => {
+        Complex { re: $re, im: 0.0 }
+    };
+    ($re:expr, $im:expr) => {
+        Complex { re: $re, im: $im }
+    };
+}
+
+#[macro_export]
+macro_rules! polar {
+    ($r: expr, $theta: expr) => {
+        Complex::from_polar($r, $theta)
+    };
+}
+
+#[macro_export]
+macro_rules! cexp {
+    ($exp: expr) => {
+        Complex::exp($exp)
+    };
+}
+
 /// Compares two complex numbers
 ///
 /// Two complex numbers are determined to be equal if the distance
@@ -54,6 +78,16 @@ pub fn reverse_indices(
     range.map(move |i| len - i - 1)
 }
 
+// Helper function for get_gate_matrix
+fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
+    // https://quantum.cloud.ibm.com/docs/en/api/qiskit/qiskit.circuit.library.UGate for definition
+    let theta_half = theta / 2.0;
+
+    let cos = theta_half.cos();
+    let sin = theta_half.sin();
+    [cart!(cos), -polar!(sin, lambda), polar!(sin, phi), polar!(cos, lambda + phi)]
+}
+
 pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
     let data: &[Complex<f64>] = match gate.get_type() {
         GateType::X => &Gate::PAULI_X_DATA,
@@ -61,6 +95,7 @@ pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
         GateType::Z => &Gate::PAULI_Z_DATA,
         GateType::H => &Gate::HADAMARD_DATA,
         GateType::SWAP => &Gate::SWAP_DATA,
+        GateType::U(theta, phi, lambda) => &u(theta, phi, lambda),
     };
 
     let dim = 1 << gate.get_type().arity();
@@ -81,26 +116,3 @@ pub fn collapse(state: &[Complex<f64>]) -> usize {
     dist.sample(&mut rng)
 }
 
-#[macro_export]
-macro_rules! cart {
-    ($re:expr) => {
-        Complex { re: $re, im: 0.0 }
-    };
-    ($re:expr, $im:expr) => {
-        Complex { re: $re, im: $im }
-    };
-}
-
-#[macro_export]
-macro_rules! polar {
-    ($r: expr, $theta: expr) => {
-        Complex::from_polar($r, $theta)
-    };
-}
-
-#[macro_export]
-macro_rules! cexp {
-    ($exp: expr) => {
-        Complex::exp($exp)
-    };
-}

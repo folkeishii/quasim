@@ -85,6 +85,20 @@ impl Circuit {
         ));
         self
     }
+    
+    pub fn u(mut self, theta: f64, phi: f64, lambda: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, phi, lambda), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn cu(mut self, theta: f64, phi: f64, lambda: f64, control: usize, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, phi, lambda), &[control], &[target]).unwrap(),
+        ));
+        self
+    }
 
     pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
         self.instructions.push(Instruction::Measurement(QBits::from_bitstring(1 << target), reg.to_owned()));
