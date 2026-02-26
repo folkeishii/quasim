@@ -1,4 +1,10 @@
-use crate::{cart, circuit::Circuit, ext::get_gate_matrix, gate::Gate, instruction::Instruction};
+use crate::{
+    cart,
+    circuit::Circuit,
+    ext::{eval_tensor_product, expand_matrix_from_gate, get_gate_matrix, identity_tensor_factors},
+    gate::Gate,
+    instruction::Instruction,
+};
 use nalgebra::{Complex, DMatrix, dmatrix};
 
 #[derive(Debug, Clone)]
@@ -45,17 +51,22 @@ impl TryFrom<Circuit> for DMSimulator {
 }
 
 impl DMSimulator {
-
-    fn reduced_state(density: &DMatrix<Complex<f64>>, targets: &[usize], n_qubits: usize) -> DMatrix<Complex<f64>>{
+    fn reduced_state(
+        density: &DMatrix<Complex<f64>>,
+        targets: &[usize],
+        n_qubits: usize,
+    ) -> DMatrix<Complex<f64>> {
         let bra = [
-            dmatrix![cart!(1.0),cart!(0.0),cart!(0.0),cart!(0.0)], // <0|
-            dmatrix![cart!(0.0),cart!(0.0),cart!(0.0),cart!(1.0)] // <0|
+            dmatrix![cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0)], // <0|
+            dmatrix![cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0)], // <0|
         ];
 
         let dim = 1 << targets.len();
-        let mut sum = DMatrix::<Complex<f64>>::zeros(dim,dim);
-        
-        let non_targets = (0..n_qubits).filter(|idx| !targets.contains(idx)).collect::<Vec<usize>>();
+        let mut sum = DMatrix::<Complex<f64>>::zeros(dim, dim);
+
+        let non_targets = (0..n_qubits)
+            .filter(|idx| !targets.contains(idx))
+            .collect::<Vec<usize>>();
         let n_terms = 1 << (n_qubits - targets.len());
         for i in 0..n_terms {
             println!("TERMS: {}", n_terms);
@@ -66,25 +77,27 @@ impl DMSimulator {
              *     + (<1| * <0| * I)p(|1> * |0> * I) +
              *     + (<1| * <1| * I)p(|1> * |1> * I) +
              * */
-            let mut left_of_density_prod = Self::identity_tensor_factors(n_qubits);
+            let mut left_of_density_prod = identity_tensor_factors(n_qubits);
             let mut j: usize = 0;
-            for non_target in non_targets.iter(){
+            for non_target in non_targets.iter() {
                 left_of_density_prod[*non_target] = bra[(i >> j) & 1].clone();
                 j += 1;
             }
-            let left_of_density = Self::eval_tensor_product(left_of_density_prod);
-            println!("{} X {}",left_of_density.nrows(), left_of_density.ncols());
+            let left_of_density = eval_tensor_product(left_of_density_prod);
+            println!("{} X {}", left_of_density.nrows(), left_of_density.ncols());
             let right_of_density = left_of_density.adjoint();
-            println!("{} X {}",right_of_density.nrows(), right_of_density.ncols());
+            println!(
+                "{} X {}",
+                right_of_density.nrows(),
+                right_of_density.ncols()
+            );
             println!("before");
-            println!("{} X {}",density.nrows(), density.ncols());
+            println!("{} X {}", density.nrows(), density.ncols());
             sum += left_of_density * density * right_of_density;
             println!("after");
         }
         sum
-
     }
-
 
     fn next(&mut self) -> Option<&DMatrix<Complex<f64>>> {
         if self.current_step >= self.instruction_count() {
@@ -92,7 +105,7 @@ impl DMSimulator {
         }
         match &self.circuit.instructions()[self.current_step] {
             Instruction::Gate(gate) => {
-                let mat = Self::expand_matrix_from_gate(&gate, self.circuit.n_qubits());
+                let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 self.current_state = mat.clone() * self.current_state.clone() * mat.adjoint(); // p1 == U * p0 * U'
             }
             Instruction::Measurement(_qbits) => todo!(),
@@ -119,7 +132,7 @@ impl DMSimulator {
         self.current_step -= 1;
         match &self.circuit.instructions()[self.current_step] {
             Instruction::Gate(gate) => {
-                let mut mat = Self::expand_matrix_from_gate(&gate, self.circuit.n_qubits());
+                let mut mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 mat.try_inverse_mut();
                 self.current_state = mat.clone() * self.current_state.clone() * mat.adjoint(); // p0 == U^{-1} * p0 * (U^{-1})'
             }
@@ -131,72 +144,6 @@ impl DMSimulator {
 
     pub fn instruction_count(&self) -> usize {
         self.circuit.instructions().len()
-    }
-
-    /// # expand_matrix_from_gate
-    /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
-    fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<f64>> {
-        DMSimulator::expand_matrix(
-            get_gate_matrix(gate),
-            &gate.get_controls(),
-            &gate.get_targets(),
-            n_qubits,
-        )
-    }
-
-    /// # identity_tensor_factors
-    /// A `Vec` of `n_factor` number of 2 by 2 identity matricies.
-    fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f64>>> {
-        vec![DMatrix::<Complex<f64>>::identity(2, 2); n_factors]
-    }
-
-    /// # eval_tensor_product
-    /// Evaluates the tensor product of a `Vec` of matricies.
-    fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f64>>>) -> DMatrix<Complex<f64>> {
-        tensor_factors.iter().rev().fold(
-            DMatrix::<Complex<f64>>::identity(1, 1),
-            |product, factor| product.kronecker(factor),
-        )
-    }
-
-    /// # expand_matrix
-    /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
-    pub fn expand_matrix(
-        matrix_2x2: DMatrix<Complex<f64>>,
-        controls: &[usize], //TODO: Allow for neg_controls.
-        targets: &[usize],
-        n_qubits: usize,
-    ) -> DMatrix<Complex<f64>> {
-        let ketbra = [
-            dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)], // |0><0|
-            dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)], // |1><1|
-        ];
-
-        // Create one term for each entry as in a 'classical truth-table'.
-        // ex: |0><0| * |0><0| * I +
-        //   + |0><0| * |1><1| * I +
-        //   + |1><1| * |0><0| * I +
-        //   + |1><1| * |1><1| * U
-        let n_terms = 1 << controls.len();
-        let dim = 1 << n_qubits;
-        let mut sum = DMatrix::<Complex<f64>>::zeros(dim, dim);
-
-        for i in 0..n_terms {
-            let mut term = Self::identity_tensor_factors(n_qubits);
-            let mut j: usize = 0;
-            for &control in controls {
-                term[control] = ketbra[(i >> j) & 1].clone();
-                j += 1;
-            }
-            if i == n_terms - 1 {
-                // Last term, all controls == 1.
-                for &target in targets {
-                    term[target] = matrix_2x2.clone();
-                }
-            }
-            sum += Self::eval_tensor_product(term);
-        }
-        sum
     }
 }
 
@@ -253,12 +200,13 @@ mod tests {
 
     #[test]
     fn reduced_state_hadamard_double_cnot() {
-        let mut sim = DMSimulator::build(Circuit::new(3).hadamard(0).cnot(0, 1).cnot(0,2)).unwrap();
+        let mut sim =
+            DMSimulator::build(Circuit::new(3).hadamard(0).cnot(0, 1).cnot(0, 2)).unwrap();
         sim.next().expect("1");
         sim.next().expect("2");
         let rho = sim.next().expect("3");
         //println!("{}",rho);
         let rho_0 = DMSimulator::reduced_state(rho, &[0], 3);
-        println!("{}",rho_0);
+        println!("{}", rho_0);
     }
 }

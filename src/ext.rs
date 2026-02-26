@@ -4,7 +4,6 @@ use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
 use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
 
-use crate::cart;
 use crate::gate::{Gate, GateType};
 
 #[macro_export]
@@ -173,13 +172,13 @@ pub fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<
 
 /// # identity_tensor_factors
 /// A `Vec` of `n_factor` number of 2 by 2 identity matricies.
-fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f64>>> {
+pub fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f64>>> {
     vec![DMatrix::<Complex<f64>>::identity(2, 2); n_factors]
 }
 
 /// # eval_tensor_product
 /// Evaluates the tensor product of a `Vec` of matricies.
-fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f64>>>) -> DMatrix<Complex<f64>> {
+pub fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f64>>>) -> DMatrix<Complex<f64>> {
     tensor_factors.iter().rev().fold(
         DMatrix::<Complex<f64>>::identity(1, 1),
         |product, factor| product.kronecker(factor),
