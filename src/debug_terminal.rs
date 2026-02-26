@@ -69,7 +69,7 @@ impl DebugTerminal {
                 Command::Next(next_args) => self.handle_next(&mut stdout, &next_args)?,
                 Command::Previous(prev_args) => self.handle_prev(&mut stdout, &prev_args)?,
                 Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
-                Command::Delete(_delete_args) => println!(&mut stdout; "Delete")?,
+                Command::Delete(delete_args) => self.handle_delete(&mut stdout, &delete_args)?,
                 Command::Disable(disable_args) => {
                     self.handle_disable(&mut stdout, &disable_args)?
                 }
@@ -197,6 +197,44 @@ impl DebugTerminal {
             println!(
                 stdout;
                 "Disabled breakpoints {}", disabled.join(", ")
+            )?;
+        }
+
+        Ok(())
+    }
+
+    fn handle_delete<W: Write>(&mut self, stdout: &mut W, args: &DeleteArgs) -> io::Result<()> {
+        let delete_indexes = match args {
+            DeleteArgs::GateIndices(i) => i,
+        };
+
+        let gate_range = 0..self.simulator.instruction_count();
+        for gate_index in delete_indexes {
+            if !gate_range.contains(gate_index) {
+                errorln!(
+                    stdout;
+                    "Unable to delete breakpoint at index {}, no gate at index", gate_index
+                )?;
+                return Ok(());
+            }
+        }
+
+        let mut deleted: Vec<String> = Vec::new();
+        for &gate_index in delete_indexes {
+            if self.breakpoints.delete(gate_index).is_none() {
+                errorln!(
+                    stdout;
+                    "Could not delete breakpoint at {}, breakpoint does not exist", gate_index
+                )?;
+                continue;
+            }
+
+            deleted.push(gate_index.to_string());
+        }
+        if !deleted.is_empty() {
+            println!(
+                stdout;
+                "Deleted breakpoints {}", deleted.join(", ")
             )?;
         }
 
