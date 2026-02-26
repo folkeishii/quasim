@@ -58,7 +58,7 @@ impl DMSimulator {
     ) -> DMatrix<Complex<f64>> {
         let bra = [
             dmatrix![cart!(1.0), cart!(0.0)], // <0|
-            dmatrix![cart!(0.0), cart!(1.0)], // <0|
+            dmatrix![cart!(0.0), cart!(1.0)], // <1|
         ];
 
         let dim = 1 << targets.len();
@@ -192,11 +192,47 @@ mod tests {
     fn reduced_state_hadamard_double_cnot() {
         let mut sim =
             DMSimulator::build(Circuit::new(3).hadamard(0).cnot(0, 1).cnot(0, 2)).unwrap();
-        sim.next().expect("1");
-        sim.next().expect("2");
-        let rho = sim.next().expect("3");
-        //println!("{}",rho);
+        sim.next().unwrap();
+        sim.next().unwrap();
+        let rho = sim.next().unwrap();
+        // From each qubit's perspecitve, its a 50/50 chance for either 0 or 1.
+        let expected_individual_rho = dmatrix![
+            cart!(0.5), cart!(0.0);
+            cart!(0.0), cart!(0.5);
+        ];
         let rho_0 = DMSimulator::reduced_state(rho, &[0], 3);
-        println!("{}", rho_0);
+        assert!(is_matrix_equal_to(expected_individual_rho.clone(), rho_0));
+        let rho_1 = DMSimulator::reduced_state(rho, &[1], 3);
+        assert!(is_matrix_equal_to(expected_individual_rho.clone(), rho_1));
+        let rho_2 = DMSimulator::reduced_state(rho, &[2], 3);
+        assert!(is_matrix_equal_to(expected_individual_rho, rho_2));
+        // From each pair of qubit's perspecitve, its a 50/50 chance for either 00 or 11.
+        // Note: Qubit 0 is entangled with both qubit 1 and 2. But qubit 1 and 2 are not entangled.
+        let expected_pairs_rho = dmatrix![
+            cart!(0.5), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0),cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0),cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0),cart!(0.0), cart!(0.0), cart!(0.5);
+        ];
+        let expected_pairs_rho_entangled = dmatrix![
+            cart!(0.5), cart!(0.0), cart!(0.0), cart!(0.5);
+            cart!(0.0),cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0),cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.5),cart!(0.0), cart!(0.0), cart!(0.5);
+        ];
+        let rho_01 = DMSimulator::reduced_state(rho, &[0, 1], 3);
+        //assert!(is_matrix_equal_to(expected_pairs_rho_entangled.clone(), rho_01));
+        let rho_12 = DMSimulator::reduced_state(rho, &[1, 2], 3);
+        //assert!(is_matrix_equal_to(expected_pairs_rho, rho_12));
+        let rho_02 = DMSimulator::reduced_state(rho, &[0, 2], 3);
+        //assert!(is_matrix_equal_to(expected_pairs_rho_entangled, rho_02));
+        println!("{}",rho_01);
+        println!("{}",rho_12);
+        println!("{}",rho_02);
+
+        let rho_reduce = DMSimulator::reduced_state(rho, &[0,1,2], 3);
+        println!("{}",rho);
+        println!("{}",rho_reduce);
+        assert!(is_matrix_equal_to(rho_reduce, rho.clone()));
     }
 }
