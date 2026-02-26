@@ -94,7 +94,15 @@ impl DebugTerminal {
                 let next_break = self
                     .breakpoints
                     .iter()
-                    .find(|b| b.enabled())
+                    .find(|b| {
+                        b.enabled()
+                            && b.gate_index()
+                                > self
+                                    .simulator
+                                    .current_instruction()
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(0)
+                    })
                     .map(|b| b.gate_index());
 
                 loop {
@@ -103,19 +111,20 @@ impl DebugTerminal {
                         return Ok(());
                     }
 
-                    //Check if a breakpoint exists, if it is at the current instruction, disable it and stop, otherwise continue
+                    //Check if a breakpoint exists otherwise continue until end
                     let Some(next_break) = next_break else {
-                        return Ok(());
+                        self.simulator.next();
+                        continue;
                     };
 
+                    //Check if the current index is the next break otherwise rerun the loop
                     let Some((instruction_index, _instruction)) =
                         self.simulator.current_instruction()
                     else {
-                        return Ok(());
+                        continue;
                     };
 
                     if instruction_index == next_break {
-                        self.breakpoints.disable(next_break);
                         println!(
                             stdout;
                             "Continued until breakpoint at index {}", next_break
@@ -131,7 +140,15 @@ impl DebugTerminal {
                     let next_break = self
                         .breakpoints
                         .iter()
-                        .find(|b| b.enabled())
+                        .find(|b| {
+                            b.enabled()
+                                && b.gate_index()
+                                    > self
+                                        .simulator
+                                        .current_instruction()
+                                        .map(|(i, _)| i)
+                                        .unwrap_or(0)
+                        })
                         .map(|b| b.gate_index());
 
                     loop {
@@ -147,27 +164,22 @@ impl DebugTerminal {
                                 "Skipped {} breakpoints, continuing until end",
                                 breakpoints_skipped
                             )?;
-                            loop {
-                                if self.simulator.next().is_none() {
-                                    return Ok(());
-                                }
-                                self.simulator.next();
-                            }
                         }
 
-                        //Check if a breakpoint exists, if it is at the current instruction, disable it and stop, otherwise continue
+                        //Check if a breakpoint exists otherwise continue until end
                         let Some(next_break) = next_break else {
-                            return Ok(());
+                            self.simulator.next();
+                            continue;
                         };
 
+                        //Check if the current index is the next break otherwise rerun the loop
                         let Some((instruction_index, _instruction)) =
                             self.simulator.current_instruction()
                         else {
-                            return Ok(());
+                            continue;
                         };
 
                         if instruction_index == next_break {
-                            self.breakpoints.disable(next_break);
                             breakpoints_skipped += 1;
                             skipped_index = next_break;
                             break;
