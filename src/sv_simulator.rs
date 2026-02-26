@@ -261,21 +261,23 @@ mod tests {
             .measure_bit(2, "r2")
             .measure_bit(3, "r3")
 
-            .jump_if(r("r0").eq(0), 9)
+            .jump_if(r("r0").eq(0), "L0")
             .x(0)
+            .label("L0")
 
-            .jump_if(r("r1").eq(0), 11)
+            .jump_if(r("r1").eq(0), "L1")
             .x(1)
+            .label("L1")
 
-            .jump_if(r("r2").eq(0), 13)
+            .jump_if(r("r2").eq(0), "L2")
             .x(2)
+            .label("L2")
 
-            .jump_if(r("r3").eq(0), 15)
-            .x(3);
+            .jump_if(r("r3").eq(0), "L3")
+            .x(3)
+            .label("L3");
 
         let sim = SVSimulator::build(circuit).unwrap();
-        let mut dbg = sim.attach_debugger();
-        dbg.executor.step_all();
         println!("{:04b}", sim.run());
         println!("{}", sim.final_state());
     }
