@@ -32,14 +32,11 @@ impl QBits {
     pub fn get_indices(&self) -> Vec<usize> {
         let mut bits = self.0;
         let mut vec = Vec::new();
-        let mut index = 0;
 
         while bits != 0 {
-            if bits & 1 == 1 {
-                vec.push(index);
-            }
-            bits >>= 1;
-            index += 1;
+            let tz = bits.trailing_zeros() as usize;
+            vec.push(tz);
+            bits &= bits - 1; // clear lowest set bit
         }
 
         vec

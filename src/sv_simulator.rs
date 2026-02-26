@@ -124,19 +124,12 @@ impl<'a> SVExecutor<'a> {
         let mask = targets.get_bitstring();
         let collapsed_bitstring = measurement & mask;
 
-        // THIS CODE IS FOR TESTING, DOESNT REALLY MAKE SENSE IN PRACTICE
-        let mut i = 0;
         let mut bits_compacted = 0;
-        let mut mut_mask = mask;
-
-        while mut_mask != 0 {
-            let tz = mut_mask.trailing_zeros();
-            bits_compacted |= ((collapsed_bitstring >> tz) & 1) << i;
-            mut_mask &= mut_mask - 1; // clear lowest set bit
-            i += 1;
+        for (i, bit) in targets.get_indices().into_iter().enumerate() {
+            let value = (collapsed_bitstring >> bit) & 1;
+            bits_compacted |= value << i;
         }
         self.registers[reg] = Value::Int(bits_compacted as i32);
-        // ==============================================================
 
         // Go through state vector and remove amplitude for all states that do not align with measurement
         for (i, amp) in self.state_vector.iter_mut().enumerate() {
