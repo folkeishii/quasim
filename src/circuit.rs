@@ -148,8 +148,7 @@ impl Circuit {
     // Label
 
     pub fn label(mut self, label: &str) -> Self {
-        // Minus 1 because we have to account for pc register incrementing by one after a jump instruction
-        let pc = self.instructions.len() - 1;
+        let pc = self.instructions.len();
         self.labels.insert(label.to_owned(), pc);
 
         // After a new label has been added we try to resolve unresolved labels and patch instructions

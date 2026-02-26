@@ -24,8 +24,6 @@ impl<'a> SVExecutor<'a> {
         let inst = &self.circuit.instructions()[self.pc];
         self.apply_instruction(inst);
 
-        self.pc += 1;
-
         Some(&self.state_vector)
     }
 
@@ -113,6 +111,8 @@ impl<'a> SVExecutor<'a> {
                 self.state_vector[idx] = v2[j];
             }
         }
+
+        self.pc += 1;
     }
 
     fn measure(&mut self, targets: QBits, reg: &str) {
@@ -142,6 +142,8 @@ impl<'a> SVExecutor<'a> {
             .sum::<f64>()
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
+
+        self.pc += 1;
     }
 
     fn jump(&mut self, pc: usize) {
@@ -152,12 +154,15 @@ impl<'a> SVExecutor<'a> {
         if let Value::Bool(b) = expr.eval(&self.registers) {
             if b {
                 self.pc = pc;
+                return
             }
         }
+        self.pc += 1;
     }
 
     fn assign(&mut self, expr: &Expr, reg: &str) {
         self.registers[reg] = expr.eval(&self.registers);
+        self.pc += 1;
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
