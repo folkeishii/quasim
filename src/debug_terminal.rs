@@ -2,6 +2,8 @@ mod arguments;
 mod breakpoint;
 mod command;
 mod parse;
+#[macro_use]
+pub mod print;
 mod state;
 
 pub use arguments::*;
@@ -17,15 +19,8 @@ use crate::{
     },
     simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
 };
-use crossterm::{
-    execute,
-    style::{self, Attributes, Color, ContentStyle, StyledContent},
-};
+use std::io::{self, Write};
 use std::ops::Div;
-use std::{
-    fmt::Display,
-    io::{self, Write},
-};
 
 pub struct DebugTerminal {
     simulator: DebugSimulator,
@@ -49,7 +44,7 @@ impl DebugTerminal {
         let mut input_buffer = String::default();
 
         loop {
-            execute!(stdout, style::Print("\r\nqdb> "))?;
+            print!(stdout; "qdb> ")?;
             input_buffer.clear();
             stdin.read_line(&mut input_buffer)?;
             if input_buffer.ends_with('\n') {
@@ -62,50 +57,30 @@ impl DebugTerminal {
             let command = match Command::parse_tokens(command_tokens) {
                 Ok(c) => c,
                 Err(e) => {
-                    Self::error(&mut stdout, &e)?;
+                    errorln!(&mut stdout; &e)?;
                     continue;
                 }
             };
 
             match command {
                 Command::Quit => break,
-                Command::Help(_help_args) => Self::print(&mut stdout, &"Help")?,
-                Command::Continue(_continue_args) => Self::print(&mut stdout, &"Continue")?,
+                Command::Help(_help_args) => println!(&mut stdout; "Help")?,
+                Command::Continue(_continue_args) => println!(&mut stdout; "Continue")?,
                 Command::Next(next_args) => self.handle_next(&mut stdout, &next_args)?,
                 Command::Previous(prev_args) => self.handle_prev(&mut stdout, &prev_args)?,
                 Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
-                Command::Delete(_delete_args) => Self::print(&mut stdout, &"Delete")?,
-                Command::Disable(_disable_args) => Self::print(&mut stdout, &"Disable")?,
+                Command::Delete(_delete_args) => println!(&mut stdout; "Delete")?,
+                Command::Disable(_disable_args) => println!(&mut stdout; "Disable")?,
                 Command::State(state_args) => self.handle_state(&mut stdout, &state_args)?,
                 Command::Collapse(collapse_args) => {
-                    self.collapse_state(&mut stdout, collapse_args)?
+                    self.handle_collapse(&mut stdout, collapse_args)?
                 }
             }
         }
         Ok(())
     }
 
-    fn print<W: Write, T: Display>(stdout: &mut W, output: &T) -> io::Result<()> {
-        execute!(stdout, style::Print(output))
-    }
-
-    fn error<W: Write, T: Display>(stdout: &mut W, output: &T) -> io::Result<()> {
-        execute!(
-            stdout,
-            style::PrintStyledContent(StyledContent::new(
-                ContentStyle {
-                    foreground_color: Some(Color::Red),
-                    background_color: None,
-                    underline_color: None,
-                    attributes: Attributes::default()
-                },
-                "Error: "
-            )),
-            style::Print(output.to_string())
-        )
-    }
-
-    fn handle_next(&mut self, stdout: &mut io::Stdout, next_args: &NextArgs) -> io::Result<()> {
+    fn handle_next<W: Write>(&mut self, stdout: &mut W, next_args: &NextArgs) -> io::Result<()> {
         let step_count = match next_args {
             NextArgs::Step => 1,
             NextArgs::Count(n) => *n,
@@ -113,14 +88,14 @@ impl DebugTerminal {
 
         for i in 0..step_count {
             if self.simulator.next().is_none() {
-                Self::error(
-                    stdout,
-                    &format!("End of Circuit reached, stepped forward {} time(s)", i),
+                errorln!(
+                    stdout;
+                    "End of Circuit reached, stepped forward {} time(s)", i
                 )?;
                 return Ok(());
             }
         }
-        Self::print(stdout, &format!("Stepped forward {} time(s)", step_count))?;
+        println!(stdout; "Stepped forward {} time(s)", step_count)?;
 
         Ok(())
     }
@@ -133,7 +108,7 @@ impl DebugTerminal {
 
         for _ in 0..step_count {
             if self.simulator.prev().is_none() {
-                Self::error(stdout, &"Already at the beginning")?;
+                errorln!(stdout; "Already at the beginning")?;
                 break;
             }
         }
@@ -151,12 +126,10 @@ impl DebugTerminal {
         let gate_range = 0..self.simulator.instruction_count();
         for gate_index in gate_indices {
             if !gate_range.contains(gate_index) {
-                Self::error(
-                    stdout,
-                    &format!(
-                        "Unable to set or enable breakpoint at index {}, no gate at index",
-                        gate_index
-                    ),
+                errorln!(
+                    stdout;
+                    "Unable to set or enable breakpoint at index {}, no gate at index",
+                    gate_index
                 )?;
                 return Ok(());
             }
@@ -169,23 +142,19 @@ impl DebugTerminal {
             } else if let Some(status) = self.breakpoints.enable(gate_index) {
                 status
             } else {
-                Self::error(
-                    stdout,
-                    &format!(
-                        "Could not enable breakpoint at {}, breakpoint does not exist",
-                        gate_index
-                    ),
+                errorln!(
+                    stdout;
+                    "Could not enable breakpoint at {}, breakpoint does not exist",
+                    gate_index
                 )?;
                 continue;
             };
 
             match status {
-                PEBreakpoint::Enabled => {
-                    Self::print(stdout, &format!("Enabled breakpoint at {}", gate_index))?
-                }
-                PEBreakpoint::Inserted => Self::print(
-                    stdout,
-                    &format!("Inserted new breakpoint at {}", gate_index),
+                PEBreakpoint::Enabled => println!(stdout; "Enabled breakpoint at {}", gate_index)?,
+                PEBreakpoint::Inserted => println!(
+                    stdout;
+                    "Inserted new breakpoint at {}", gate_index
                 )?,
             }
         }
@@ -198,14 +167,14 @@ impl DebugTerminal {
         let to_show = match StateArgs::from_state(current_state, state_args) {
             Ok(v) => v,
             Err(e) => {
-                Self::error(stdout, &e)?;
+                errorln!(stdout; e)?;
                 return Ok(());
             }
         };
 
         if to_show.len() == 1 {
             let state = to_show.first().unwrap();
-            Self::print(stdout, &format!("[ {} ] {}\n", state.state, state.index))?;
+            println!(stdout; "[ {} ] {}", state.state, state.index)?;
             return Ok(());
         }
 
@@ -214,22 +183,20 @@ impl DebugTerminal {
         let decimal_width = (max_index.checked_ilog10().unwrap_or(0) + 1) as usize;
         let binary_width = (max_index.checked_ilog2().unwrap_or(0) + 1) as usize;
 
-        Self::print(stdout, &format!("┌ {} ┐\n", " ".repeat(state_width)))?;
+        println!(stdout; "┌ {} ┐", " ".repeat(state_width))?;
         for s in to_show {
-            Self::print(
-                stdout,
-                &format!(
-                    "│ {: >state_width$} │ {: >decimal_width$} ({:0binary_width$b})\n",
-                    s.state, s.index, s.index
-                ),
+            println!(
+                stdout;
+                "│ {: >state_width$} │ {: >decimal_width$} ({:0binary_width$b})",
+                s.state, s.index, s.index
             )?;
         }
-        Self::print(stdout, &format!("└ {} ┘\n", " ".repeat(state_width)))?;
+        println!(stdout; "└ {} ┘", " ".repeat(state_width))?;
 
         Ok(())
     }
 
-    fn collapse_state<W: Write>(
+    fn handle_collapse<W: Write>(
         &mut self,
         stdout: &mut W,
         collapse_args: CollapseArgs,
@@ -269,22 +236,15 @@ impl DebugTerminal {
 
         let max_width = (max_count.checked_ilog10().unwrap_or(0) + 1) as usize;
 
-        let mut count_peekable = count_map.iter().peekable();
-        while let Some(c) = count_peekable.next() {
-            Self::print(
-                stdout,
-                &format!(
-                    "{: >decimal_width$} ({:0binary_width$b}) - {: >max_width$} ({: >2}%)",
-                    c.0,
-                    c.0,
-                    c.1,
-                    ((c.1 as f64).div(count as f64) * 100.0).round(),
-                ),
+        for c in count_map {
+            println!(
+                stdout;
+                "{: >decimal_width$} ({:0binary_width$b}) - {: >max_width$} ({: >2}%)",
+                c.0,
+                c.0,
+                c.1,
+                ((c.1 as f64).div(count as f64) * 100.0).round()
             )?;
-
-            if count_peekable.peek().is_some() {
-                Self::print(stdout, &"\n")?;
-            }
         }
 
         Ok(())
