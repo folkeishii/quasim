@@ -1,13 +1,11 @@
 use crate::{
     cart,
     circuit::Circuit,
-    ext::get_gate_matrix,
-    gate::Gate,
+    ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
     simulator::{DebuggableSimulator, DoubleEndedSimulator},
 };
-use nalgebra::{Complex, DMatrix, DVector, dmatrix};
-use rand::prelude::*;
+use nalgebra::{Complex, DVector};
 
 #[derive(Debug, Clone)]
 pub struct DebugSimulator {
@@ -57,13 +55,13 @@ impl DebuggableSimulator for DebugSimulator {
         }
         match &self.circuit.instructions()[self.current_step] {
             Instruction::Gate(gate) => {
-                let mat = Self::expand_matrix_from_gate(&gate, self.circuit.n_qubits());
+                let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 self.current_state = mat * self.current_state.clone();
             }
             Instruction::Measurement(qbits) => {
                 for qbit in qbits.get_indices() {
                     self.current_state =
-                        Self::measure(qbit, &self.current_state, self.circuit.n_qubits());
+                        measure(qbit, &self.current_state, self.circuit.n_qubits());
                 }
             }
         }
@@ -91,7 +89,7 @@ impl DoubleEndedSimulator for DebugSimulator {
         self.current_step -= 1;
         match &self.circuit.instructions()[self.current_step] {
             Instruction::Gate(gate) => {
-                let mut mat = Self::expand_matrix_from_gate(&gate, self.circuit.n_qubits());
+                let mut mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 mat.try_inverse_mut();
                 self.current_state = mat * self.current_state.clone();
             }
@@ -106,115 +104,6 @@ impl DebugSimulator {
     pub fn instruction_count(&self) -> usize {
         self.circuit.instructions().len()
     }
-
-    /// # measure
-    /// Returns a probable state vector after measurement.
-    fn measure(
-        target: usize,
-        state: &DVector<Complex<f64>>,
-        n_qubits: usize,
-    ) -> DVector<Complex<f64>> {
-        // Choose a collapsed state
-        let prob_target_eq_zero = state
-            .iter()
-            .enumerate()
-            .filter(|&(idx, _)| (1 << target) & idx == 0) // Using |..q_1q_0> convetion
-            .map(|(_, c)| c.norm_sqr())
-            .sum::<f64>();
-
-        let mut rng = rand::rng();
-        let random_value = rng.random_range(0.0..1.0);
-        let mut result = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
-        if random_value < prob_target_eq_zero {
-            // 0 was chosen as collapsed state.
-            result = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
-        }
-
-        // Calculate projection operator, M
-        let mut projection_operator_prod = DebugSimulator::identity_tensor_factors(n_qubits);
-        projection_operator_prod[target] = result;
-        let projection_operator = DebugSimulator::eval_tensor_product(projection_operator_prod);
-
-        /*
-         * Use formula for next state,
-         *
-         *                 M|s>
-         *  |s'>  ==   ___________
-         *              _________
-         *             √ <s|M|s>
-         * */
-        let bra_state = state.adjoint(); // <s|
-        let proj_times_ket_state = projection_operator * state; // M|s>
-        let normalization = (bra_state * proj_times_ket_state.clone())[(0, 0)].sqrt(); // √ <s|M|s>
-
-        proj_times_ket_state / normalization
-    }
-
-    /// # expand_matrix_from_gate
-    /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
-    fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<f64>> {
-        DebugSimulator::expand_matrix(
-            get_gate_matrix(gate),
-            &gate.get_controls(),
-            &gate.get_targets(),
-            n_qubits,
-        )
-    }
-
-    /// # identity_tensor_factors
-    /// A `Vec` of `n_factor` number of 2 by 2 identity matricies.
-    fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f64>>> {
-        vec![DMatrix::<Complex<f64>>::identity(2, 2); n_factors]
-    }
-
-    /// # eval_tensor_product
-    /// Evaluates the tensor product of a `Vec` of matricies.
-    fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f64>>>) -> DMatrix<Complex<f64>> {
-        tensor_factors.iter().rev().fold(
-            DMatrix::<Complex<f64>>::identity(1, 1),
-            |product, factor| product.kronecker(factor),
-        )
-    }
-
-    /// # expand_matrix
-    /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
-    pub fn expand_matrix(
-        matrix_2x2: DMatrix<Complex<f64>>,
-        controls: &[usize], //TODO: Allow for neg_controls.
-        targets: &[usize],
-        n_qubits: usize,
-    ) -> DMatrix<Complex<f64>> {
-        let ketbra = [
-            dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)], // |0><0|
-            dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)], // |1><1|
-        ];
-
-        // Create one term for each entry as in a 'classical truth-table'.
-        // ex: |0><0| * |0><0| * I +
-        //   + |0><0| * |1><1| * I +
-        //   + |1><1| * |0><0| * I +
-        //   + |1><1| * |1><1| * U
-        let n_terms = 1 << controls.len();
-        let dim = 1 << n_qubits;
-        let mut sum = DMatrix::<Complex<f64>>::zeros(dim, dim);
-
-        for i in 0..n_terms {
-            let mut term = Self::identity_tensor_factors(n_qubits);
-            let mut j: usize = 0;
-            for &control in controls {
-                term[control] = ketbra[(i >> j) & 1].clone();
-                j += 1;
-            }
-            if i == n_terms - 1 {
-                // Last term, all controls == 1.
-                for &target in targets {
-                    term[target] = matrix_2x2.clone();
-                }
-            }
-            sum += Self::eval_tensor_product(term);
-        }
-        sum
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -225,12 +114,11 @@ pub enum DebugSimulatorError {
 
 #[cfg(test)]
 mod tests {
-    use crate::ext::collapse;
+    use crate::ext::{collapse, expand_matrix, expand_matrix_from_gate, get_gate_matrix, measure};
     use crate::{
         cart,
         circuit::Circuit,
         debug_simulator::DebugSimulator,
-        ext::get_gate_matrix,
         gate::{Gate, GateType},
         simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
     };
@@ -298,7 +186,7 @@ mod tests {
             cart!(0.0), // |110>
             cart!(0.5), // |111>
         ];
-        res = DebugSimulator::measure(0, &res, 3);
+        res = measure(0, &res, 3);
         assert!(
             is_vector_equal_to(res.clone(), plus_plus_measure0)
                 || is_vector_equal_to(res.clone(), plus_plus_measure1)
@@ -343,14 +231,14 @@ mod tests {
             cart!(0.0),           // |110>
             cart!(FRAC_1_SQRT_2), // |111>
         ];
-        res = DebugSimulator::measure(1, &res, 3);
+        res = measure(1, &res, 3);
         assert!(
             is_vector_equal_to(res.clone(), plus_measure0_measure0)
                 || is_vector_equal_to(res.clone(), plus_measure0_measure1)
                 || is_vector_equal_to(res.clone(), plus_measure1_measure0)
                 || is_vector_equal_to(res.clone(), plus_measure1_measure1)
         );
-        res = DebugSimulator::measure(2, &res, 3);
+        res = measure(2, &res, 3);
         // Now collapsed to any 3-bit-string.
         assert!(state_is_collapsed(res));
     }
@@ -407,14 +295,14 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
         ];
-        res = DebugSimulator::measure(0, &res, 3);
+        res = measure(0, &res, 3);
 
         assert!(
             is_vector_equal_to(res.clone(), colapse_00.clone())
                 || is_vector_equal_to(res.clone(), colapse_11.clone())
         );
 
-        res = DebugSimulator::measure(1, &res, 3);
+        res = measure(1, &res, 3);
         assert!(
             is_vector_equal_to(res.clone(), colapse_00.clone())
                 || is_vector_equal_to(res.clone(), colapse_11.clone())
@@ -446,7 +334,7 @@ mod tests {
     #[test]
     fn test_textbook_cnot() {
         let cnot = Gate::new(GateType::X, &[0], &[1]).unwrap();
-        let mat = DebugSimulator::expand_matrix_from_gate(&cnot, 2);
+        let mat = expand_matrix_from_gate(&cnot, 2);
         assert_is_matrix_equal!(mat, textbook_cnot());
     }
 
@@ -467,7 +355,7 @@ mod tests {
     #[test]
     fn test_textbook_toffoli() {
         let x = Gate::new(GateType::X, &[], &[0]).unwrap();
-        let mat = DebugSimulator::expand_matrix(get_gate_matrix(&x), &[0, 1], &[2], 3);
+        let mat = expand_matrix(get_gate_matrix(&x), &[0, 1], &[2], 3);
         assert_is_matrix_equal!(mat, textbook_toffoli());
     }
 
@@ -491,7 +379,7 @@ mod tests {
     #[test]
     fn test_cnot_01() {
         let cnot = Gate::new(GateType::X, &[0], &[1]).unwrap();
-        let mat = DebugSimulator::expand_matrix_from_gate(&cnot, 3);
+        let mat = expand_matrix_from_gate(&cnot, 3);
         assert_is_matrix_equal!(mat, cnot_01());
     }
 
@@ -513,7 +401,7 @@ mod tests {
     #[test]
     fn test_cnot_02() {
         let cnot = Gate::new(GateType::X, &[0], &[2]).unwrap();
-        let mat = DebugSimulator::expand_matrix_from_gate(&cnot, 3);
+        let mat = expand_matrix_from_gate(&cnot, 3);
         assert_is_matrix_equal!(mat, cnot_02());
     }
 
@@ -535,7 +423,7 @@ mod tests {
     #[test]
     fn test_cnot_12() {
         let cnot = Gate::new(GateType::X, &[1], &[2]).unwrap();
-        let mat = DebugSimulator::expand_matrix_from_gate(&cnot, 3);
+        let mat = expand_matrix_from_gate(&cnot, 3);
         assert_is_matrix_equal!(mat, cnot_12());
     }
 
@@ -557,7 +445,7 @@ mod tests {
     #[test]
     fn test_h_0() {
         let h = Gate::new(GateType::H, &[], &[0]).unwrap();
-        let mat = DebugSimulator::expand_matrix_from_gate(&h, 3);
+        let mat = expand_matrix_from_gate(&h, 3);
         assert_is_matrix_equal!(mat, h_0());
     }
 
@@ -578,7 +466,7 @@ mod tests {
     #[test]
     fn test_cnot_201() {
         let x = Gate::new(GateType::X, &[], &[0]).unwrap();
-        let mat = DebugSimulator::expand_matrix(get_gate_matrix(&x), &[2], &[0, 1], 3);
+        let mat = expand_matrix(get_gate_matrix(&x), &[2], &[0, 1], 3);
         assert_is_matrix_equal!(mat, cnot_201());
     }
 

@@ -135,7 +135,7 @@ impl DebugTerminal {
             }
             ContinueArgs::SkipBreaks(n) => {
                 let mut breakpoints_skipped = 0;
-                for _breaks in 0..*n+1 {
+                loop {
                     let next_break = self
                         .breakpoints
                         .iter()
@@ -204,8 +204,6 @@ impl DebugTerminal {
                 self.simulator.next();
             }
         }
-
-        Ok(())
     }
 
     fn handle_next<W: Write>(&mut self, stdout: &mut W, next_args: &NextArgs) -> io::Result<()> {
