@@ -1,7 +1,7 @@
 use crate::{
     cart,
     circuit::Circuit,
-    ext::{measure, expand_matrix_from_gate},
+    ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
     simulator::{DebuggableSimulator, DoubleEndedSimulator},
 };
@@ -114,7 +114,7 @@ pub enum DebugSimulatorError {
 
 #[cfg(test)]
 mod tests {
-    use crate::ext::{get_gate_matrix, collapse, measure, expand_matrix_from_gate, expand_matrix};
+    use crate::ext::{collapse, expand_matrix, expand_matrix_from_gate, get_gate_matrix, measure};
     use crate::{
         cart,
         circuit::Circuit,

@@ -1,11 +1,11 @@
 use std::{iter::Map, ops::Range};
 
-use nalgebra::{Complex, DMatrix, Dim, Matrix, RawStorage, DVector, dmatrix};
+use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
 use rand::distr::weighted::WeightedIndex;
-use rand::{prelude::Distribution, Rng};
+use rand::{Rng, prelude::Distribution};
 
-use crate::gate::{Gate, GateType};
 use crate::cart;
+use crate::gate::{Gate, GateType};
 
 /// Compares two complex numbers
 ///
@@ -84,7 +84,11 @@ pub fn collapse(state: &[Complex<f64>]) -> usize {
 
 /// # measure
 /// Returns a probable state vector after measurement.
-pub fn measure(target: usize, state: &DVector<Complex<f64>>, n_qubits: usize) -> DVector<Complex<f64>> {
+pub fn measure(
+    target: usize,
+    state: &DVector<Complex<f64>>,
+    n_qubits: usize,
+) -> DVector<Complex<f64>> {
     // Choose a collapsed state
     let prob_target_eq_zero = state
         .iter()
