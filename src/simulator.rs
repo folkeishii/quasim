@@ -60,7 +60,7 @@ pub trait DoubleEndedSimulator: DebuggableSimulator {
     fn prev(&mut self) -> Option<&DVector<Complex<f32>>>;
 }
 
-/// # DebuggableSimulator
+/// # StoredCircuitSimulator
 /// Any simulator that stores the underlying circuit
 /// internally should implment this trait
 pub trait StoredCircuitSimulator {
