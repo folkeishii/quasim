@@ -11,7 +11,7 @@ use rand::prelude::*;
 
 #[derive(Debug, Clone)]
 pub struct DebugSimulator {
-    current_state: DVector<Complex<f32>>,
+    current_state: DVector<Complex<f64>>,
     circuit: Circuit,
     current_step: usize,
 }
@@ -51,7 +51,7 @@ impl TryFrom<Circuit> for DebugSimulator {
 }
 
 impl DebuggableSimulator for DebugSimulator {
-    fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
+    fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         if self.current_step >= self.instruction_count() {
             return None;
         }
@@ -78,13 +78,13 @@ impl DebuggableSimulator for DebugSimulator {
             .map(|inst| (self.current_step, inst))
     }
 
-    fn current_state(&self) -> &DVector<Complex<f32>> {
+    fn current_state(&self) -> &DVector<Complex<f64>> {
         &self.current_state
     }
 }
 
 impl DoubleEndedSimulator for DebugSimulator {
-    fn prev(&mut self) -> Option<&DVector<Complex<f32>>> {
+    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
         if self.current_step <= 0 {
             return None;
         }
@@ -111,16 +111,16 @@ impl DebugSimulator {
     /// Returns a probable state vector after measurement.
     fn measure(
         target: usize,
-        state: &DVector<Complex<f32>>,
+        state: &DVector<Complex<f64>>,
         n_qubits: usize,
-    ) -> DVector<Complex<f32>> {
+    ) -> DVector<Complex<f64>> {
         // Choose a collapsed state
         let prob_target_eq_zero = state
             .iter()
             .enumerate()
             .filter(|&(idx, _)| (1 << target) & idx == 0) // Using |..q_1q_0> convetion
             .map(|(_, c)| c.norm_sqr())
-            .sum::<f32>();
+            .sum::<f64>();
 
         let mut rng = rand::rng();
         let random_value = rng.random_range(0.0..1.0);
@@ -152,7 +152,7 @@ impl DebugSimulator {
 
     /// # expand_matrix_from_gate
     /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
-    fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<f32>> {
+    fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<f64>> {
         DebugSimulator::expand_matrix(
             get_gate_matrix(gate),
             &gate.get_controls(),
@@ -163,15 +163,15 @@ impl DebugSimulator {
 
     /// # identity_tensor_factors
     /// A `Vec` of `n_factor` number of 2 by 2 identity matricies.
-    fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f32>>> {
-        vec![DMatrix::<Complex<f32>>::identity(2, 2); n_factors]
+    fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f64>>> {
+        vec![DMatrix::<Complex<f64>>::identity(2, 2); n_factors]
     }
 
     /// # eval_tensor_product
     /// Evaluates the tensor product of a `Vec` of matricies.
-    fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f32>>>) -> DMatrix<Complex<f32>> {
+    fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f64>>>) -> DMatrix<Complex<f64>> {
         tensor_factors.iter().rev().fold(
-            DMatrix::<Complex<f32>>::identity(1, 1),
+            DMatrix::<Complex<f64>>::identity(1, 1),
             |product, factor| product.kronecker(factor),
         )
     }
@@ -179,11 +179,11 @@ impl DebugSimulator {
     /// # expand_matrix
     /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
     pub fn expand_matrix(
-        matrix_2x2: DMatrix<Complex<f32>>,
+        matrix_2x2: DMatrix<Complex<f64>>,
         controls: &[usize], //TODO: Allow for neg_controls.
         targets: &[usize],
         n_qubits: usize,
-    ) -> DMatrix<Complex<f32>> {
+    ) -> DMatrix<Complex<f64>> {
         let ketbra = [
             dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)], // |0><0|
             dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)], // |1><1|
@@ -196,7 +196,7 @@ impl DebugSimulator {
         //   + |1><1| * |1><1| * U
         let n_terms = 1 << controls.len();
         let dim = 1 << n_qubits;
-        let mut sum = DMatrix::<Complex<f32>>::zeros(dim, dim);
+        let mut sum = DMatrix::<Complex<f64>>::zeros(dim, dim);
 
         for i in 0..n_terms {
             let mut term = Self::identity_tensor_factors(n_qubits);
@@ -235,18 +235,18 @@ mod tests {
         simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
     };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
-    use std::f32::consts::FRAC_1_SQRT_2;
+    use std::f64::consts::FRAC_1_SQRT_2;
 
-    fn is_matrix_equal_to(m1: DMatrix<Complex<f32>>, m2: DMatrix<Complex<f32>>) -> bool {
+    fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
         m1.iter()
             .zip(m2.iter())
             .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
     }
 
-    fn is_vector_equal_to(v1: DVector<Complex<f32>>, v2: DVector<Complex<f32>>) -> bool {
+    fn is_vector_equal_to(v1: DVector<Complex<f64>>, v2: DVector<Complex<f64>>) -> bool {
         let l = v1.len();
-        let m1 = DMatrix::<Complex<f32>>::from_row_slice(l, 1, v1.as_slice());
-        let m2 = DMatrix::<Complex<f32>>::from_row_slice(l, 1, v2.as_slice());
+        let m1 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v1.as_slice());
+        let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
         l == v2.len() && is_matrix_equal_to(m1, m2)
     }
 
@@ -267,7 +267,7 @@ mod tests {
         let circ = Circuit::new(3).hadamard(0).hadamard(1).hadamard(2);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
         let mut res = sim.continue_until(None).clone();
-        let plus_plus_plus: DVector<Complex<f32>> = dvector![
+        let plus_plus_plus: DVector<Complex<f64>> = dvector![
             cart!(0.5 * FRAC_1_SQRT_2), // |000>
             cart!(0.5 * FRAC_1_SQRT_2), // |001>
             cart!(0.5 * FRAC_1_SQRT_2), // |010>
@@ -278,7 +278,7 @@ mod tests {
             cart!(0.5 * FRAC_1_SQRT_2), // |111>
         ];
         assert_is_vector_equal!(res.clone(), plus_plus_plus);
-        let plus_plus_measure0: DVector<Complex<f32>> = dvector![
+        let plus_plus_measure0: DVector<Complex<f64>> = dvector![
             cart!(0.5), // |000>
             cart!(0.0), // |001>
             cart!(0.5), // |010>
@@ -288,7 +288,7 @@ mod tests {
             cart!(0.5), // |110>
             cart!(0.0), // |111>
         ];
-        let plus_plus_measure1: DVector<Complex<f32>> = dvector![
+        let plus_plus_measure1: DVector<Complex<f64>> = dvector![
             cart!(0.0), // |000>
             cart!(0.5), // |001>
             cart!(0.0), // |010>
@@ -303,7 +303,7 @@ mod tests {
             is_vector_equal_to(res.clone(), plus_plus_measure0)
                 || is_vector_equal_to(res.clone(), plus_plus_measure1)
         );
-        let plus_measure0_measure0: DVector<Complex<f32>> = dvector![
+        let plus_measure0_measure0: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
             cart!(0.0),           // |001>
             cart!(0.0),           // |010>
@@ -313,7 +313,7 @@ mod tests {
             cart!(0.0),           // |110>
             cart!(0.0),           // |111>
         ];
-        let plus_measure0_measure1: DVector<Complex<f32>> = dvector![
+        let plus_measure0_measure1: DVector<Complex<f64>> = dvector![
             cart!(0.0),           // |000>
             cart!(FRAC_1_SQRT_2), // |001>
             cart!(0.0),           // |010>
@@ -323,7 +323,7 @@ mod tests {
             cart!(0.0),           // |110>
             cart!(0.0),           // |111>
         ];
-        let plus_measure1_measure0: DVector<Complex<f32>> = dvector![
+        let plus_measure1_measure0: DVector<Complex<f64>> = dvector![
             cart!(0.0),           // |000>
             cart!(0.0),           // |001>
             cart!(FRAC_1_SQRT_2), // |010>
@@ -333,7 +333,7 @@ mod tests {
             cart!(FRAC_1_SQRT_2), // |110>
             cart!(0.0),           // |111>
         ];
-        let plus_measure1_measure1: DVector<Complex<f32>> = dvector![
+        let plus_measure1_measure1: DVector<Complex<f64>> = dvector![
             cart!(0.0),           // |000>
             cart!(0.0),           // |001>
             cart!(0.0),           // |010>
@@ -355,7 +355,7 @@ mod tests {
         assert!(state_is_collapsed(res));
     }
 
-    fn state_is_collapsed(vector: DVector<Complex<f32>>) -> bool {
+    fn state_is_collapsed(vector: DVector<Complex<f64>>) -> bool {
         let mut one_count = 0;
 
         for &value in vector.iter() {
@@ -375,7 +375,7 @@ mod tests {
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
         let mut res = sim.continue_until(None).clone();
         // Expected state vector before any measurments
-        let bell: DVector<Complex<f32>> = dvector![
+        let bell: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
             cart!(0.0),
             cart!(0.0),
@@ -387,7 +387,7 @@ mod tests {
         ];
         assert_is_vector_equal!(bell, res.clone());
         // When any qubit is measured, state vector should collapse to either |00> or |11>.
-        let colapse_00: DVector<Complex<f32>> = dvector![
+        let colapse_00: DVector<Complex<f64>> = dvector![
             cart!(1.0), // |000>
             cart!(0.0),
             cart!(0.0),
@@ -397,7 +397,7 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
         ];
-        let colapse_11: DVector<Complex<f32>> = dvector![
+        let colapse_11: DVector<Complex<f64>> = dvector![
             cart!(0.0),
             cart!(0.0),
             cart!(0.0),
@@ -432,9 +432,9 @@ mod tests {
         assert!(collapsed == 0b00 || collapsed == 0b11);
     }
 
-    fn textbook_cnot() -> DMatrix<Complex<f32>> {
+    fn textbook_cnot() -> DMatrix<Complex<f64>> {
         #[rustfmt::skip]
-        let textbook_cnot: DMatrix::<Complex<f32>> = dmatrix![
+        let textbook_cnot: DMatrix::<Complex<f64>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
@@ -450,9 +450,9 @@ mod tests {
         assert_is_matrix_equal!(mat, textbook_cnot());
     }
 
-    fn textbook_toffoli() -> DMatrix<Complex<f32>> {
+    fn textbook_toffoli() -> DMatrix<Complex<f64>> {
         #[rustfmt::skip]
-        let textbook_toffoli: DMatrix::<Complex<f32>> = dmatrix![
+        let textbook_toffoli: DMatrix::<Complex<f64>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -473,9 +473,9 @@ mod tests {
 
     /* Following tests are based on 'ControlledGates.tex' */
 
-    fn cnot_01() -> DMatrix<Complex<f32>> {
+    fn cnot_01() -> DMatrix<Complex<f64>> {
         #[rustfmt::skip]
-        let cnot_01: DMatrix::<Complex<f32>> = dmatrix![
+        let cnot_01: DMatrix::<Complex<f64>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -495,9 +495,9 @@ mod tests {
         assert_is_matrix_equal!(mat, cnot_01());
     }
 
-    fn cnot_02() -> DMatrix<Complex<f32>> {
+    fn cnot_02() -> DMatrix<Complex<f64>> {
         #[rustfmt::skip]
-        let cnot_02: DMatrix::<Complex<f32>> = dmatrix![
+        let cnot_02: DMatrix::<Complex<f64>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -517,9 +517,9 @@ mod tests {
         assert_is_matrix_equal!(mat, cnot_02());
     }
 
-    fn cnot_12() -> DMatrix<Complex<f32>> {
+    fn cnot_12() -> DMatrix<Complex<f64>> {
         #[rustfmt::skip]
-        let cnot_12: DMatrix::<Complex<f32>> = dmatrix![
+        let cnot_12: DMatrix::<Complex<f64>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
@@ -539,9 +539,9 @@ mod tests {
         assert_is_matrix_equal!(mat, cnot_12());
     }
 
-    fn h_0() -> DMatrix<Complex<f32>> {
+    fn h_0() -> DMatrix<Complex<f64>> {
         #[rustfmt::skip]
-        let h_0: DMatrix::<Complex<f32>> = dmatrix![
+        let h_0: DMatrix::<Complex<f64>> = dmatrix![
             cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(FRAC_1_SQRT_2), -cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -561,8 +561,8 @@ mod tests {
         assert_is_matrix_equal!(mat, h_0());
     }
 
-    fn cnot_201() -> DMatrix<Complex<f32>> {
-        let cnot_201: DMatrix<Complex<f32>> = dmatrix![
+    fn cnot_201() -> DMatrix<Complex<f64>> {
+        let cnot_201: DMatrix<Complex<f64>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -586,7 +586,7 @@ mod tests {
     fn test_hadamard_double_cnot_entanglement() {
         let circ = Circuit::new(3).hadamard(0).cnot(0, 1).cnot(0, 2);
 
-        let psi0: DVector<Complex<f32>> = dvector![
+        let psi0: DVector<Complex<f64>> = dvector![
             cart!(1.0), // |000>
             cart!(0.0),
             cart!(0.0),
@@ -596,7 +596,7 @@ mod tests {
             cart!(0.0),
             cart!(0.0)
         ];
-        let psi1: DVector<Complex<f32>> = dvector![
+        let psi1: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), //|000>
             cart!(FRAC_1_SQRT_2), //|001>
             cart!(0.0),
@@ -606,7 +606,7 @@ mod tests {
             cart!(0.0),
             cart!(0.0)
         ];
-        let psi2: DVector<Complex<f32>> = dvector![
+        let psi2: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
             cart!(0.0),
             cart!(0.0),
@@ -616,7 +616,7 @@ mod tests {
             cart!(0.0),
             cart!(0.0)
         ];
-        let psi3: DVector<Complex<f32>> = dvector![
+        let psi3: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
             cart!(0.0),
             cart!(0.0),
