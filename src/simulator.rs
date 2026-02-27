@@ -65,6 +65,12 @@ pub trait DoubleEndedSimulator: DebuggableSimulator {
 /// internally should implment this trait
 pub trait StoredCircuitSimulator {
     fn circuit(&self) -> &Circuit;
+    fn instructions(&self) -> &[Instruction] {
+        self.circuit().instructions()
+    }
+    fn instruction_count(&self) -> usize {
+        self.circuit().instructions().len()
+    }
 }
 
 #[cfg(test)]

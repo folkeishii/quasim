@@ -23,14 +23,8 @@ use crate::{
 use std::io::{self, Write};
 use std::ops::Div;
 
-<<<<<<< 37-derive-debug-and-clone
-#[derive(Debug, Clone)]
-pub struct DebugTerminal {
-    simulator: DebugSimulator,
-=======
 pub struct DebugTerminal<S = DebugSimulator> {
     simulator: S,
->>>>>>> main
     /// Sorted array of breakpoints
     /// i.e. Breakpoints are in order
     /// of gate index
