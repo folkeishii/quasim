@@ -3,7 +3,7 @@ use crate::{
     circuit::Circuit,
     ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
-    simulator::{DebuggableSimulator, DoubleEndedSimulator},
+    simulator::{DebuggableSimulator, DoubleEndedSimulator, StoredCircuitSimulator},
 };
 use nalgebra::{Complex, DVector};
 
@@ -103,6 +103,12 @@ impl DoubleEndedSimulator for DebugSimulator {
 impl DebugSimulator {
     pub fn instruction_count(&self) -> usize {
         self.circuit.instructions().len()
+    }
+}
+
+impl StoredCircuitSimulator for DebugSimulator {
+    fn circuit(&self) -> &Circuit {
+        &self.circuit
     }
 }
 

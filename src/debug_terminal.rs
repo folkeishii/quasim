@@ -10,6 +10,7 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::ext::collapse;
+use crate::simulator::StoredCircuitSimulator;
 use crate::{
     circuit::Circuit,
     debug_simulator::DebugSimulator,
@@ -17,23 +18,26 @@ use crate::{
         breakpoint::{BreakpointList, PEBreakpoint},
         parse::into_tokens,
     },
-    simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
+    simulator::{BuildSimulator, DoubleEndedSimulator},
 };
 use std::io::{self, Write};
 use std::ops::Div;
 
-pub struct DebugTerminal {
-    simulator: DebugSimulator,
+pub struct DebugTerminal<S = DebugSimulator> {
+    simulator: S,
     /// Sorted array of breakpoints
     /// i.e. Breakpoints are in order
     /// of gate index
     breakpoints: BreakpointList,
 }
 
-impl DebugTerminal {
-    pub fn new(circuit: Circuit) -> Result<Self, <DebugSimulator as BuildSimulator>::E> {
+impl<S> DebugTerminal<S>
+where
+    S: BuildSimulator + DoubleEndedSimulator + StoredCircuitSimulator,
+{
+    pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E> {
         Ok(Self {
-            simulator: DebugSimulator::build(circuit)?,
+            simulator: S::build(circuit)?,
             breakpoints: Default::default(),
         })
     }
@@ -248,7 +252,7 @@ impl DebugTerminal {
         };
 
         // Check that all indices are actual gates
-        let gate_range = 0..self.simulator.instruction_count();
+        let gate_range = 0..self.simulator.circuit().instructions().len();
         for gate_index in gate_indices {
             if !gate_range.contains(gate_index) {
                 errorln!(
