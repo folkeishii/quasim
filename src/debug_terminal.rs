@@ -202,7 +202,7 @@ impl DebugTerminal {
                     return Ok(());
                 }
                 self.simulator.next();
-            }
+            },
         }
     }
 

@@ -86,7 +86,12 @@ fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
 
     let cos = theta_half.cos();
     let sin = theta_half.sin();
-    [cart!(cos), -polar!(sin, lambda), polar!(sin, phi), polar!(cos, lambda + phi)]
+    [
+        cart!(cos),
+        -polar!(sin, lambda),
+        polar!(sin, phi),
+        polar!(cos, lambda + phi),
+    ]
 }
 
 pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
