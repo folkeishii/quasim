@@ -64,8 +64,10 @@ impl DebugTerminal {
 
             match command {
                 Command::Quit => break,
-                Command::Help(_help_args) => println!(&mut stdout; "Help")?,
-                Command::Continue(_continue_args) => println!(&mut stdout; "Continue")?,
+                Command::Help(_help_args) => println!(&mut stdout; &"Help")?,
+                Command::Continue(continue_args) => {
+                    self.handle_continue(&mut stdout, &continue_args)?
+                }
                 Command::Next(next_args) => self.handle_next(&mut stdout, &next_args)?,
                 Command::Previous(prev_args) => self.handle_prev(&mut stdout, &prev_args)?,
                 Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
@@ -79,6 +81,127 @@ impl DebugTerminal {
                 }
             }
         }
+        Ok(())
+    }
+
+    fn handle_continue(
+        &mut self,
+        stdout: &mut io::Stdout,
+        continue_args: &ContinueArgs,
+    ) -> io::Result<()> {
+        match continue_args {
+            ContinueArgs::UntilBreak => {
+                let next_break = self
+                    .breakpoints
+                    .iter()
+                    .find(|b| {
+                        b.enabled()
+                            && b.gate_index()
+                                > self
+                                    .simulator
+                                    .current_instruction()
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(usize::MAX)
+                    })
+                    .map(|b| b.gate_index());
+
+                loop {
+                    if self.simulator.next().is_none() {
+                        println!(stdout; &"End of Circuit reached, continued until end")?;
+                        return Ok(());
+                    }
+
+                    //Check if a breakpoint exists otherwise continue until end
+                    let Some(next_break) = next_break else {
+                        self.simulator.next();
+                        continue;
+                    };
+
+                    //Check if the current index is the next break otherwise rerun the loop
+                    let Some((instruction_index, _instruction)) =
+                        self.simulator.current_instruction()
+                    else {
+                        continue;
+                    };
+
+                    if instruction_index == next_break {
+                        println!(
+                            stdout;
+                            "Continued until breakpoint at index {}", next_break
+                        )?;
+                        return Ok(());
+                    }
+                }
+            }
+            ContinueArgs::SkipBreaks(n) => {
+                let mut breakpoints_skipped = 0;
+                let mut skipped_index = 0;
+                for _breaks in 0..*n {
+                    let next_break = self
+                        .breakpoints
+                        .iter()
+                        .find(|b| {
+                            b.enabled()
+                                && b.gate_index()
+                                    > self
+                                        .simulator
+                                        .current_instruction()
+                                        .map(|(i, _)| i)
+                                        .unwrap_or(usize::MAX)
+                        })
+                        .map(|b| b.gate_index());
+
+                    loop {
+                        if self.simulator.next().is_none() {
+                            println!(stdout; &"End of Circuit reached, continued until end")?;
+                            return Ok(());
+                        }
+
+                        // If there are no more breaks to skip, continue until end
+                        if next_break.is_none() {
+                            println!(
+                                stdout;
+                                "Skipped {} breakpoints, continuing until end",
+                                breakpoints_skipped
+                            )?;
+                        }
+
+                        //Check if a breakpoint exists otherwise continue until end
+                        let Some(next_break) = next_break else {
+                            self.simulator.next();
+                            continue;
+                        };
+
+                        //Check if the current index is the next break otherwise rerun the loop
+                        let Some((instruction_index, _instruction)) =
+                            self.simulator.current_instruction()
+                        else {
+                            continue;
+                        };
+
+                        if instruction_index == next_break {
+                            breakpoints_skipped += 1;
+                            skipped_index = next_break;
+                            break;
+                        }
+                    }
+                    self.simulator.next();
+                }
+                println!(
+                    stdout;
+                    "Skipped {} breakpoints, continued to index {}",
+                    breakpoints_skipped, skipped_index
+                )?;
+            }
+            ContinueArgs::IgnoreBreak => loop {
+                if self.simulator.next().is_none() {
+                    println!(stdout; &"End of Circuit reached, continued until end")?;
+                    return Ok(());
+                }
+                self.simulator.next();
+            },
+        }
+
         Ok(())
     }
 
