@@ -1,6 +1,5 @@
 use crate::{
     circuit::Circuit,
-    expr_dsl::{Expr, Value},
     instruction::Instruction,
 };
 use nalgebra::{Complex, DVector};

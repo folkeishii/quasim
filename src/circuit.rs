@@ -1,7 +1,9 @@
 use std::collections::HashSet;
 
 use crate::{
-    expr_dsl::Expr, gate::{Gate, GateType, QBits}, instruction::Instruction
+    expr_dsl::Expr,
+    gate::{Gate, GateType, QBits},
+    instruction::Instruction,
 };
 
 #[derive(Debug, Clone)]
@@ -85,7 +87,7 @@ impl Circuit {
         ));
         self
     }
-    
+
     pub fn u(mut self, theta: f64, phi: f64, lambda: f64, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::U(theta, phi, lambda), &[], &[target]).unwrap(),
@@ -101,7 +103,10 @@ impl Circuit {
     }
 
     pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
-        self.instructions.push(Instruction::Measurement(QBits::from_bitstring(1 << target), reg.to_owned()));
+        self.instructions.push(Instruction::Measurement(
+            QBits::from_bitstring(1 << target),
+            reg.to_owned(),
+        ));
         self
     }
 
@@ -120,7 +125,10 @@ impl Circuit {
     // takes register nr directly for now
     pub fn assign(mut self, reg: String, expr: Expr) -> Self {
         if !self.registers.contains(&reg) {
-            panic!("Tried to assign to nonexistent register with name '{}'.", reg)
+            panic!(
+                "Tried to assign to nonexistent register with name '{}'.",
+                reg
+            )
         }
         self.instructions.push(Instruction::Assign(expr, reg));
         self

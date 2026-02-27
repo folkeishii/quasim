@@ -1,10 +1,15 @@
-use std::collections::HashMap;
-
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::{
-    cart, circuit::Circuit, expr_dsl::{Expr, Value}, ext::get_gate_matrix, gate::{Gate, QBits}, instruction::Instruction, register_file::RegisterFile, simulator::{DebuggableSimulator, RunnableSimulator}
+    cart,
+    circuit::Circuit,
+    expr_dsl::{Expr, Value},
+    ext::get_gate_matrix,
+    gate::{Gate, QBits},
+    instruction::Instruction,
+    register_file::RegisterFile,
+    simulator::{DebuggableSimulator, RunnableSimulator},
 };
 
 pub struct SVExecutor<'a> {
@@ -241,7 +246,12 @@ pub enum SVError {}
 
 #[cfg(test)]
 mod tests {
-    use crate::{circuit::Circuit, expr_dsl::expr_helpers::r, simulator::{BuildSimulator, RunnableSimulator}, sv_simulator::SVSimulator};
+    use crate::{
+        circuit::Circuit,
+        expr_dsl::expr_helpers::r,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
+    };
 
     #[test]
     fn test() {
@@ -255,21 +265,16 @@ mod tests {
             .hadamard(1)
             .hadamard(2)
             .hadamard(3)
-        
             .measure_bit(0, "r0")
             .measure_bit(1, "r1")
             .measure_bit(2, "r2")
             .measure_bit(3, "r3")
-
             .jump_if(r("r0").eq(0), 9)
             .x(0)
-
             .jump_if(r("r1").eq(0), 11)
             .x(1)
-
             .jump_if(r("r2").eq(0), 13)
             .x(2)
-
             .jump_if(r("r3").eq(0), 15)
             .x(3);
 
