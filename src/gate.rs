@@ -53,12 +53,14 @@ pub enum GateType {
     Z,
     H,
     SWAP,
+    U(f64, f64, f64),
+    S,
 }
 
 impl GateType {
     pub fn arity(&self) -> usize {
         match self {
-            Self::X | Self::Y | Self::Z | Self::H => 1,
+            Self::X | Self::Y | Self::Z | Self::H | Self::U(_, _, _) | Self::S => 1,
             Self::SWAP => 2,
         }
     }
@@ -108,6 +110,12 @@ impl Gate {
         cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0),
         cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0),
         cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0)
+    ];
+
+    #[rustfmt::skip]
+    pub const PHASE_S_DATA: [Complex<f64>; 4] = [
+        cart!(1.0), cart!(0.0),
+        cart!(0.0), cart!(0.0, 1.0),
     ];
 
     pub fn new(ty: GateType, controls: &[usize], targets: &[usize]) -> Result<Self, GateError> {

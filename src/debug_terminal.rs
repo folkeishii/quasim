@@ -10,6 +10,7 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::ext::collapse;
+use crate::simulator::StoredCircuitSimulator;
 use crate::{
     circuit::Circuit,
     debug_simulator::DebugSimulator,
@@ -17,24 +18,32 @@ use crate::{
         breakpoint::{BreakpointList, PEBreakpoint},
         parse::into_tokens,
     },
-    simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
+    simulator::{BuildSimulator, DoubleEndedSimulator},
 };
 use std::io::{self, Write};
 use std::ops::Div;
 
+<<<<<<< 37-derive-debug-and-clone
 #[derive(Debug, Clone)]
 pub struct DebugTerminal {
     simulator: DebugSimulator,
+=======
+pub struct DebugTerminal<S = DebugSimulator> {
+    simulator: S,
+>>>>>>> main
     /// Sorted array of breakpoints
     /// i.e. Breakpoints are in order
     /// of gate index
     breakpoints: BreakpointList,
 }
 
-impl DebugTerminal {
-    pub fn new(circuit: Circuit) -> Result<Self, <DebugSimulator as BuildSimulator>::E> {
+impl<S> DebugTerminal<S>
+where
+    S: BuildSimulator + DoubleEndedSimulator + StoredCircuitSimulator,
+{
+    pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E> {
         Ok(Self {
-            simulator: DebugSimulator::build(circuit)?,
+            simulator: S::build(circuit)?,
             breakpoints: Default::default(),
         })
     }
@@ -45,7 +54,11 @@ impl DebugTerminal {
         let mut input_buffer = String::default();
 
         loop {
-            print!(stdout; "qdb> ")?;
+            let current_step = match self.simulator.current_instruction() {
+                None => "end".to_string(),
+                Some((step, _)) => step.to_string(),
+            };
+            print!(stdout; "[{}] qdb> ", current_step)?;
             input_buffer.clear();
             stdin.read_line(&mut input_buffer)?;
             if input_buffer.ends_with('\n') {
@@ -65,8 +78,10 @@ impl DebugTerminal {
 
             match command {
                 Command::Quit => break,
-                Command::Help(_help_args) => println!(&mut stdout; "Help")?,
-                Command::Continue(_continue_args) => println!(&mut stdout; "Continue")?,
+                Command::Help(_help_args) => println!(&mut stdout; &"Help")?,
+                Command::Continue(continue_args) => {
+                    self.handle_continue(&mut stdout, &continue_args)?
+                }
                 Command::Next(next_args) => self.handle_next(&mut stdout, &next_args)?,
                 Command::Previous(prev_args) => self.handle_prev(&mut stdout, &prev_args)?,
                 Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
@@ -81,6 +96,128 @@ impl DebugTerminal {
             }
         }
         Ok(())
+    }
+
+    fn handle_continue(
+        &mut self,
+        stdout: &mut io::Stdout,
+        continue_args: &ContinueArgs,
+    ) -> io::Result<()> {
+        match continue_args {
+            ContinueArgs::UntilBreak => {
+                let next_break = self
+                    .breakpoints
+                    .iter()
+                    .find(|b| {
+                        b.enabled()
+                            && b.gate_index()
+                                > self
+                                    .simulator
+                                    .current_instruction()
+                                    .map(|(i, _)| i)
+                                    .unwrap_or(usize::MAX)
+                    })
+                    .map(|b| b.gate_index());
+
+                loop {
+                    if self.simulator.next().is_none() {
+                        println!(stdout; &"End of Circuit reached, continued until end")?;
+                        return Ok(());
+                    }
+
+                    //Check if a breakpoint exists otherwise continue until end
+                    let Some(next_break) = next_break else {
+                        self.simulator.next();
+                        continue;
+                    };
+
+                    //Check if the current index is the next break otherwise rerun the loop
+                    let Some((instruction_index, _instruction)) =
+                        self.simulator.current_instruction()
+                    else {
+                        continue;
+                    };
+
+                    if instruction_index == next_break {
+                        println!(
+                            stdout;
+                            "Continued until breakpoint at index {}", next_break
+                        )?;
+                        return Ok(());
+                    }
+                }
+            }
+            ContinueArgs::SkipBreaks(n) => {
+                let mut breakpoints_skipped = 0;
+                loop {
+                    let next_break = self
+                        .breakpoints
+                        .iter()
+                        .find(|b| {
+                            b.enabled()
+                                && b.gate_index()
+                                    > self
+                                        .simulator
+                                        .current_instruction()
+                                        .map(|(i, _)| i)
+                                        .unwrap_or(usize::MAX)
+                        })
+                        .map(|b| b.gate_index());
+
+                    loop {
+                        if self.simulator.next().is_none() {
+                            println!(stdout; &"End of Circuit reached, continued until end")?;
+                            return Ok(());
+                        }
+
+                        // If there are no more breaks to skip, continue until end
+                        if next_break.is_none() {
+                            println!(
+                                stdout;
+                                "Skipped {} breakpoints, continuing until end",
+                                breakpoints_skipped
+                            )?;
+                        }
+
+                        //Check if a breakpoint exists otherwise continue until end
+                        let Some(next_break) = next_break else {
+                            self.simulator.next();
+                            continue;
+                        };
+
+                        //Check if the current index is the next break otherwise rerun the loop
+                        let Some((instruction_index, _instruction)) =
+                            self.simulator.current_instruction()
+                        else {
+                            continue;
+                        };
+
+                        // If we have skipped the desired amount of breakpoints
+                        if breakpoints_skipped == *n {
+                            println!(
+                                stdout;
+                                "Skipped {} breakpoints, continued to index {}",
+                                breakpoints_skipped, instruction_index
+                            )?;
+                            return Ok(());
+                        }
+
+                        if instruction_index == next_break {
+                            breakpoints_skipped += 1;
+                            break;
+                        }
+                    }
+                    self.simulator.next();
+                }
+            }
+            ContinueArgs::IgnoreBreak => loop {
+                if self.simulator.next().is_none() {
+                    println!(stdout; &"End of Circuit reached, continued until end")?;
+                    return Ok(());
+                }
+                self.simulator.next();
+            },
+        }
     }
 
     fn handle_next<W: Write>(&mut self, stdout: &mut W, next_args: &NextArgs) -> io::Result<()> {
@@ -126,7 +263,7 @@ impl DebugTerminal {
         };
 
         // Check that all indices are actual gates
-        let gate_range = 0..self.simulator.instruction_count();
+        let gate_range = 0..self.simulator.circuit().instructions().len();
         for gate_index in gate_indices {
             if !gate_range.contains(gate_index) {
                 errorln!(
