@@ -139,8 +139,7 @@ where
             }
             ContinueArgs::SkipBreaks(n) => {
                 let mut breakpoints_skipped = 0;
-                let mut skipped_index = 0;
-                for _breaks in 0..*n {
+                loop {
                     let next_break = self
                         .breakpoints
                         .iter()
@@ -183,19 +182,23 @@ where
                             continue;
                         };
 
+                        // If we have skipped the desired amount of breakpoints
+                        if breakpoints_skipped == *n {
+                            println!(
+                                stdout;
+                                "Skipped {} breakpoints, continued to index {}",
+                                breakpoints_skipped, instruction_index
+                            )?;
+                            return Ok(());
+                        }
+
                         if instruction_index == next_break {
                             breakpoints_skipped += 1;
-                            skipped_index = next_break;
                             break;
                         }
                     }
                     self.simulator.next();
                 }
-                println!(
-                    stdout;
-                    "Skipped {} breakpoints, continued to index {}",
-                    breakpoints_skipped, skipped_index
-                )?;
             }
             ContinueArgs::IgnoreBreak => loop {
                 if self.simulator.next().is_none() {
@@ -205,8 +208,6 @@ where
                 self.simulator.next();
             },
         }
-
-        Ok(())
     }
 
     fn handle_next<W: Write>(&mut self, stdout: &mut W, next_args: &NextArgs) -> io::Result<()> {
