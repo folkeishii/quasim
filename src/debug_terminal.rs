@@ -48,7 +48,11 @@ where
         let mut input_buffer = String::default();
 
         loop {
-            print!(stdout; "qdb> ")?;
+            let current_step = match self.simulator.current_instruction() {
+                None => "end".to_string(),
+                Some((step, _)) => step.to_string(),
+            };
+            print!(stdout; "[{}] qdb> ", current_step)?;
             input_buffer.clear();
             stdin.read_line(&mut input_buffer)?;
             if input_buffer.ends_with('\n') {
