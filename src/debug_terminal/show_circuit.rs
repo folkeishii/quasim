@@ -1,6 +1,7 @@
 use std::{
     fmt::Display,
-    io::{self, Write}, marker::PhantomData,
+    io::{self, Write},
+    marker::PhantomData,
 };
 
 use crate::simulator::{DebuggableSimulator, StoredCircuitSimulator};
@@ -39,20 +40,8 @@ impl <
         }
     }
 }
-const fn sblock<
-    NW, NN, NE,
-    WW, CC, EE,
-    SW, SS, SE,
->() -> Block<
-    NW, NN, NE,
-    WW, CC, EE,
-    SW, SS, SE,
-> {
-    Block::<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE
-    >(PhantomData)
+const fn sblock<NW, NN, NE, WW, CC, EE, SW, SS, SE>() -> Block<NW, NN, NE, WW, CC, EE, SW, SS, SE> {
+    Block::<NW, NN, NE, WW, CC, EE, SW, SS, SE>(PhantomData)
 }
 
 const BLOCK_SIZE: Size = Size {
@@ -92,7 +81,7 @@ mod block {
     use crate::debug_terminal::show_circuit::sblock;
 
     use super::{Block, BlockTrait, Char, Pos, Size};
-    use std::{fmt::Display, marker::PhantomData, ops::Deref};
+    use std::{fmt::Display, io::stdout, marker::PhantomData, ops::Deref};
 
     // https://en.wikipedia.org/wiki/Box-drawing_characters
     // https://www.alt-codes.net/bullet_alt_codes.php
@@ -186,150 +175,6 @@ mod block {
             }
         }
     }
-    /*
-        #[derive(Debug, Clone, Copy)]
-        pub struct MeasureGate(QBits);
-        #[derive(Debug, Clone, Copy)]
-        pub struct GateBlock<'a, G = (char, &'a Gate)>(G, PhantomData<&'a ()>);
-
-        impl<'g> GateBlock<'g> {
-            pub fn new<'a, T: Display>(name: T, gate: &'a Gate) -> GateBlock<'a, (T, &'a Gate)> {
-                GateBlock::<'a, (T, &'a Gate)>((name, gate), Default::default())
-            }
-
-            pub fn measurement(targets: QBits) -> GateBlock<'g, MeasureGate> {
-                GateBlock::<'g, MeasureGate>(MeasureGate(targets), Default::default())
-            }
-
-            /// Will panic if X, Y > 2
-            pub fn get_char<const X: usize, const Y: usize>(&self, lane: usize) -> char {
-                // if
-                match (X, Y) {
-                    (1, 1) => *self.name(),
-                    (x, y) => gate::FL[y][x],
-                }
-            }
-        }
-        impl<'g, T: Display> GateBlock<'g, (T, &'g Gate)> {
-            fn name(&self) -> &T {
-                &self.0.0
-            }
-            fn gate(&self) -> &'g Gate {
-                &self.0.1
-            }
-
-            fn lane_block(&self, lane: usize) -> Block {
-                let targets = self.gate().get_target_bits().get_bitstring();
-                let controls = self.gate().get_control_bits().get_bitstring();
-                let t_and_c = targets | controls;
-                let below_mask = usize::MAX << (lane + 1);
-                let below_eq_mask = usize::MAX << lane;
-                let above_mask = below_eq_mask ^ usize::MAX;
-                let above_eq_mask = below_mask ^ usize::MAX;
-
-                // Lane is outside targets and controls
-                if t_and_c & below_mask == t_and_c || t_and_c & above_mask == t_and_c {
-                    track::OEOW
-                }
-                // Lane is below every target
-                else if targets & above_mask == targets {
-                    // Lane has no controls below it
-                    if controls & below_mask == 0 {
-                        // Lane must be on control
-                        ctrl(track::NEOW)
-                    }
-                    // Lane has controls below it
-                    else {
-                        // Lane is on control
-                        if controls & (1 << lane) != 0 {
-                            ctrl(track::NESW)
-                        } else {
-                            track::NESW_PASS
-                        }
-                    }
-                }
-                // Lane is above every target
-                else if targets & below_mask == targets {
-                    // Lane has no controls above it
-                    if controls & above_mask == 0 {
-                        // Lane must be on control
-                        ctrl(track::OESW)
-                    }
-                    // Lane has controls above it
-                    else {
-                        // Lane is on control
-                        if controls & (1 << lane) != 0 {
-                            ctrl(track::NESW)
-                        } else {
-                            track::NESW_PASS
-                        }
-                    }
-                }
-                // Lane is inside block
-                else {
-                    // Lane is top and bot
-                    if targets & below_eq_mask & above_eq_mask == targets {
-                        // Controls exists above and below
-                        if controls & above_mask != 0 && controls & below_mask != 0 {
-                            connect_south(connect_north(gate::FL))
-                        }
-                        // Controls exists above
-                        else if controls & above_mask != 0 {
-                            connect_north(gate::FL)
-                        }
-                        // Controls exists below
-                        else if controls & below_mask != 0 {
-                            connect_south(gate::FL)
-                        } else {
-                            gate::FL
-                        }
-                    }
-                    // Lane is top
-                    else if targets & below_eq_mask == targets {
-                        // Controls exist above
-                        if controls & above_mask != 0 {
-                            connect_north(gate::NN)
-                        } else {
-                            gate::NN
-                        }
-                    }
-                    // Lane is bot
-                    else if targets & above_eq_mask == targets {
-                        // Controls exist below
-                        if controls & below_mask != 0 {
-                            connect_south(gate::SS)
-                        } else {
-                            gate::SS
-                        }
-                    }
-                    // Lane is on target
-                    else if targets & (1 << lane) != 0 {
-                        connect_east(connect_west(gate::WE))
-                    }
-                    // Lane is control
-                    else if controls & (1 << lane) != 0 {
-                        ctrl(gate::SK)
-                    } else {
-                        gate::SK
-                    }
-                }
-            }
-        }
-        impl<'g> GateBlock<'g, MeasureGate> {
-            pub fn get_char<const X: usize, const Y: usize>(&self, lane: usize) -> char {
-                let targets = self.0.0.get_bitstring();
-                if targets & (1 << lane) == 0 {
-                    return track::OEOW[Y][X];
-                }
-
-                match (X, Y) {
-                    (1, 1) => '∅',
-                    (x, y) => connect_west(connect_east(gate::FL))[y][x],
-                }
-            }
-        }
-    */
-
 
     pub const fn connect_north<C: ConnectNorth>() -> C::NOutput {
         C::NRESULT
@@ -380,13 +225,43 @@ mod block {
     pub trait Connects: ConnectNorth + ConnectEast + ConnectSouth + ConnectWest + Passes {
         const SELF: Self;
     }
+    pub trait Combine<Rhs: Connects> {
+        type COutput: Connects;
+        const CRESULT: Self::COutput;
+    }
     pub trait BlockGrid<const W: usize, const H: usize> {
         fn block<'a, const X: usize, const Y: usize>() -> &'a impl BlockTrait;
     }
-    impl<B: BlockTrait> BlockGrid<1, 1> for B {
+    // impl<B: BlockTrait> BlockGrid<1, 1> for B {
 
+    // }
+    macro_rules! expand_combined {
+        (Output;; $alter:ty) => {
+            $alter
+        };
+        (Output; N; $alter:ty) => {
+            <$alter as ConnectNorth>::NOutput
+        };
+
+        (Output; E; $alter:ty) => {
+            <$alter as ConnectEast>::EOutput
+        };
+
+        (Output; S; $alter:ty) => {
+            <$alter as ConnectSouth>::SOutput
+        };
+
+        (Output; W; $alter:ty) => {
+            <$alter as ConnectWest>::WOutput
+        };
+        (Output; $init:ident $($rest:ident)+; $alter:expr) => {
+            expand_combined!(
+                Output;
+                ($rest)+;
+                expand_combined!(Output; $init; $alter)
+            )
+        };
     }
-
     macro_rules! impl_connect {
         (Char; North; $src:literal; $dst:literal) => {
             impl ConnectNorth for Char<$src> {
@@ -417,39 +292,55 @@ mod block {
 
         };
 
-        (Char; $src:literal; $nn:literal, $ee:literal, $ss:literal, $ww:literal) => {
+        (Char; Combine ($($dirs:ident)*); $src:literal) => {
+            impl<Rhs: Connects> Combine<Rhs> for Char<$src> {
+                type COutput = expand_combined!(Output; $($dirs)*; Rhs);
+                const CRESULT: Self::COutput = <Self::COutput as Connects>::SELF;
+            }
+        };
+
+        (Char; $src:literal; ($($dirs:ident)*); $nn:literal, $ee:literal, $ss:literal, $ww:literal) => {
             impl_connect!(Char; North; $src; $nn);
             impl_connect!(Char; East; $src; $ee);
             impl_connect!(Char; South; $src; $ss);
             impl_connect!(Char; West; $src; $ww);
+            impl_connect!(Char; Combine ($($dirs)*); $src);
             impl Connects for Char<$src> {
                 const SELF: Self = Char::<$src>;
             }
         }
     }
 
-    impl_connect!(Char; ' '; '╵', '╶', '╷', '╴');
+    impl_connect!(Char; ' '; (); '╵', '╶', '╷', '╴');
 
-    impl_connect!(Char; '╵'; '╵', '└', '│', '┘');
-    impl_connect!(Char; '╶'; '└', '╶', '┌', '─');
-    impl_connect!(Char; '╷'; '│', '┌', '╷', '┐');
-    impl_connect!(Char; '╴'; '┘', '─', '┐', '╴');
+    impl_connect!(Char; '╵'; (N); '╵', '└', '│', '┘');
+    impl_connect!(Char; '╶'; (E); '└', '╶', '┌', '─');
+    impl_connect!(Char; '╷'; (S); '│', '┌', '╷', '┐');
+    impl_connect!(Char; '╴'; (W); '┘', '─', '┐', '╴');
 
-    impl_connect!(Char; '└'; '└', '└', '├', '┴');
-    impl_connect!(Char; '│'; '│', '├', '│', '┤');
-    impl_connect!(Char; '┘'; '┘', '┴', '┤', '┘');
+    impl<Rhs: Connects> Combine<Rhs> for Char<'└'> {
+        type COutput = expand_combined!(Output;
+            E;
+            expand_combined!(Output;
+            N;
+            Rhs));
+        const CRESULT: Self::COutput = <Self::COutput as Connects>::SELF;
+    }
+    // impl_connect!(Char; '└'; (N E); '└', '└', '├', '┴');
+    impl_connect!(Char; '│'; (N S); '│', '├', '│', '┤');
+    impl_connect!(Char; '┘'; (N W); '┘', '┴', '┤', '┘');
 
-    impl_connect!(Char; '┌'; '├', '┌', '┌', '┬');
-    impl_connect!(Char; '─'; '┴', '─', '┬', '─');
+    impl_connect!(Char; '┌'; (E S); '├', '┌', '┌', '┬');
+    impl_connect!(Char; '─'; (E W); '┴', '─', '┬', '─');
 
-    impl_connect!(Char; '┐'; '┤', '┬', '┐', '┐');
+    impl_connect!(Char; '┐'; (S W);'┤', '┬', '┐', '┐');
 
-    impl_connect!(Char; '├'; '├', '├', '├', '┼');
-    impl_connect!(Char; '┴'; '├', '├', '┼', '├');
-    impl_connect!(Char; '┤'; '├', '┼', '├', '├');
-    impl_connect!(Char; '┬'; '┼', '├', '├', '├');
+    impl_connect!(Char; '├'; (N E S); '├', '├', '├', '┼');
+    impl_connect!(Char; '┴'; (N E W); '├', '├', '┼', '├');
+    impl_connect!(Char; '┤'; (N S W); '├', '┼', '├', '├');
+    impl_connect!(Char; '┬'; (E S W); '┼', '├', '├', '├');
 
-    impl_connect!(Char; '┼'; '┼', '┼', '┼', '┼');
+    impl_connect!(Char; '┼'; (N E S W); '┼', '┼', '┼', '┼');
 
     #[rustfmt::skip]
     impl<
@@ -531,7 +422,6 @@ mod block {
     > {
         const SELF: Self = strack();
     }
-
 
     // struct ConnectNorth<const C: char>;
     // #[rustfmt::skip]
