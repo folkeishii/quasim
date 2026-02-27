@@ -122,6 +122,13 @@ impl Circuit {
         self
     }
 
+    /// Conditionally apply whichever instruction that comes after
+    pub fn apply_if(mut self, expr: Expr) -> Self {
+        self.instructions
+            .push(Instruction::JumpIf(!expr, self.instructions.len() + 1));
+        self
+    }
+
     // takes register nr directly for now
     pub fn assign(mut self, reg: String, expr: Expr) -> Self {
         if !self.registers.contains(&reg) {

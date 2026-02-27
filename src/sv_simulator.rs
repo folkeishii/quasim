@@ -269,13 +269,13 @@ mod tests {
             .measure_bit(1, "r1")
             .measure_bit(2, "r2")
             .measure_bit(3, "r3")
-            .jump_if(r("r0").eq(0), 9)
+            .apply_if(r("r0").eq(1))
             .x(0)
-            .jump_if(r("r1").eq(0), 11)
+            .apply_if(r("r1").eq(1))
             .x(1)
-            .jump_if(r("r2").eq(0), 13)
+            .apply_if(r("r2").eq(1))
             .x(2)
-            .jump_if(r("r3").eq(0), 15)
+            .apply_if(r("r3").eq(1))
             .x(3);
 
         let sim = SVSimulator::build(circuit).unwrap();
