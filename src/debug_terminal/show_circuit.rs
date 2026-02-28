@@ -7,42 +7,55 @@ use std::{
 use crate::simulator::{DebuggableSimulator, StoredCircuitSimulator};
 
 // type Block = [[char; BLOCK_SIZE.width]; BLOCK_SIZE.height];
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 struct Char<const C: char>;
 pub trait BlockTrait {
     fn char<const X: usize, const Y: usize>(&self) -> char;
 }
+pub trait ColumnTrait {
+    const HEIGHT: usize;
+    fn block(&self, rel_lane: usize) -> Option<&impl BlockTrait>;
+}
 #[rustfmt::skip]
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Block<
-    NW, NN, NE,
-    WW, CC, EE,
-    SW, SS, SE,
->(PhantomData<((NW, NN, NE), (WW, CC, EE), (SW, SS, SE))>);
+#[derive(Debug, Clone, Copy)]
+pub struct Block([[char; 3]; 3]);
+const fn sblock() -> Block {
+    Block([[' ', ' ', ' '], [' ', ' ', ' '], [' ', ' ', ' ']])
+}
 #[rustfmt::skip]
-impl <
-    const NW: char, const NN: char, const NE: char,
-    const WW: char, const CC: char, const EE: char,
-    const SW: char, const SS: char, const SE: char,
-> BlockTrait for Block<
-    Char<NW>, Char<NN>, Char<NE>,
-    Char<WW>, Char<CC>, Char<EE>,
-    Char<SW>, Char<SS>, Char<SE>,
-> {
+impl BlockTrait for Block {
     #[rustfmt::skip]
     #[inline(always)]
     fn char<const X: usize, const Y: usize>(&self) -> char {
-        match (Y, X) {
-            (0, 0) => NW, (0, 1) => NN, (0, 2) => NW,
-            (1, 0) => WW, (1, 1) => CC, (1, 2) => EE,
-            (2, 0) => SW, (2, 1) => SS, (2, 2) => SE,
-            _ => panic!("({}, {}) is out of bounds", X, Y)
-        }
+        debug_assert!(X < 3 && Y < 3);
+        self.0[Y][X]
     }
 }
-const fn sblock<NW, NN, NE, WW, CC, EE, SW, SS, SE>() -> Block<NW, NN, NE, WW, CC, EE, SW, SS, SE> {
-    Block::<NW, NN, NE, WW, CC, EE, SW, SS, SE>(PhantomData)
-}
+// #[rustfmt::skip]
+// #[derive(Debug, Default, Clone, Copy)]
+// pub struct Column<T>(T);
+// impl<B: BlockTrait> ColumnTrait for Column<B> {
+//     const HEIGHT: usize = 1;
+//     fn block(&self, rel_lane: usize) -> Option<&impl BlockTrait> {
+//         if rel_lane == 0 {
+//             Some(&self.0)
+//         } else {
+//             None
+//         }
+//     }
+// }
+// impl<C: ColumnTrait, B: BlockTrait> ColumnTrait for Column<(C, B)> {
+//     const HEIGHT: usize = C::HEIGHT + 1;
+//     fn block(&self, rel_lane: usize) -> Option<&impl BlockTrait> {
+//         if rel_lane == Self::HEIGHT - 1 {
+//             Some(&self.0.1)
+//         } else if rel_lane < Self::HEIGHT - 1{
+//             self.0.0.block(rel_lane)
+//         } else {
+//             None
+//         }
+//     }
+// }
 
 const BLOCK_SIZE: Size = Size {
     width: 3,
@@ -88,340 +101,428 @@ mod block {
     // https://www.compart.com/en/unicode/block/U+2B00
 
     #[rustfmt::skip]
-    #[derive(Debug, Default, Clone, Copy)]
-    pub struct Track<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    >(Block::<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE
-    >);
+    #[derive(Debug, Clone, Copy)]
+    pub struct Track(Block);
     #[rustfmt::skip]
-    const fn strack<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    >() -> Track<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    > {
-        Track(sblock())
+    const fn strack() -> Track {
+        Track(Block([
+            [' ', '│', ' '],
+            ['─', '┼', '─'],
+            [' ', '│', ' ']
+        ]))
     }
     #[rustfmt::skip]
-    impl <
-        const NW: char, const NN: char, const NE: char,
-        const WW: char, const CC: char, const EE: char,
-        const SW: char, const SS: char, const SE: char,
-    > BlockTrait for Track<
-        Char<NW>, Char<NN>, Char<NE>,
-        Char<WW>, Char<CC>, Char<EE>,
-        Char<SW>, Char<SS>, Char<SE>,
-    > {
+    impl BlockTrait for Track {
         #[rustfmt::skip]
         #[inline(always)]
         fn char<const X: usize, const Y: usize>(&self) -> char {
-            match (Y, X) {
-                (0, 0) => NW, (0, 1) => NN, (0, 2) => NW,
-                (1, 0) => WW, (1, 1) => CC, (1, 2) => EE,
-                (2, 0) => SW, (2, 1) => SS, (2, 2) => SE,
-                _ => panic!("({}, {}) is out of bounds", X, Y)
-            }
+            self.0.char::<X, Y>()
         }
     }
     #[rustfmt::skip]
-    #[derive(Debug, Default, Clone, Copy)]
-    pub struct Gate<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    >(Block::<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE
-    >);
+    #[derive(Debug, Clone, Copy)]
+    pub struct Gate(Block);
     #[rustfmt::skip]
-    const fn sgate<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    >() -> Gate<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    > {
-        Gate(sblock())
+    const fn sgate() -> Gate {
+        Gate(Block([
+            ['┌', '─', '┐'],
+            ['│', ' ', '│'],
+            ['└', '─', '┘']
+        ]))
     }
     #[rustfmt::skip]
-    impl <
-        const NW: char, const NN: char, const NE: char,
-        const WW: char, const CC: char, const EE: char,
-        const SW: char, const SS: char, const SE: char,
-    > BlockTrait for Gate<
-        Char<NW>, Char<NN>, Char<NE>,
-        Char<WW>, Char<CC>, Char<EE>,
-        Char<SW>, Char<SS>, Char<SE>,
-    > {
+    impl BlockTrait for Gate {
         #[rustfmt::skip]
         #[inline(always)]
         fn char<const X: usize, const Y: usize>(&self) -> char {
-            match (Y, X) {
-                (0, 0) => NW, (0, 1) => NN, (0, 2) => NW,
-                (1, 0) => WW, (1, 1) => CC, (1, 2) => EE,
-                (2, 0) => SW, (2, 1) => SS, (2, 2) => SE,
-                _ => panic!("({}, {}) is out of bounds", X, Y)
-            }
+            self.0.char::<X, Y>()
         }
     }
 
-    pub const fn connect_north<C: ConnectNorth>() -> C::NOutput {
-        C::NRESULT
-    }
-    pub const fn connect_east<C: ConnectEast>() -> C::EOutput {
-        C::ERESULT
-    }
-    pub const fn connect_south<C: ConnectSouth>() -> C::SOutput {
-        C::SRESULT
-    }
-    pub const fn connect_west<C: ConnectWest>() -> C::WOutput {
-        C::WRESULT
-    }
-    pub const fn pass_horizontal<P: Passes>() -> P::HOutput {
-        P::HRESULT
-    }
-    pub const fn pass_vertical<P: Passes>() -> P::VOutput {
-        P::VRESULT
-    }
     pub trait ConnectNorth {
         type NOutput: Connects;
-        const NRESULT: Self::NOutput;
+        fn connect_north(&self) -> Self::NOutput;
     }
     pub trait ConnectEast {
         type EOutput: Connects;
-        const ERESULT: Self::EOutput;
+        fn connect_east(&self) -> Self::EOutput;
     }
     pub trait ConnectSouth {
         type SOutput: Connects;
-        const SRESULT: Self::SOutput;
+        fn connect_south(&self) -> Self::SOutput;
     }
     pub trait ConnectWest {
         type WOutput: Connects;
-        const WRESULT: Self::WOutput;
+        fn connect_west(&self) -> Self::WOutput;
     }
     pub trait Passes {
         type HOutput: Connects;
         type VOutput: Connects;
-        const HRESULT: Self::HOutput;
-        const VRESULT: Self::VOutput;
+        fn pass_horizontal(self) -> Self::HOutput;
+        fn pass_vertical(self) -> Self::VOutput;
     }
     impl<T: ConnectNorth + ConnectEast + ConnectSouth + ConnectWest> Passes for T {
         type HOutput = <T::EOutput as ConnectWest>::WOutput;
         type VOutput = <T::NOutput as ConnectSouth>::SOutput;
-        const HRESULT: Self::HOutput = <T::EOutput as ConnectWest>::WRESULT;
-        const VRESULT: Self::VOutput = <T::NOutput as ConnectSouth>::SRESULT;
+        fn pass_horizontal(self) -> Self::HOutput {
+            self.connect_east().connect_west()
+        }
+        fn pass_vertical(self) -> Self::VOutput {
+            self.connect_north().connect_south()
+        }
     }
-    pub trait Connects: ConnectNorth + ConnectEast + ConnectSouth + ConnectWest + Passes {
-        const SELF: Self;
+    pub trait Connects: ConnectNorth + ConnectEast + ConnectSouth + ConnectWest + Passes {}
+    impl<T: ConnectNorth + ConnectEast + ConnectSouth + ConnectWest + Passes> Connects for T {}
+    pub struct IsDirection {
+        north: bool,
+        east: bool,
+        south: bool,
+        west: bool,
     }
-    pub trait Combine<Rhs: Connects> {
-        type COutput: Connects;
-        const CRESULT: Self::COutput;
+    pub trait HasDirection {
+        fn is_direction(&self) -> IsDirection;
     }
-    pub trait BlockGrid<const W: usize, const H: usize> {
-        fn block<'a, const X: usize, const Y: usize>() -> &'a impl BlockTrait;
+    pub trait Combines<Rhs: HasDirection = Self>: Connects {
+        type Output: Connects;
+        fn combine(self, rhs: Rhs) -> Self::Output;
     }
-    // impl<B: BlockTrait> BlockGrid<1, 1> for B {
-
-    // }
-    macro_rules! expand_combined {
-        (Output;; $alter:ty) => {
-            $alter
-        };
-        (Output; N; $alter:ty) => {
-            <$alter as ConnectNorth>::NOutput
-        };
-
-        (Output; E; $alter:ty) => {
-            <$alter as ConnectEast>::EOutput
-        };
-
-        (Output; S; $alter:ty) => {
-            <$alter as ConnectSouth>::SOutput
-        };
-
-        (Output; W; $alter:ty) => {
-            <$alter as ConnectWest>::WOutput
-        };
-        (Output; $init:ident $($rest:ident)+; $alter:expr) => {
-            expand_combined!(
-                Output;
-                ($rest)+;
-                expand_combined!(Output; $init; $alter)
-            )
-        };
-    }
-    macro_rules! impl_connect {
-        (Char; North; $src:literal; $dst:literal) => {
-            impl ConnectNorth for Char<$src> {
-                type NOutput = Char<$dst>;
-                const NRESULT: Self::NOutput = Char::<$dst>;
-            }
-
-        };
-        (Char; East; $src:literal; $dst:literal) => {
-            impl ConnectEast for Char<$src> {
-                type EOutput = Char<$dst>;
-                const ERESULT: Self::EOutput = Char::<$dst>;
-            }
-
-        };
-        (Char; South; $src:literal; $dst:literal) => {
-            impl ConnectSouth for Char<$src> {
-                type SOutput = Char<$dst>;
-                const SRESULT: Self::SOutput = Char::<$dst>;
-            }
-
-        };
-        (Char; West; $src:literal; $dst:literal) => {
-            impl ConnectWest for Char<$src> {
-                type WOutput = Char<$dst>;
-                const WRESULT: Self::WOutput = Char::<$dst>;
-            }
-
-        };
-
-        (Char; Combine ($($dirs:ident)*); $src:literal) => {
-            impl<Rhs: Connects> Combine<Rhs> for Char<$src> {
-                type COutput = expand_combined!(Output; $($dirs)*; Rhs);
-                const CRESULT: Self::COutput = <Self::COutput as Connects>::SELF;
-            }
-        };
-
-        (Char; $src:literal; ($($dirs:ident)*); $nn:literal, $ee:literal, $ss:literal, $ww:literal) => {
-            impl_connect!(Char; North; $src; $nn);
-            impl_connect!(Char; East; $src; $ee);
-            impl_connect!(Char; South; $src; $ss);
-            impl_connect!(Char; West; $src; $ww);
-            impl_connect!(Char; Combine ($($dirs)*); $src);
-            impl Connects for Char<$src> {
-                const SELF: Self = Char::<$src>;
+    impl ConnectNorth for char {
+        type NOutput = char;
+        fn connect_north(&self) -> Self::NOutput {
+            match self {
+                ' ' => '╵',
+                '╵' => '╵',
+                '╶' => '└',
+                '╷' => '│',
+                '╴' => '┘',
+                '└' => '└',
+                '│' => '│',
+                '┘' => '┘',
+                '┌' => '├',
+                '─' => '┴',
+                '┐' => '┤',
+                '├' => '├',
+                '┴' => '┴',
+                '┤' => '┤',
+                '┬' => '┼',
+                '┼' => '┼',
+                _ => panic!("Cannot connect {} north", self),
             }
         }
     }
-
-    impl_connect!(Char; ' '; (); '╵', '╶', '╷', '╴');
-
-    impl_connect!(Char; '╵'; (N); '╵', '└', '│', '┘');
-    impl_connect!(Char; '╶'; (E); '└', '╶', '┌', '─');
-    impl_connect!(Char; '╷'; (S); '│', '┌', '╷', '┐');
-    impl_connect!(Char; '╴'; (W); '┘', '─', '┐', '╴');
-
-    impl<Rhs: Connects> Combine<Rhs> for Char<'└'> {
-        type COutput = expand_combined!(Output;
-            E;
-            expand_combined!(Output;
-            N;
-            Rhs));
-        const CRESULT: Self::COutput = <Self::COutput as Connects>::SELF;
+    impl ConnectEast for char {
+        type EOutput = char;
+        fn connect_east(&self) -> Self::EOutput {
+            match self {
+                ' ' => '╶',
+                '╵' => '└',
+                '╶' => '╶',
+                '╷' => '┌',
+                '╴' => '─',
+                '└' => '└',
+                '│' => '├',
+                '┘' => '┴',
+                '┌' => '┌',
+                '─' => '─',
+                '┐' => '┬',
+                '├' => '├',
+                '┴' => '┴',
+                '┤' => '┼',
+                '┬' => '┬',
+                '┼' => '┼',
+                _ => panic!("Cannot connect {} north", self),
+            }
+        }
     }
-    // impl_connect!(Char; '└'; (N E); '└', '└', '├', '┴');
-    impl_connect!(Char; '│'; (N S); '│', '├', '│', '┤');
-    impl_connect!(Char; '┘'; (N W); '┘', '┴', '┤', '┘');
-
-    impl_connect!(Char; '┌'; (E S); '├', '┌', '┌', '┬');
-    impl_connect!(Char; '─'; (E W); '┴', '─', '┬', '─');
-
-    impl_connect!(Char; '┐'; (S W);'┤', '┬', '┐', '┐');
-
-    impl_connect!(Char; '├'; (N E S); '├', '├', '├', '┼');
-    impl_connect!(Char; '┴'; (N E W); '├', '├', '┼', '├');
-    impl_connect!(Char; '┤'; (N S W); '├', '┼', '├', '├');
-    impl_connect!(Char; '┬'; (E S W); '┼', '├', '├', '├');
-
-    impl_connect!(Char; '┼'; (N E S W); '┼', '┼', '┼', '┼');
-
-    #[rustfmt::skip]
-    impl<
-        NW: Connects, NN: Connects, NE: Connects,
-        WW: Connects, CC: Connects, EE: Connects,
-        SW: Connects, SS: Connects, SE: Connects,
-    > ConnectNorth for Track<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    > {
-        type NOutput = Track<
-            NW, NN::VOutput, NE,
-            WW, CC::NOutput, EE,
-            SW, SS,          SE,
-        >;
-        const NRESULT: Self::NOutput = strack();
+    impl ConnectSouth for char {
+        type SOutput = char;
+        fn connect_south(&self) -> Self::SOutput {
+            match self {
+                ' ' => '╷',
+                '╵' => '│',
+                '╶' => '┌',
+                '╷' => '╷',
+                '╴' => '┐',
+                '└' => '├',
+                '│' => '│',
+                '┘' => '┤',
+                '┌' => '┌',
+                '─' => '┬',
+                '┐' => '┐',
+                '├' => '├',
+                '┴' => '┼',
+                '┤' => '┤',
+                '┬' => '┬',
+                '┼' => '┼',
+                _ => panic!("Cannot connect {} north", self),
+            }
+        }
     }
-    #[rustfmt::skip]
-    impl<
-        NW: Connects, NN: Connects, NE: Connects,
-        WW: Connects, CC: Connects, EE: Connects,
-        SW: Connects, SS: Connects, SE: Connects,
-    > ConnectEast for Track<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    > {
-        type EOutput = Track<
-            NW, NN,          NE,
-            WW, CC::EOutput, EE::HOutput,
-            SW, SS,          SE,
-        >;
-        const ERESULT: Self::EOutput = strack();
-    }
-    #[rustfmt::skip]
-    impl<
-        NW: Connects, NN: Connects, NE: Connects,
-        WW: Connects, CC: Connects, EE: Connects,
-        SW: Connects, SS: Connects, SE: Connects,
-    > ConnectSouth for Track<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    > {
-        type SOutput = Track<
-            NW, NN,          NE,
-            WW, CC::SOutput, EE,
-            SW, SS::VOutput, SE,
-        >;
-        const SRESULT: Self::SOutput = strack();
+    impl ConnectWest for char {
+        type WOutput = char;
+        fn connect_west(&self) -> Self::WOutput {
+            match self {
+                ' ' => '╴',
+                '╵' => '┘',
+                '╶' => '─',
+                '╷' => '┐',
+                '╴' => '╴',
+                '└' => '┴',
+                '│' => '┤',
+                '┘' => '┘',
+                '┌' => '┬',
+                '─' => '─',
+                '┐' => '┐',
+                '├' => '┼',
+                '┴' => '┴',
+                '┤' => '┤',
+                '┬' => '┬',
+                '┼' => '┼',
+                _ => panic!("Cannot connect {} north", self),
+            }
+        }
     }
     #[rustfmt::skip]
-    impl<
-        NW: Connects, NN: Connects, NE: Connects,
-        WW: Connects, CC: Connects, EE: Connects,
-        SW: Connects, SS: Connects, SE: Connects,
-    > ConnectWest for Track<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    > {
-        type WOutput = Track<
-            NW,          NN,          NE,
-            WW::HOutput, CC::WOutput, EE,
-            SW,          SS,          SE,
-        >;
-        const WRESULT: Self::WOutput = strack();
+    impl ConnectNorth for Track {
+        type NOutput = Track;
+        fn connect_north(&self) -> Self::NOutput {
+            let [
+                [nw, nn, ne],
+                [ww, cc, ee],
+                [sw, ss, se]
+            ] = self.0.0;
+            let nn = nn.pass_vertical();
+            let cc = cc.connect_north();
+            Track(
+                Block([
+                    [nw, nn, ne],
+                    [ww, cc, ee],
+                    [sw, ss, se]
+                ])
+            )
+        }
     }
     #[rustfmt::skip]
-    impl<
-        NW: Connects, NN: Connects, NE: Connects,
-        WW: Connects, CC: Connects, EE: Connects,
-        SW: Connects, SS: Connects, SE: Connects,
-    > Connects for Track<
-        NW, NN, NE,
-        WW, CC, EE,
-        SW, SS, SE,
-    > {
-        const SELF: Self = strack();
+    impl ConnectEast for  Track {
+        type EOutput = Track;
+        fn connect_east(&self) -> Self::EOutput {
+            let [
+                [nw, nn, ne],
+                [ww, cc, ee],
+                [sw, ss, se]
+            ] = self.0.0;
+            let ee = ee.pass_horizontal();
+            let cc = cc.connect_east();
+            Track(
+                Block([
+                    [nw, nn, ne],
+                    [ww, cc, ee],
+                    [sw, ss, se]
+                ])
+            )
+        }
     }
+    #[rustfmt::skip]
+    impl ConnectSouth for Track {
+        type SOutput = Track;
+        fn connect_south(&self) -> Self::SOutput {
+            let [
+                [nw, nn, ne],
+                [ww, cc, ee],
+                [sw, ss, se]
+            ] = self.0.0;
+            let ss = ss.pass_vertical();
+            let cc = cc.connect_north();
+            Track(
+                Block([
+                    [nw, nn, ne],
+                    [ww, cc, ee],
+                    [sw, ss, se]
+                ])
+            )
+        }
+    }
+    #[rustfmt::skip]
+    impl ConnectWest for  Track {
+        type WOutput = Track;
+        fn connect_west(&self) -> Self::WOutput {
+            let [
+                [nw, nn, ne],
+                [ww, cc, ee],
+                [sw, ss, se]
+            ] = self.0.0;
+            let ww = ww.pass_horizontal();
+            let cc = cc.connect_east();
+            Track(
+                Block([
+                    [nw, nn, ne],
+                    [ww, cc, ee],
+                    [sw, ss, se]
+                ])
+            )
+        }
+    }
+
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > ConnectNorth for Track<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     type NOutput = Track<
+    //         NW, NN::VOutput, NE,
+    //         WW, CC::NOutput, EE,
+    //         SW, SS,          SE,
+    //     >;
+    //     const NRESULT: Self::NOutput = strack();
+    // }
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > ConnectEast for Track<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     type EOutput = Track<
+    //         NW, NN,          NE,
+    //         WW, CC::EOutput, EE::HOutput,
+    //         SW, SS,          SE,
+    //     >;
+    //     const ERESULT: Self::EOutput = strack();
+    // }
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > ConnectSouth for Track<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     type SOutput = Track<
+    //         NW, NN,          NE,
+    //         WW, CC::SOutput, EE,
+    //         SW, SS::VOutput, SE,
+    //     >;
+    //     const SRESULT: Self::SOutput = strack();
+    // }
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > ConnectWest for Track<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     type WOutput = Track<
+    //         NW,          NN,          NE,
+    //         WW::HOutput, CC::WOutput, EE,
+    //         SW,          SS,          SE,
+    //     >;
+    //     const WRESULT: Self::WOutput = strack();
+    // }
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > Connects for Track<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     const SELF: Self = strack();
+    // }
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > ConnectNorth for Gate<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     type NOutput = Gate<
+    //         NW, NN::VOutput, NE,
+    //         WW, CC,          EE,
+    //         SW, SS,          SE,
+    //     >;
+    //     const NRESULT: Self::NOutput = sgate();
+    // }
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > ConnectEast for Gate<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     type EOutput = Gate<
+    //         NW, NN, NE,
+    //         WW, CC, EE::HOutput,
+    //         SW, SS, SE,
+    //     >;
+    //     const ERESULT: Self::EOutput = sgate();
+    // }
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > ConnectSouth for Gate<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     type SOutput = Gate<
+    //         NW, NN,          NE,
+    //         WW, CC,          EE,
+    //         SW, SS::VOutput, SE,
+    //     >;
+    //     const SRESULT: Self::SOutput = sgate();
+    // }
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > ConnectWest for Gate<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     type WOutput = Gate<
+    //         NW,          NN, NE,
+    //         WW::HOutput, CC, EE,
+    //         SW,          SS, SE,
+    //     >;
+    //     const WRESULT: Self::WOutput = sgate();
+    // }
+    // #[rustfmt::skip]
+    // impl<
+    //     NW: Connects, NN: Connects, NE: Connects,
+    //     WW: Connects, CC: Connects, EE: Connects,
+    //     SW: Connects, SS: Connects, SE: Connects,
+    // > Connects for Gate<
+    //     NW, NN, NE,
+    //     WW, CC, EE,
+    //     SW, SS, SE,
+    // > {
+    //     const SELF: Self = sgate();
+    // }
 
     // struct ConnectNorth<const C: char>;
     // #[rustfmt::skip]
@@ -472,64 +573,31 @@ mod block {
     //     block
     // }
 
-    #[rustfmt::skip]
-    macro_rules! def_block {
-        ($name:ident, $($($c:literal)*);*) => {
-            pub type $name = Block<$($(Char<$c>),*),*>;
-            // impl<
-            //     const NW: char, const NN: char, const NE: char,
-            //     const WW: char, const CC: char, const EE: char,
-            //     const SW: char, const SS: char, const SE: char,
-            // > From<$name> for Block<NW, NN, NE, WW, CC, EE, SW, SS, SE>
-            // {
-            //     fn from(value: $name) -> Self {
-            //         Self
-            //     }
-            // }
-        };
-        // impl<
-        //     const NW: char, const NN: char, const NE: char,
-        //     const WW: char, const CC: char, const EE: char,
-        //     const SW: char, const SS: char, const SE: char,
-        // > BlockTrait for $name:ident
-        // {
-        //     fn from(value: $name) -> Self {
-        //         Self
-        //     }
-        // }
-    }
-    // pub struct NULL;
-    def_block!(NULL,
-        ' ' ' ' ' ';
-        ' ' ' ' ' ';
-        ' ' ' ' ' '
-    );
-
     pub mod track {
-        use super::{Block, Char, NULL};
+        // use super::{Block, Char, NULL};
 
-        type OOOO = NULL;
+        // type OOOO = NULL;
 
-        def_block!(OOOW,
-            ' ' ' ' ' ';
-            '─' '─' ' ';
-            ' ' ' ' ' '
-        );
-        def_block!(OOSO,
-            ' ' ' ' ' ';
-            ' ' '│' ' ';
-            ' ' '│' ' '
-        );
-        def_block!(OEOO,
-            ' ' ' ' ' ';
-            ' ' '─' '─';
-            ' ' ' ' ' '
-        );
-        def_block!(NOOO,
-            ' ' '│' ' ';
-            ' ' '│' ' ';
-            ' ' ' ' ' '
-        );
+        // def_block!(OOOW,
+        //     ' ' ' ' ' ';
+        //     '─' '─' ' ';
+        //     ' ' ' ' ' '
+        // );
+        // def_block!(OOSO,
+        //     ' ' ' ' ' ';
+        //     ' ' '│' ' ';
+        //     ' ' '│' ' '
+        // );
+        // def_block!(OEOO,
+        //     ' ' ' ' ' ';
+        //     ' ' '─' '─';
+        //     ' ' ' ' ' '
+        // );
+        // def_block!(NOOO,
+        //     ' ' '│' ' ';
+        //     ' ' '│' ' ';
+        //     ' ' ' ' ' '
+        // );
         // const_block!(NOSO,
         //     ' ' '│' ' ';
         //     ' ' '│' ' ';
@@ -675,6 +743,18 @@ mod block {
         //     ' ' ' ' ' ';
         //     '⋮' ' ' '⋮';
         //     ' ' ' ' ' '
+        // );
+    }
+}
+#[cfg(test)]
+mod tests {
+    use crate::debug_terminal::show_circuit::{Char, block::Connects};
+
+    #[test]
+    fn combine() {
+        // assert_eq!(
+        // <Char<'┌'> as Combine<Char<'│'>>>::CRESULT,
+        // <Char::<'├'> as Connects>::SELF
         // );
     }
 }
