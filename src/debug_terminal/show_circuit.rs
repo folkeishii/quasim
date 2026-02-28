@@ -140,35 +140,59 @@ mod block {
     }
 
     pub trait ConnectNorth {
-        type NOutput: Connects;
-        fn connect_north(&self) -> Self::NOutput;
+        fn connect_north(&mut self);
+        fn connected_north(self) -> Self where Self: Sized {
+            let mut s = self;
+            s.connect_north();
+            s
+        }
     }
     pub trait ConnectEast {
-        type EOutput: Connects;
-        fn connect_east(&self) -> Self::EOutput;
+        fn connect_east(&mut self);
+        fn connected_east(self) -> Self where Self: Sized {
+            let mut s = self;
+            s.connect_east();
+            s
+        }
     }
     pub trait ConnectSouth {
-        type SOutput: Connects;
-        fn connect_south(&self) -> Self::SOutput;
+        fn connect_south(&mut self);
+        fn connected_south(self) -> Self where Self: Sized {
+            let mut s = self;
+            s.connect_south();
+            s
+        }
     }
     pub trait ConnectWest {
-        type WOutput: Connects;
-        fn connect_west(&self) -> Self::WOutput;
+        fn connect_west(&mut self);
+        fn connected_west(self) -> Self where Self: Sized {
+            let mut s = self;
+            s.connect_west();
+            s
+        }
     }
     pub trait Passes {
-        type HOutput: Connects;
-        type VOutput: Connects;
-        fn pass_horizontal(self) -> Self::HOutput;
-        fn pass_vertical(self) -> Self::VOutput;
+        fn pass_horizontal(&mut self);
+        fn passed_horizontal(self) -> Self where Self: Sized {
+            let mut s = self;
+            s.pass_horizontal();
+            s
+        }
+        fn pass_vertical(&mut self);
+        fn passed_vertical(self) -> Self where Self: Sized {
+            let mut s = self;
+            s.pass_vertical();
+            s
+        }
     }
     impl<T: ConnectNorth + ConnectEast + ConnectSouth + ConnectWest> Passes for T {
-        type HOutput = <T::EOutput as ConnectWest>::WOutput;
-        type VOutput = <T::NOutput as ConnectSouth>::SOutput;
-        fn pass_horizontal(self) -> Self::HOutput {
-            self.connect_east().connect_west()
+        fn pass_horizontal(&mut self) {
+            self.connect_east();
+                self.connect_west();
         }
-        fn pass_vertical(self) -> Self::VOutput {
-            self.connect_north().connect_south()
+        fn pass_vertical(&mut self) {
+            self.connect_north();
+            self.connect_south();
         }
     }
     pub trait Connects: ConnectNorth + ConnectEast + ConnectSouth + ConnectWest + Passes {}
@@ -187,9 +211,8 @@ mod block {
         fn combine(self, rhs: Rhs) -> Self::Output;
     }
     impl ConnectNorth for char {
-        type NOutput = char;
-        fn connect_north(&self) -> Self::NOutput {
-            match self {
+        fn connect_north(&mut self) {
+            *self = match self {
                 ' ' => '╵',
                 '╵' => '╵',
                 '╶' => '└',
@@ -211,9 +234,8 @@ mod block {
         }
     }
     impl ConnectEast for char {
-        type EOutput = char;
-        fn connect_east(&self) -> Self::EOutput {
-            match self {
+        fn connect_east(&mut self) {
+            *self = match self {
                 ' ' => '╶',
                 '╵' => '└',
                 '╶' => '╶',
@@ -235,9 +257,8 @@ mod block {
         }
     }
     impl ConnectSouth for char {
-        type SOutput = char;
-        fn connect_south(&self) -> Self::SOutput {
-            match self {
+        fn connect_south(&mut self) {
+            *self = match self {
                 ' ' => '╷',
                 '╵' => '│',
                 '╶' => '┌',
@@ -259,9 +280,8 @@ mod block {
         }
     }
     impl ConnectWest for char {
-        type WOutput = char;
-        fn connect_west(&self) -> Self::WOutput {
-            match self {
+        fn connect_west(&mut self) {
+            *self = match self {
                 ' ' => '╴',
                 '╵' => '┘',
                 '╶' => '─',
@@ -279,87 +299,55 @@ mod block {
                 '┬' => '┬',
                 '┼' => '┼',
                 _ => panic!("Cannot connect {} north", self),
-            }
+            };
         }
     }
     #[rustfmt::skip]
     impl ConnectNorth for Track {
-        type NOutput = Track;
-        fn connect_north(&self) -> Self::NOutput {
+        fn connect_north(&mut self){
             let [
                 [nw, nn, ne],
                 [ww, cc, ee],
                 [sw, ss, se]
-            ] = self.0.0;
-            let nn = nn.pass_vertical();
-            let cc = cc.connect_north();
-            Track(
-                Block([
-                    [nw, nn, ne],
-                    [ww, cc, ee],
-                    [sw, ss, se]
-                ])
-            )
+            ] = &mut self.0.0;
+            nn.pass_vertical();
+            cc.connect_north();
         }
     }
     #[rustfmt::skip]
     impl ConnectEast for  Track {
-        type EOutput = Track;
-        fn connect_east(&self) -> Self::EOutput {
+        fn connect_east(&mut self){
             let [
                 [nw, nn, ne],
                 [ww, cc, ee],
                 [sw, ss, se]
-            ] = self.0.0;
-            let ee = ee.pass_horizontal();
-            let cc = cc.connect_east();
-            Track(
-                Block([
-                    [nw, nn, ne],
-                    [ww, cc, ee],
-                    [sw, ss, se]
-                ])
-            )
+            ] = &mut self.0.0;
+            ee.pass_horizontal();
+            cc.connect_east();
         }
     }
     #[rustfmt::skip]
     impl ConnectSouth for Track {
-        type SOutput = Track;
-        fn connect_south(&self) -> Self::SOutput {
+        fn connect_south(&mut self)  {
             let [
                 [nw, nn, ne],
                 [ww, cc, ee],
                 [sw, ss, se]
-            ] = self.0.0;
-            let ss = ss.pass_vertical();
-            let cc = cc.connect_north();
-            Track(
-                Block([
-                    [nw, nn, ne],
-                    [ww, cc, ee],
-                    [sw, ss, se]
-                ])
-            )
+            ] = &mut self.0.0;
+            ss.pass_vertical();
+            cc.connect_north();
         }
     }
     #[rustfmt::skip]
     impl ConnectWest for  Track {
-        type WOutput = Track;
-        fn connect_west(&self) -> Self::WOutput {
+        fn connect_west(&mut self) {
             let [
                 [nw, nn, ne],
                 [ww, cc, ee],
                 [sw, ss, se]
-            ] = self.0.0;
+            ] = &mut self.0.0;
             let ww = ww.pass_horizontal();
             let cc = cc.connect_east();
-            Track(
-                Block([
-                    [nw, nn, ne],
-                    [ww, cc, ee],
-                    [sw, ss, se]
-                ])
-            )
         }
     }
 
