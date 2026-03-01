@@ -4,14 +4,19 @@
 
 use std::{
     fmt::Display,
-    io::{self, Write},
+    io::{self, Write, stdout},
     ops::Deref,
 };
 
 use crossterm::style::ContentStyle;
 
-use crate::debug_terminal::show_circuit::connects::{
-    Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, ExtendEast, ExtendSouth, Passes,
+use crate::{
+    debug_terminal::show_circuit::connects::{
+        Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, ExtendEast, ExtendSouth,
+        Passes,
+    },
+    gate::Gate,
+    instruction::Instruction,
 };
 
 type PrimitiveBlock = [[char; 3]; 3];
@@ -329,10 +334,12 @@ impl ConnectEast for Primitive {
     fn connect_east(&mut self) {
         match self {
             Primitive::Track { .. } => {
-                self.ee_mut().connect_west();
+                self.ee_mut().pass_horizontal();
                 self.cc_mut().connect_east();
             }
-            Primitive::Gate { .. } => {}
+            Primitive::Gate { .. } => {
+                self.ee_mut().connect_east();
+            }
         }
     }
 
@@ -342,7 +349,9 @@ impl ConnectEast for Primitive {
                 self.ee_mut().clear_west();
                 self.cc_mut().clear_east();
             }
-            Primitive::Gate { .. } => {}
+            Primitive::Gate { .. } => {
+                self.ee_mut().clear_east();
+            }
         }
     }
 }
@@ -371,10 +380,12 @@ impl ConnectWest for Primitive {
     fn connect_west(&mut self) {
         match self {
             Primitive::Track { .. } => {
-                self.ww_mut().connect_east();
+                self.ww_mut().pass_horizontal();
                 self.cc_mut().connect_west();
             }
-            Primitive::Gate { .. } => {}
+            Primitive::Gate { .. } => {
+                self.ww_mut().connect_west();
+            }
         }
     }
 
@@ -384,7 +395,9 @@ impl ConnectWest for Primitive {
                 self.ww_mut().clear_east();
                 self.cc_mut().clear_west();
             }
-            Primitive::Gate { .. } => {}
+            Primitive::Gate { .. } => {
+                self.ww_mut().clear_west();
+            }
         }
     }
 }
@@ -424,35 +437,6 @@ impl Deref for Primitive {
     }
 }
 
-// #[derive(Debug, Clone)]
-// pub struct Column {
-//     /// Cannot be empty
-//     gate_name: String,
-//     /// `self.primitives.last() holds the most south primitive`
-//     primitives: Vec<Primitive>,
-//     gate_groups: Vec<Range<usize>>,
-// }
-// impl Column {
-//     #[inline(always)]
-//     pub const fn block_width(&self) -> usize {
-//         let gname = self.gate_name.len();
-//         gname + 4
-//     }
-
-//     /// `y` must be withing y_range()
-//     pub fn queue_print<W: Write>(&self, w: &mut W, y: usize) -> io::Result<()> {
-//         todo!()
-//     }
-
-//     fn queue_print_even<W: Write>(&self, w: &mut W, y: usize) -> io::Result<()> {
-//         todo!()
-//     }
-
-//     fn queue_print_odd<W: Write>(&self, w: &mut W, y: usize) -> io::Result<()> {
-//         todo!()
-//     }
-// }
-
 #[derive(Debug, Clone)]
 pub struct Column {
     primitives: PrimitiveVec,
@@ -460,6 +444,37 @@ pub struct Column {
     gate_content: EitherContent,
 }
 impl Column {
+    pub fn from_instruction(nqubits: usize, instruction: &Instruction) -> Self {
+        match instruction {
+            Instruction::Gate(_) => todo!(),
+            Instruction::Measurement(qbits) => {
+                let mut qbits = qbits.get_bitstring();
+                let mut column = if qbits & 1 == 1 {
+                    Column::init_with_gate(String::from("╭─╱─╮"))
+                } else {
+                    Column::init_with_track(String::from("╭─╱─╮"))
+                };
+                for _ in 1..nqubits {
+                    qbits >>= 1;
+                    if qbits & 1 == 1 {
+                        column.close_with_gate();
+                    } else {
+                        column.close_with_track();
+                    }
+                }
+                column
+            }
+        }
+    }
+
+    pub fn only_tracks(nqubits: usize) -> Self {
+        let mut column = Self::init_with_track(1);
+        for _ in 1..nqubits {
+            column.close_with_track();
+        }
+        column
+    }
+
     pub fn init_with_track<I: Into<EitherContent>>(content: I) -> Self {
         Self {
             primitives: PrimitiveVec::init_with_track(),
@@ -520,12 +535,36 @@ impl Column {
         self.groups.close_with_other();
     }
 
+    #[inline(always)]
+    fn first(&self) -> &Primitive {
+        self.primitives.first()
+    }
+
+    #[inline(always)]
+    fn first_mut(&mut self) -> &mut Primitive {
+        self.primitives.first_mut()
+    }
+
+    #[inline(always)]
     fn last(&self) -> &Primitive {
         self.primitives.last()
     }
 
+    #[inline(always)]
     fn last_mut(&mut self) -> &mut Primitive {
         self.primitives.last_mut()
+    }
+}
+impl ExtendEast for Column {
+    fn extend_east(&mut self, est: &mut Self) {
+        for (wst, est) in self
+            .primitives
+            .0
+            .iter_mut()
+            .zip(est.primitives.0.iter_mut())
+        {
+            wst.extend_east(est);
+        }
     }
 }
 impl<'a> IntoIterator for &'a Column {
@@ -598,24 +637,23 @@ impl PrimitiveVec {
     }
 
     #[inline(always)]
+    fn first(&self) -> &Primitive {
+        self.0.first().expect("Broken invariant")
+    }
+
+    #[inline(always)]
+    fn first_mut(&mut self) -> &mut Primitive {
+        self.0.first_mut().expect("Broken invariant")
+    }
+
+    #[inline(always)]
     fn last(&self) -> &Primitive {
-        self.unchecked_last()
+        self.0.last().expect("Broken invariant")
     }
 
     #[inline(always)]
     fn last_mut(&mut self) -> &mut Primitive {
-        self.unchecked_last_mut()
-    }
-
-    #[inline(always)]
-    fn unchecked_last(&self) -> &Primitive {
-        &self.0[self.0.len() - 1]
-    }
-
-    #[inline(always)]
-    fn unchecked_last_mut(&mut self) -> &mut Primitive {
-        let i = self.0.len() - 1;
-        &mut self.0[i]
+        self.0.last_mut().expect("Broken invariant")
     }
 }
 
@@ -1038,18 +1076,23 @@ impl Iterator for GateIndexIterator {
             return None;
         }
 
-        let item = if self.current == self.named_index {
-            GateIndex::Named(self.named_index)
-        } else {
-            GateIndex::Normal(self.current)
+        let item = match (
+            self.current == self.named_index,
+            self.current.north() == self.end_inclusive.north()
+                && self.current.to_rel_y() == self.end_inclusive.to_rel_y(),
+        ) {
+            //(include name , reached end)
+            (true, true) => {
+                self.exhausted = true;
+                GateIndex::Named(self.end_inclusive)
+            }
+            (true, false) => GateIndex::Named(self.current),
+            (false, true) => {
+                self.exhausted = true;
+                GateIndex::Normal(self.end_inclusive)
+            }
+            (false, false) => GateIndex::Normal(self.current),
         };
-
-        if self.current.north() == self.end_inclusive.north()
-            && self.current.to_rel_y() == self.end_inclusive.to_rel_y()
-        {
-            self.exhausted = true;
-            return Some(GateIndex::Normal(self.end_inclusive));
-        }
         self.current.next();
 
         Some(item)
@@ -1249,7 +1292,7 @@ impl<'a> Printable for &'a str {
     }
 
     fn length(&self) -> usize {
-        self.len()
+        self.chars().count()
     }
 }
 impl<'a> Printable for String {
@@ -1258,7 +1301,7 @@ impl<'a> Printable for String {
     }
 
     fn length(&self) -> usize {
-        self.len()
+        self.chars().count()
     }
 }
 
@@ -1678,7 +1721,11 @@ mod connects {
 mod tests {
     use std::io::{Write, stdout};
 
-    use crate::debug_terminal::show_circuit::{Column, Primitive};
+    use crate::{
+        debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast},
+        gate::QBits,
+        instruction::Instruction,
+    };
 
     #[test]
     fn rep_i() {
@@ -1705,17 +1752,33 @@ mod tests {
         let w = &mut stdout();
         let mut col = Column::init_with_gate(String::from("U"));
         // let mut col = Column::init_with_track();
-        col.extend_with_gate();
-        col.extend_with_gate();
-        col.extend_with_track();
-        col.extend_with_track();
-        col.extend_with_gate();
-        col.extend_with_gate();
-        col.extend_with_gate();
         // col.extend_with_gate();
+        // col.extend_with_gate();
+        col.extend_with_track();
+        col.extend_with_track();
+        col.extend_with_gate();
+        col.extend_with_gate();
+        col.extend_with_gate();
+        col.extend_with_gate();
         col.extend_with_track();
         for printme in col.into_iter() {
             printme.queue_print(w).unwrap();
+            queue_print!(w; "\r\n").unwrap();
+        }
+        w.flush().unwrap();
+    }
+
+    #[test]
+    fn measurement() {
+        unsafe { std::env::set_var("RUST_BACKTRACE", "10") };
+        let w = &mut stdout();
+        let instruction = Instruction::Measurement(QBits::from_bitstring(0b101011010));
+        let mut track_col = Column::only_tracks(10);
+        let mut measure_col = Column::from_instruction(10, &instruction);
+        track_col.extend_east(&mut measure_col);
+        for (tp, mp) in track_col.into_iter().zip(measure_col.into_iter()) {
+            tp.queue_print(w).unwrap();
+            mp.queue_print(w).unwrap();
             queue_print!(w; "\r\n").unwrap();
         }
         w.flush().unwrap();
