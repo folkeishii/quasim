@@ -11,28 +11,34 @@ use std::{
 use crossterm::style::ContentStyle;
 
 use crate::{
-    circuit::Circuit,
     debug_terminal::show_circuit::connects::{
         Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, ExtendEast, ExtendSouth,
         Passes,
     },
     gate::{Gate, QBits},
     instruction::Instruction,
+    simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
 
-pub fn show_circuit<W: Write>(w: &mut W, circuit: &Circuit) -> io::Result<()> {
+pub fn show_circuit<W, S>(w: &mut W, simulator: &S) -> io::Result<()>
+where
+    W: Write,
+    S: DebuggableSimulator + StoredCircuitSimulator,
+{
+    let circuit = simulator.circuit();
     let mut cols = vec![Column::only_tracks(circuit.n_qubits())];
     for instruction in circuit.instructions() {
         let mut ncol = Column::from_instruction(circuit.n_qubits(), instruction);
         let li = cols.len() - 1;
         cols[li].extend_east(&mut ncol);
         cols.push(ncol);
+        // Add seperator
+        let mut ncol = Column::only_tracks(circuit.n_qubits());
+        let li = cols.len() - 1;
+        cols[li].extend_east(&mut ncol);
+        cols.push(ncol);
     }
 
-    let mut ncol = Column::only_tracks(circuit.n_qubits());
-    let li = cols.len() - 1;
-    cols[li].extend_east(&mut ncol);
-    cols.push(ncol);
 
     let mut col_iters = Vec::with_capacity(cols.len());
     for col in cols.iter() {
@@ -1948,10 +1954,7 @@ mod tests {
     use std::io::{Write, stdout};
 
     use crate::{
-        circuit::Circuit,
-        debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit},
-        gate::{Gate, GateType, QBits},
-        instruction::Instruction,
+        circuit::Circuit, debug_simulator::DebugSimulator, debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit}, gate::{Gate, GateType, QBits}, instruction::Instruction, simulator::BuildSimulator
     };
 
     #[test]
@@ -2072,7 +2075,7 @@ mod tests {
         let w = &mut stdout();
 
         let circuit = Circuit::new(7).hadamard(2).z(5).cnot(1, 3).x(6).y(2);
-
-        show_circuit(w, &circuit).unwrap();
+        let sim = DebugSimulator::build(circuit).unwrap();
+        show_circuit(w, &sim).unwrap();
     }
 }

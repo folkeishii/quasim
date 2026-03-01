@@ -1,9 +1,7 @@
 use std::fmt::Display;
 
 use crate::debug_terminal::{
-    BreakArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs,
-    StateArgs,
-    parse::{ParseError, ParseResult, Token, TokenIterator},
+    BreakArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs, ShowArgs, StateArgs, parse::{ParseError, ParseResult, Token, TokenIterator}
 };
 
 #[derive(Debug, Clone)]
@@ -99,6 +97,12 @@ pub enum Command {
     /// collapse        # Collapse the current state
     /// collapse [n]    # Collapse the current state n number of times
     Collapse(CollapseArgs),
+
+    /// Show specified object in terminal
+    ///
+    /// Usage:
+    /// show circuit    # Draws the current circuit
+    Show(ShowArgs),
 }
 impl Command {
     pub fn parse_tokens(tokens: TokenIterator<'_>) -> ParseResult<Self> {
@@ -116,6 +120,7 @@ impl Command {
             CommandIdent::Disable => Command::Disable(DisableArgs::parse_arguments(tokens)?),
             CommandIdent::State => Command::State(StateArgs::parse_arguments(tokens)?),
             CommandIdent::Collapse => Command::Collapse(CollapseArgs::parse_arguments(tokens)?),
+            CommandIdent::Show => Command::Show(ShowArgs::parse_arguments(tokens)?),
             CommandIdent::Quit => {
                 if let Some(token) = tokens.next() {
                     return Err(ParseError::UnexpectedArgument(token.into()));
@@ -158,6 +163,8 @@ pub enum CommandIdent {
     State,
     /// collapse
     Collapse,
+    /// show
+    Show,
 }
 impl CommandIdent {
     pub fn parse_command(tokens: &mut TokenIterator<'_>) -> ParseResult<Self> {
@@ -181,6 +188,7 @@ impl CommandIdent {
             CommandIdent::Disable => "disable".into(),
             CommandIdent::State => "state".into(),
             CommandIdent::Collapse => "collapse".into(),
+            CommandIdent::Show => "show".into(),
         }
     }
 }
@@ -201,6 +209,7 @@ impl TryFrom<Token<'_>> for CommandIdent {
             "disable" => Ok(Self::Disable),
             "state" => Ok(Self::State),
             "collapse" | "cl" => Ok(Self::Collapse),
+            "show" => Ok(Self::Show),
             _ => Err(ParseError::ExpectedCommand(value.into())),
         }
     }

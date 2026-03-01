@@ -10,6 +10,7 @@ mod state;
 pub use arguments::*;
 pub use command::*;
 
+use crate::debug_terminal::show_circuit::show_circuit;
 use crate::ext::collapse;
 use crate::simulator::StoredCircuitSimulator;
 use crate::{
@@ -90,8 +91,9 @@ where
                 }
                 Command::State(state_args) => self.handle_state(&mut stdout, &state_args)?,
                 Command::Collapse(collapse_args) => {
-                    self.handle_collapse(&mut stdout, collapse_args)?
+                    self.handle_collapse(&mut stdout, &collapse_args)?
                 }
+                Command::Show(show_args) => self.handle_show(&mut stdout, &show_args)?,
             }
         }
         Ok(())
@@ -415,13 +417,13 @@ where
     fn handle_collapse<W: Write>(
         &mut self,
         stdout: &mut W,
-        collapse_args: CollapseArgs,
+        collapse_args: &CollapseArgs,
     ) -> io::Result<()> {
         let state = self.simulator.current_state();
         let mut count_map: Vec<(usize, usize)> = Vec::new();
         let count = match collapse_args {
             CollapseArgs::Collapse => 1,
-            CollapseArgs::Count(n) => n,
+            CollapseArgs::Count(n) => *n,
         };
 
         let mut max_state = 0; // Only used for formatting
@@ -464,5 +466,11 @@ where
         }
 
         Ok(())
+    }
+
+    fn handle_show<W: Write>(&mut self, stdout: &mut W, show_args: &ShowArgs) -> io::Result<()> {
+        match show_args {
+            ShowArgs::Circuit => show_circuit(stdout, &self.simulator),
+        }
     }
 }
