@@ -1,148 +1,1208 @@
+// https://en.wikipedia.org/wiki/Box-drawing_characters
+// https://www.alt-codes.net/bullet_alt_codes.php
+// https://www.compart.com/en/unicode/block/U+2B00
+
 use std::{
     fmt::Display,
     io::{self, Write},
-    marker::PhantomData,
+    ops::Deref,
 };
 
-use crate::simulator::{DebuggableSimulator, StoredCircuitSimulator};
+use crossterm::style::ContentStyle;
 
-// type Block = [[char; BLOCK_SIZE.width]; BLOCK_SIZE.height];
+use crate::debug_terminal::show_circuit::connects::{
+    Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, Passes,
+};
 
-const BLOCK_SIZE: usize = 5;
+type PrimitiveBlock = [[char; 3]; 3];
 
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-struct Char<const C: char>;
-pub trait BlockTrait {
-    fn char<const X: usize, const Y: usize>(&self) -> char;
+pub enum TrackModifier {
+    Ctrl,
+    CtrlNot,
+    CNOT,
 }
-pub trait ColumnTrait {
-    fn block(&self, rel_lane: usize) -> Option<&impl BlockTrait>;
+pub enum GateModifier {
+    Ctrl,
+    CtrlNot,
+    Breaks,
 }
-#[rustfmt::skip]
+
 #[derive(Debug, Clone, Copy)]
-pub struct Block([[char; 3]; 3]);
-#[rustfmt::skip]
-impl Block {
-    pub const fn mid_i<const I: usize, const SIZE: usize>() -> usize {
-        //  0  1  2  3  4 // (-SIZE as isize / 2)
-        // -2 -1  0  1  2 // (/2)
-        // -1  0  0  0  1 // (+1)
-        //  0  1  1  1  2
-        const {((I as isize - SIZE as isize / 2) / 2 + 1) as usize}
-    }
-    pub const fn sides_i<const I: usize, const SIZE: usize>() -> usize {
-        //  0  1  2  3  4 // (-SIZE as isize / 2)
-        // -2 -1  0  1  2 // (signum)
-        // -1 -1  0  1  1 // (+1)
-        //  0  0  1  2  2
-        const {((I as isize - SIZE as isize / 2).signum() + 1) as usize}
-    }
+pub enum Primitive {
+    Track { block: PrimitiveBlock },
+    Gate { block: PrimitiveBlock },
+}
+impl Primitive {
     #[inline(always)]
-    pub fn char_repeat_mid<const X: usize, const Y: usize>(&self) -> char {
-        assert!(X < BLOCK_SIZE && Y < BLOCK_SIZE);
-        self.0[Self::mid_i::<Y, BLOCK_SIZE>()][Self::mid_i::<X, BLOCK_SIZE>()]
+    #[rustfmt::skip]
+    pub const fn create_track() -> Self {
+        Self::Track {
+            block:[
+                [' ', ' ', ' '],
+                [' ', ' ', ' '],
+                [' ', ' ', ' '],
+            ],
+        }
     }
+
     #[inline(always)]
-    pub fn char_repeat_sides<const X: usize, const Y: usize>(&self) -> char {
-        assert!(X < BLOCK_SIZE && Y < BLOCK_SIZE);
-        self.0[Self::sides_i::<Y, BLOCK_SIZE>()][Self::sides_i::<X, BLOCK_SIZE>()]
+    #[rustfmt::skip]
+    pub const fn create_gate() -> Self {
+        Self::Gate {
+            block: [
+                ['┌', '─', '┐'],
+                ['│', ' ', '│'],
+                ['└', '─', '┘'],
+            ],
+        }
+    }
+    //
+
+    /// `y < 3`
+    pub fn queue_print<W: Write>(&self, w: &mut W, width: usize, y: usize) -> io::Result<()> {
+        let width = width + 5 - (width & 1); // ensure odd width
+        let chars: String = (0..width).map(|x| self.char(width, x, y)).collect();
+        queue_print!(w; chars)
+    }
+
+    /// `y < 3`
+    pub fn queue_print_content<W: Write>(
+        &self,
+        w: &mut W,
+        content: &impl Printable,
+        y: usize,
+    ) -> io::Result<()> {
+        let width = content.length() + 5 - (content.length() & 1); // ensure odd width
+        let pre_width = 2;
+        let suf_width = width - content.length() - pre_width;
+        let pre: String = (0..pre_width).map(|x| self.char(width, x, y)).collect();
+        let suf: String = ((width - suf_width)..width)
+            .map(|x| self.char(width, x, y))
+            .collect();
+        queue_print!(w; pre)?;
+        content.queue_print(w)?;
+        queue_print!(w; suf)
+    }
+
+    pub fn queue_print_shared<W: Write>(
+        &self,
+        w: &mut W,
+        south: &Primitive,
+        width: usize,
+    ) -> io::Result<()> {
+        let width = width + 5 - (width & 1); // ensure odd width
+        let self_chars = (0..width).map(|x| self.char(width, x, 2));
+        let soth_chars = (0..width).map(|x| south.char(width, x, 0));
+        let chars: String = self_chars
+            .zip(soth_chars)
+            .map(|(slf, lwr)| slf.combined(&lwr))
+            .collect();
+
+        queue_print!(w; chars)
+    }
+
+    pub fn queue_print_shared_content<W: Write>(
+        &self,
+        w: &mut W,
+        south: &Primitive,
+        content: &impl Printable,
+    ) -> io::Result<()> {
+        let width = content.length() + 5 - (content.length() & 1); // ensure odd width
+        let pre_width = 2;
+        let suf_width = width - content.length() - pre_width;
+        let self_pre = (0..pre_width).map(|x| self.char(width, x, 2));
+        let self_suf = ((width - 2)..width).map(|x| self.char(width, x, 2));
+        let soth_pre = (0..pre_width).map(|x| south.char(width, x, 0));
+        let soth_suf = ((width - suf_width)..width).map(|x| south.char(width, x, 0));
+        let pre: String = self_pre
+            .zip(soth_pre)
+            .map(|(slf, lwr)| slf.combined(&lwr))
+            .collect();
+        let suf: String = self_suf
+            .zip(soth_suf)
+            .map(|(slf, lwr)| slf.combined(&lwr))
+            .collect();
+
+        queue_print!(w; pre)?;
+        content.queue_print(w)?;
+        queue_print!(w; suf)
+    }
+
+    #[inline(always)]
+    const fn char(&self, width: usize, x: usize, y: usize) -> char {
+        match self {
+            Primitive::Track { .. } => self.char_repeat_sides(width, x, y),
+            Primitive::Gate { .. } => self.char_repeat_mid(width, x, y),
+        }
+    }
+
+    #[inline(always)]
+    const fn char_repeat_mid(&self, block_width: usize, x: usize, y: usize) -> char {
+        let ix = Self::rep_mid_i(block_width, x);
+        self.const_deref()[y][ix]
+    }
+
+    #[inline(always)]
+    const fn char_repeat_sides(&self, block_width: usize, x: usize, y: usize) -> char {
+        let ix = Self::rep_sides_i(block_width, x);
+        self.const_deref()[y][ix]
+    }
+
+    #[inline(always)]
+    const fn rep_mid_i(block_width: usize, i: usize) -> usize {
+        // ops:
+        // 1: i *= 2
+        // 2: i -= bw
+        // 3: i /= bw
+        // 4: i += 1
+        // odd block_width = 5 ==> bw = 4
+        // index:
+        //    0   0  -4  -1   0
+        //    1   2  -2   0   1
+        //    2   4   0   0   1
+        //    3   6   2   0   1
+        //    4   8   4   1   2
+        // even block_width = 6 ==> bw = 5
+        // index:
+        //    0   0  -5  -1   0
+        //    1   2  -3   0   1
+        //    2   4  -1   0   1
+        //    3   6   1   0   1
+        //    4   8   3   0   1
+        //    5  10   5   1   2
+        //
+        let bw = (block_width - 1) as isize;
+        let i = i as isize;
+        ((2 * i - bw) / bw + 1) as usize
+    }
+
+    #[inline(always)]
+    const fn rep_sides_i(block_width: usize, i: usize) -> usize {
+        // 1: i *= 2
+        // 2: i -= bw
+        // 3: i = i.signum()
+        // 4: i += 1
+        // odd block_width = 5 ==> bw = 4
+        // index:
+        //    0   0  -4  -1   0
+        //    1   2  -2  -1   0
+        //    2   4   0   0   1
+        //    3   6   2   1   2
+        //    4   8   4   1   2
+        // even block_width = 6 ==> bw = 5
+        // index:
+        //    0   0  -5  -1   0
+        //    1   2  -3  -1   0
+        //    2   4  -1  -1   0
+        //    3   6   1   1   2
+        //    4   8   3   1   2
+        //    5  10   5   1   2
+        //
+        let bw = (block_width - 1) as isize;
+        let i = i as isize;
+        ((2 * i - bw).signum() + 1) as usize
+    }
+
+    #[inline(always)]
+    pub const fn const_deref(&self) -> &PrimitiveBlock {
+        match self {
+            Self::Track { block, .. } | Self::Gate { block, .. } => &block,
+        }
+    }
+
+    #[inline(always)]
+    const fn const_deref_mut(&mut self) -> &mut PrimitiveBlock {
+        match self {
+            Self::Track { block, .. } | Self::Gate { block, .. } => block,
+        }
     }
 }
-const fn sblock() -> Block {
-    Block([[' ', ' ', ' '], [' ', ' ', ' '], [' ', ' ', ' ']])
+// impl "Getters"
+impl Primitive {
+    #[inline(always)]
+    pub const fn nw(self) -> char {
+        self.const_deref()[0][0]
+    }
+    #[inline(always)]
+    pub const fn nn(self) -> char {
+        self.const_deref()[0][1]
+    }
+    #[inline(always)]
+    pub const fn ne(self) -> char {
+        self.const_deref()[0][2]
+    }
+    #[inline(always)]
+    pub const fn ww(self) -> char {
+        self.const_deref()[1][0]
+    }
+    #[inline(always)]
+    pub const fn cc(self) -> char {
+        self.const_deref()[1][1]
+    }
+    #[inline(always)]
+    pub const fn ee(self) -> char {
+        self.const_deref()[1][2]
+    }
+    #[inline(always)]
+    pub const fn sw(self) -> char {
+        self.const_deref()[2][0]
+    }
+    #[inline(always)]
+    pub const fn ss(self) -> char {
+        self.const_deref()[2][1]
+    }
+    #[inline(always)]
+    pub const fn se(self) -> char {
+        self.const_deref()[2][2]
+    }
+    #[inline(always)]
+    const fn nw_mut(&mut self) -> &mut char {
+        &mut self.const_deref_mut()[0][0]
+    }
+    #[inline(always)]
+    const fn nn_mut(&mut self) -> &mut char {
+        &mut self.const_deref_mut()[0][1]
+    }
+    #[inline(always)]
+    const fn ne_mut(&mut self) -> &mut char {
+        &mut self.const_deref_mut()[0][2]
+    }
+    #[inline(always)]
+    const fn ww_mut(&mut self) -> &mut char {
+        &mut self.const_deref_mut()[1][0]
+    }
+    #[inline(always)]
+    const fn cc_mut(&mut self) -> &mut char {
+        &mut self.const_deref_mut()[1][1]
+    }
+    #[inline(always)]
+    const fn ee_mut(&mut self) -> &mut char {
+        &mut self.const_deref_mut()[1][2]
+    }
+    #[inline(always)]
+    const fn sw_mut(&mut self) -> &mut char {
+        &mut self.const_deref_mut()[2][0]
+    }
+    #[inline(always)]
+    const fn ss_mut(&mut self) -> &mut char {
+        &mut self.const_deref_mut()[2][1]
+    }
+    #[inline(always)]
+    const fn se_mut(&mut self) -> &mut char {
+        &mut self.const_deref_mut()[2][2]
+    }
 }
-// #[rustfmt::skip]
-// impl BlockTrait for Block {
-//     #[rustfmt::skip]
+impl ConnectNorth for Primitive {
+    fn connect_north(&mut self) {
+        match self {
+            Primitive::Track { .. } => {
+                self.nn_mut().pass_vertical();
+                self.cc_mut().connect_north();
+            }
+            Primitive::Gate { .. } => {
+                self.nn_mut().connect_north();
+            }
+        }
+    }
+}
+impl ConnectEast for Primitive {
+    fn connect_east(&mut self) {
+        match self {
+            Primitive::Track { .. } => {
+                self.nn_mut().pass_horizontal();
+                self.cc_mut().connect_east();
+            }
+            Primitive::Gate { .. } => {
+                self.nn_mut().connect_east();
+            }
+        }
+    }
+}
+impl ConnectSouth for Primitive {
+    fn connect_south(&mut self) {
+        match self {
+            Primitive::Track { .. } => {
+                self.nn_mut().pass_vertical();
+                self.cc_mut().connect_south();
+            }
+            Primitive::Gate { .. } => {
+                self.nn_mut().connect_south();
+            }
+        }
+    }
+}
+impl ConnectWest for Primitive {
+    fn connect_west(&mut self) {
+        match self {
+            Primitive::Track { .. } => {
+                self.nn_mut().pass_horizontal();
+                self.cc_mut().connect_west();
+            }
+            Primitive::Gate { .. } => {
+                self.nn_mut().connect_west();
+            }
+        }
+    }
+}
+impl Deref for Primitive {
+    type Target = PrimitiveBlock;
+
+    fn deref(&self) -> &Self::Target {
+        self.const_deref()
+    }
+}
+
+// #[derive(Debug, Clone)]
+// pub struct Column {
+//     /// Cannot be empty
+//     gate_name: String,
+//     /// `self.primitives.last() holds the most south primitive`
+//     primitives: Vec<Primitive>,
+//     gate_groups: Vec<Range<usize>>,
+// }
+// impl Column {
 //     #[inline(always)]
-//     fn char<const X: usize, const Y: usize>(&self) -> char {
-//         debug_assert!(X < 3 && Y < 3);
-//         self.0[Y][X]
+//     pub const fn block_width(&self) -> usize {
+//         let gname = self.gate_name.len();
+//         gname + 4
 //     }
-// }
-// #[rustfmt::skip]
-// #[derive(Debug, Default, Clone, Copy)]
-// pub struct Column<B, C>(B, C);
-// impl<B: BlockTrait> ColumnTrait for B {
-//     fn block(&self, rel_lane: usize) -> Option<&impl BlockTrait> {
-//         if rel_lane == 0 {
-//             Some(self)
-//         } else {
-//             None
-//         }
-//     }
-// }
-// impl<B: BlockTrait, C: ColumnTrait> ColumnTrait for Column<(B, C)> {
-//     fn block(&self, rel_lane: usize) -> Option<&impl BlockTrait> {
-//         if rel_lane == 0 {
-//             Some(&self.0.0)
-//         } else {
-//             None
-//         }
-//     }
-// }
-// impl<C: ColumnTrait, B: BlockTrait> ColumnTrait for Column<(C, B)> {
-//     const HEIGHT: usize = C::HEIGHT + 1;
-//     fn block(&self, rel_lane: usize) -> Option<&impl BlockTrait> {
-//         if rel_lane == Self::HEIGHT - 1 {
-//             Some(&self.0.1)
-//         } else if rel_lane < Self::HEIGHT - 1{
-//             self.0.0.block(rel_lane)
-//         } else {
-//             None
-//         }
-//     }
-// }
-mod block {
-    use crate::debug_terminal::show_circuit::sblock;
 
-    use super::{Block, BlockTrait};
-    use std::{fmt::Display, io::stdout, marker::PhantomData, ops::Deref};
+//     /// `y` must be withing y_range()
+//     pub fn queue_print<W: Write>(&self, w: &mut W, y: usize) -> io::Result<()> {
+//         todo!()
+//     }
 
-    // https://en.wikipedia.org/wiki/Box-drawing_characters
-    // https://www.alt-codes.net/bullet_alt_codes.php
-    // https://www.compart.com/en/unicode/block/U+2B00
+//     fn queue_print_even<W: Write>(&self, w: &mut W, y: usize) -> io::Result<()> {
+//         todo!()
+//     }
 
-    #[derive(Debug, Clone, Copy)]
-    pub struct Track(Block);
-    #[rustfmt::skip]
-    const fn strack() -> Track {
-        Track(Block([
-            [' ', '│', ' '],
-            ['─', '┼', '─'],
-            [' ', '│', ' ']
-        ]))
-    }
-    impl BlockTrait for Track {
-        #[inline(always)]
-        fn char<const X: usize, const Y: usize>(&self) -> char {
-            self.0.char_repeat_sides::<X, Y>()
+//     fn queue_print_odd<W: Write>(&self, w: &mut W, y: usize) -> io::Result<()> {
+//         todo!()
+//     }
+// }
+
+#[derive(Debug, Clone)]
+pub struct Column {
+    primitives: PrimitiveVec,
+    groups: CombinedRanges,
+    gate_content: EitherContent,
+}
+impl Column {
+    pub fn init_with_track() -> Self {
+        Self {
+            primitives: PrimitiveVec::init_with_track(),
+            groups: OtherRange::new().into(),
+            gate_content: EitherContent::Width(1),
         }
     }
-    #[derive(Debug, Clone, Copy)]
-    pub struct Gate(Block);
-    #[rustfmt::skip]
-    const fn sgate() -> Gate {
-        Gate(Block([
-            ['┌', '─', '┐'],
-            ['│', ' ', '│'],
-            ['└', '─', '┘']
-        ]))
-    }
-    impl BlockTrait for Gate {
-        #[inline(always)]
-        fn char<const X: usize, const Y: usize>(&self) -> char {
-            self.0.char_repeat_mid::<X, Y>()
+
+    pub fn init_with_gate<I: Into<EitherContent>>(content: I) -> Self {
+        Self {
+            primitives: PrimitiveVec::init_with_gate(),
+            groups: GateRange::new().into(),
+            gate_content: content.into(),
         }
     }
-    pub struct Widened<const W: usize, B: BlockTrait>(B);
-    impl<const W: usize, B: BlockTrait> BlockTrait for Widened<W, B> {
-        #[inline(always)]
-        fn char<const X: usize, const Y: usize>(&self) -> char {
-            self.0.char_repeat_mid::<X, Y>()
+
+    pub fn extend_with_gate(&mut self) {
+        match self.primitives.last() {
+            Primitive::Track { .. } => {
+                self.primitives.0.push(Primitive::create_gate());
+                self.groups.close_with_gate();
+            }
+            Primitive::Gate { .. } => {
+                self.primitives.0.push(Primitive::create_gate());
+                self.groups.extend_once();
+            }
         }
     }
+
+    pub fn extend_with_track(&mut self) {
+        match self.primitives.last() {
+            Primitive::Track { .. } => {
+                self.primitives.0.push(Primitive::create_track());
+                self.groups.extend_once();
+            }
+            Primitive::Gate { .. } => {
+                self.primitives.0.push(Primitive::create_track());
+                self.groups.close_with_other();
+            }
+        }
+    }
+
+    pub fn close_with_gate(&mut self) {
+        self.primitives.0.push(Primitive::create_gate());
+        self.groups.close_with_gate();
+    }
+
+    pub fn close_with_track(&mut self) {
+        self.primitives.0.push(Primitive::create_track());
+        self.groups.close_with_other();
+    }
+
+    fn last(&self) -> &Primitive {
+        self.primitives.last()
+    }
+
+    fn last_mut(&mut self) -> &mut Primitive {
+        self.primitives.last_mut()
+    }
+}
+impl<'a> IntoIterator for &'a Column {
+    type Item = PrimitiveWithContent<'a>;
+    type IntoIter = ColumnIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        ColumnIterator {
+            primitives: &self.primitives,
+            groups: self.groups.into_iter(),
+            gate_content: self.gate_content.as_ref(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ColumnIterator<'a> {
+    primitives: &'a PrimitiveVec,
+    groups: CombinedIndicesIterator<'a>,
+    gate_content: EitherContentRef<'a>,
+}
+impl<'a> Iterator for ColumnIterator<'a> {
+    type Item = PrimitiveWithContent<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let Some(index) = self.groups.next() else {
+            return None;
+        };
+
+        let (index, content) = match index {
+            EitherIndex::Gate(GateIndex::Named(index)) => (index, self.gate_content),
+            EitherIndex::Gate(GateIndex::Normal(index)) | EitherIndex::Other(index) => {
+                (index, self.gate_content.as_width())
+            }
+        };
+
+        let Some(primitive) = self.primitives.get(index) else {
+            return None;
+        };
+
+        Some(primitive.with(content))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PrimitiveVec(Vec<Primitive>);
+impl PrimitiveVec {
+    pub fn init_with_track() -> Self {
+        Self(vec![Primitive::create_track()])
+    }
+
+    pub fn init_with_gate() -> Self {
+        Self(vec![Primitive::create_gate()])
+    }
+
+    pub fn get(&'_ self, index: SharedRelIndex) -> Option<SharedPrimitive<'_>> {
+        match index {
+            SharedRelIndex::Single { north, rel_y } => {
+                self.0.get(north).map(|p| SharedPrimitive::Single {
+                    north: p,
+                    rel_y: rel_y,
+                })
+            }
+            SharedRelIndex::Shared { north, south } => self
+                .0
+                .get(north)
+                .zip(self.0.get(south))
+                .map(|(n, s)| SharedPrimitive::Shared { north: n, south: s }),
+        }
+    }
+
+    #[inline(always)]
+    fn last(&self) -> &Primitive {
+        self.unchecked_last()
+    }
+
+    #[inline(always)]
+    fn last_mut(&mut self) -> &mut Primitive {
+        self.unchecked_last_mut()
+    }
+
+    #[inline(always)]
+    fn unchecked_last(&self) -> &Primitive {
+        &self.0[self.0.len() - 1]
+    }
+
+    #[inline(always)]
+    fn unchecked_last_mut(&mut self) -> &mut Primitive {
+        let i = self.0.len() - 1;
+        &mut self.0[i]
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PrimitiveWithContent<'a> {
+    primitive: SharedPrimitive<'a>,
+    content: EitherContentRef<'a>,
+}
+impl<'a> PrimitiveWithContent<'a> {
+    pub fn queue_print<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        match &self.content {
+            EitherContentRef::Styled(content) => self.primitive.queue_print_content(w, content),
+            EitherContentRef::Raw(content) => self.primitive.queue_print_content(w, content),
+            EitherContentRef::Width(width) => self.primitive.queue_print(w, *width),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CombinedRanges(Vec<EitherRange>);
+impl CombinedRanges {
+    pub fn extend_once(&mut self) {
+        self.unchecked_last_mut().extend_once();
+    }
+
+    pub fn close_with_gate(&mut self) {
+        let range = self.unchecked_last_mut().close_with_gate();
+        self.0.push(range.into());
+    }
+
+    pub fn close_with_other(&mut self) {
+        let range = self.unchecked_last_mut().close_with_other();
+        self.0.push(range.into());
+    }
+
+    pub fn end_inclusive(&self) -> SharedRelIndex {
+        self.unchecked_last().end_inclusive()
+    }
+
+    pub fn end_non_inclusive(&self) -> SharedRelIndex {
+        self.unchecked_last().end_non_inclusive()
+    }
+
+    #[inline(always)]
+    fn last(&self) -> &EitherRange {
+        self.unchecked_last()
+    }
+
+    #[inline(always)]
+    fn unchecked_last(&self) -> &EitherRange {
+        &self.0[self.0.len() - 1]
+    }
+
+    #[inline(always)]
+    fn unchecked_last_mut(&mut self) -> &mut EitherRange {
+        let i = self.0.len() - 1;
+        &mut self.0[i]
+    }
+}
+impl From<GateRange> for CombinedRanges {
+    fn from(value: GateRange) -> Self {
+        Self(vec![value.into()])
+    }
+}
+impl From<OtherRange> for CombinedRanges {
+    fn from(value: OtherRange) -> Self {
+        Self(vec![value.into()])
+    }
+}
+impl From<EitherRange> for CombinedRanges {
+    fn from(value: EitherRange) -> Self {
+        Self(vec![value])
+    }
+}
+impl<'a> IntoIterator for &'a CombinedRanges {
+    type Item = EitherIndex;
+    type IntoIter = CombinedIndicesIterator<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        CombinedIndicesIterator {
+            next: &self.0[1..],
+            current: self.0[0].into_iter(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CombinedIndicesIterator<'a> {
+    next: &'a [EitherRange],
+    current: EitherIndexIterator,
+}
+impl<'a> Iterator for CombinedIndicesIterator<'a> {
+    type Item = EitherIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(item) = self.current.next() {
+            return Some(item);
+        }
+
+        if let Some(range) = self.next.get(0) {
+            self.next = &self.next[1..];
+            self.current = range.into_iter();
+            self.current.next()
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum EitherRange {
+    Gate(GateRange),
+    Other(OtherRange),
+}
+impl EitherRange {
+    pub fn extend_once(&mut self) {
+        match self {
+            EitherRange::Gate(gate_range) => gate_range.extend_once(),
+            EitherRange::Other(other_range) => other_range.extend_once(),
+        }
+    }
+
+    pub fn close_with_gate(&mut self) -> GateRange {
+        let gate = match self {
+            EitherRange::Gate(gate_range) => gate_range.close_with_gate(),
+            EitherRange::Other(other_range) => other_range.close_with_gate(),
+        };
+        gate
+    }
+
+    pub fn close_with_other(&mut self) -> OtherRange {
+        let other = match self {
+            EitherRange::Gate(gate_range) => gate_range.close_with_other(),
+            EitherRange::Other(other_range) => other_range.close_with_other(),
+        };
+        other
+    }
+
+    pub fn end_inclusive(&self) -> SharedRelIndex {
+        match self {
+            EitherRange::Gate(gate_range) => gate_range.end_inclusive(),
+            EitherRange::Other(other_range) => other_range.end_inclusive(),
+        }
+    }
+
+    pub fn end_non_inclusive(&self) -> SharedRelIndex {
+        let mut index = self.end_inclusive();
+        index.next();
+        index
+    }
+}
+impl From<GateRange> for EitherRange {
+    fn from(value: GateRange) -> Self {
+        Self::Gate(value)
+    }
+}
+impl From<OtherRange> for EitherRange {
+    fn from(value: OtherRange) -> Self {
+        Self::Other(value)
+    }
+}
+impl IntoIterator for EitherRange {
+    type Item = EitherIndex;
+    type IntoIter = EitherIndexIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            EitherRange::Gate(gate_range) => EitherIndexIterator::Gate(gate_range.into_iter()),
+            EitherRange::Other(other_range) => EitherIndexIterator::Other(other_range.into_iter()),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum EitherIndexIterator {
+    Gate(GateIndexIterator),
+    Other(OtherIndexIterator),
+}
+impl Iterator for EitherIndexIterator {
+    type Item = EitherIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            EitherIndexIterator::Gate(g) => g.next().map(|i| EitherIndex::Gate(i)),
+            EitherIndexIterator::Other(o) => o.next().map(|i| EitherIndex::Other(i)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EitherIndex {
+    Gate(GateIndex),
+    Other(SharedRelIndex),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct OtherRange {
+    start: SharedRelIndex,
+    primitive_count: usize,
+    closed: bool,
+}
+impl OtherRange {
+    pub fn new() -> Self {
+        OtherRange {
+            start: SharedRelIndex::Single { north: 0, rel_y: 0 },
+            primitive_count: 1,
+            closed: true,
+        }
+    }
+
+    pub fn extend_once(&mut self) {
+        self.primitive_count += 1;
+    }
+
+    pub fn close_with_gate(&mut self) -> GateRange {
+        self.closed = false;
+        let mut ni = self.end_non_inclusive();
+        ni.next();
+        GateRange {
+            start: self.end_non_inclusive(),
+            primitive_count: 1,
+            named_index: ni,
+            closed: true,
+        }
+    }
+
+    pub fn close_with_other(&mut self) -> OtherRange {
+        self.closed = false;
+        OtherRange {
+            start: self.end_non_inclusive(),
+            primitive_count: 1,
+            closed: true,
+        }
+    }
+
+    pub fn end_inclusive(&self) -> SharedRelIndex {
+        if self.closed {
+            match self.start {
+                SharedRelIndex::Single { north, .. } => SharedRelIndex::Single {
+                    north: north + self.primitive_count - 1,
+                    rel_y: 2,
+                },
+                SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
+                    north: south + self.primitive_count - 1,
+                    rel_y: 2,
+                },
+            }
+        } else {
+            match self.start {
+                SharedRelIndex::Single { north, .. } => SharedRelIndex::Single {
+                    north: north + self.primitive_count - 1,
+                    rel_y: 1,
+                },
+                SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
+                    north: south + self.primitive_count - 1,
+                    rel_y: 1,
+                },
+            }
+        }
+    }
+
+    pub fn end_non_inclusive(&self) -> SharedRelIndex {
+        let mut index = self.end_inclusive();
+        index.next();
+        index
+    }
+}
+impl IntoIterator for OtherRange {
+    type Item = SharedRelIndex;
+    type IntoIter = OtherIndexIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        OtherIndexIterator {
+            current: self.start,
+            end_inclusive: self.end_inclusive(),
+            exhausted: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct OtherIndexIterator {
+    current: SharedRelIndex,
+    end_inclusive: SharedRelIndex,
+    exhausted: bool,
+}
+impl Iterator for OtherIndexIterator {
+    type Item = SharedRelIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.exhausted {
+            return None;
+        }
+
+        let item = self.current;
+
+        if self.current.north() == self.end_inclusive.north()
+            && self.current.to_rel_y() == self.end_inclusive.to_rel_y()
+        {
+            self.exhausted = true;
+            return Some(self.end_inclusive);
+        }
+
+        self.current.next();
+
+        Some(item)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GateRange {
+    start: SharedRelIndex,
+    primitive_count: usize,
+    named_index: SharedRelIndex,
+    closed: bool,
+}
+impl GateRange {
+    pub fn new() -> Self {
+        Self {
+            start: SharedRelIndex::Single { north: 0, rel_y: 0 },
+            named_index: SharedRelIndex::Single { north: 0, rel_y: 1 },
+            primitive_count: 1,
+            closed: true,
+        }
+    }
+
+    pub fn extend_once(&mut self) {
+        self.primitive_count += 1;
+        self.named_index = match self.named_index {
+            SharedRelIndex::Single { north, .. } => SharedRelIndex::Shared {
+                north,
+                south: north + 1,
+            },
+            SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
+                north: south,
+                rel_y: 1,
+            },
+        };
+    }
+
+    pub fn close_with_gate(&mut self) -> GateRange {
+        self.closed = false;
+        let mut ni = self.end_non_inclusive();
+        ni.next();
+        GateRange {
+            start: self.end_non_inclusive(),
+            primitive_count: 1,
+            named_index: ni,
+            closed: true,
+        }
+    }
+
+    pub fn close_with_other(&mut self) -> OtherRange {
+        self.closed = false;
+        OtherRange {
+            start: self.end_non_inclusive(),
+            primitive_count: 1,
+            closed: true,
+        }
+    }
+
+    pub fn end_inclusive(&self) -> SharedRelIndex {
+        if self.closed {
+            match self.start {
+                SharedRelIndex::Single { north, .. } => SharedRelIndex::Single {
+                    north: north + self.primitive_count - 1,
+                    rel_y: 2,
+                },
+                SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
+                    north: south + self.primitive_count - 1,
+                    rel_y: 2,
+                },
+            }
+        } else {
+            match self.start {
+                SharedRelIndex::Single { north, .. } => SharedRelIndex::Single {
+                    north: north + self.primitive_count - 1,
+                    rel_y: 1,
+                },
+                SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
+                    north: south + self.primitive_count - 1,
+                    rel_y: 1,
+                },
+            }
+        }
+    }
+
+    pub fn end_non_inclusive(&self) -> SharedRelIndex {
+        let mut index = self.end_inclusive();
+        index.next();
+        index
+    }
+}
+impl IntoIterator for GateRange {
+    type Item = GateIndex;
+    type IntoIter = GateIndexIterator;
+
+    fn into_iter(self) -> Self::IntoIter {
+        GateIndexIterator {
+            current: self.start,
+            end_inclusive: self.end_inclusive(),
+            named_index: self.named_index,
+            exhausted: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct GateIndexIterator {
+    current: SharedRelIndex,
+    end_inclusive: SharedRelIndex,
+    named_index: SharedRelIndex,
+    exhausted: bool,
+}
+impl Iterator for GateIndexIterator {
+    type Item = GateIndex;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.exhausted {
+            return None;
+        }
+
+        let item = if self.current == self.named_index {
+            GateIndex::Named(self.named_index)
+        } else {
+            GateIndex::Normal(self.current)
+        };
+
+        if self.current.north() == self.end_inclusive.north()
+            && self.current.to_rel_y() == self.end_inclusive.to_rel_y()
+        {
+            self.exhausted = true;
+            return Some(GateIndex::Normal(self.end_inclusive));
+        }
+        self.current.next();
+
+        Some(item)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GateIndex {
+    Normal(SharedRelIndex),
+    Named(SharedRelIndex),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// `assert!(rel_y < 3)`
+/// `assert_eq!(south - north, 1)`
+pub enum SharedRelIndex {
+    Single { north: usize, rel_y: usize },
+    Shared { north: usize, south: usize },
+}
+impl SharedRelIndex {
+    #[inline(always)]
+    pub const fn north(&self) -> usize {
+        match self {
+            SharedRelIndex::Single { north, .. } | SharedRelIndex::Shared { north, .. } => *north,
+        }
+    }
+
+    #[inline(always)]
+    /// Returns `Ok(usize)` containing `rel_y` if `matches!(self, Self::Single {..})`
+    ///
+    /// Returns `Err(usize)` containing `south` if `matches!(self, Self::Shared {..})`
+    const fn rel_y(&self) -> Result<usize, usize> {
+        match self {
+            SharedRelIndex::Single { rel_y, .. } => Ok(*rel_y),
+            SharedRelIndex::Shared { south, .. } => Err(*south),
+        }
+    }
+
+    #[inline(always)]
+    const fn to_rel_y(&self) -> usize {
+        match self {
+            SharedRelIndex::Single { rel_y, .. } => *rel_y,
+            SharedRelIndex::Shared { .. } => 2,
+        }
+    }
+}
+impl Iterator for SharedRelIndex {
+    type Item = Self;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = *self;
+        match self {
+            SharedRelIndex::Single { north, rel_y: 1 } => {
+                *self = SharedRelIndex::Shared {
+                    north: *north,
+                    south: *north + 1,
+                }
+            }
+            SharedRelIndex::Single { rel_y, .. } => {
+                *rel_y += 1;
+            }
+            SharedRelIndex::Shared { south, .. } => {
+                *self = SharedRelIndex::Single {
+                    north: *south,
+                    rel_y: 1,
+                }
+            }
+        };
+        Some(item)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum SharedPrimitive<'a> {
+    Single {
+        north: &'a Primitive,
+        rel_y: usize,
+    },
+    Shared {
+        north: &'a Primitive,
+        south: &'a Primitive,
+    },
+}
+impl<'a> SharedPrimitive<'a> {
+    pub fn queue_print<W: Write>(&self, w: &mut W, width: usize) -> io::Result<()> {
+        match self {
+            SharedPrimitive::Single { north, rel_y } => north.queue_print(w, width, *rel_y),
+            SharedPrimitive::Shared { north, south } => north.queue_print_shared(w, south, width),
+        }
+    }
+
+    pub fn queue_print_content<W: Write>(
+        &self,
+        w: &mut W,
+        content: &impl Printable,
+    ) -> io::Result<()> {
+        match self {
+            SharedPrimitive::Single { north, rel_y } => {
+                north.queue_print_content(w, content, *rel_y)
+            }
+            SharedPrimitive::Shared { north, south } => {
+                north.queue_print_shared_content(w, south, content)
+            }
+        }
+    }
+
+    pub fn with<'ret, 'cont: 'ret>(
+        self,
+        content: EitherContentRef<'cont>,
+    ) -> PrimitiveWithContent<'ret>
+    where
+        'a: 'ret,
+    {
+        PrimitiveWithContent {
+            primitive: self,
+            content,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum EitherContent {
+    Styled(Styled<String>),
+    Raw(String),
+    Width(usize),
+}
+impl EitherContent {
+    pub fn as_ref(&self) -> EitherContentRef<'_> {
+        match self {
+            EitherContent::Styled(Styled { content, style }) => EitherContentRef::Styled(Styled {
+                content: content.as_str(),
+                style: style.clone(),
+            }),
+            EitherContent::Raw(content) => EitherContentRef::Raw(content.as_str()),
+            EitherContent::Width(w) => EitherContentRef::Width(*w),
+        }
+    }
+
+    pub fn as_width(&'_ self) -> EitherContentRef<'_> {
+        match self {
+            EitherContent::Styled(content) => EitherContentRef::Width(content.length()),
+            EitherContent::Raw(content) => EitherContentRef::Width(content.length()),
+            EitherContent::Width(width) => EitherContentRef::Width(*width),
+        }
+    }
+}
+#[derive(Debug, Clone, Copy)]
+pub enum EitherContentRef<'a> {
+    Styled(Styled<&'a str>),
+    Raw(&'a str),
+    Width(usize),
+}
+impl<'a> EitherContentRef<'a> {
+    pub fn as_width(&self) -> EitherContentRef<'a> {
+        match self {
+            EitherContentRef::Styled(content) => EitherContentRef::Width(content.length()),
+            EitherContentRef::Raw(content) => EitherContentRef::Width(content.length()),
+            EitherContentRef::Width(width) => EitherContentRef::Width(*width),
+        }
+    }
+}
+impl From<Styled<String>> for EitherContent {
+    fn from(value: Styled<String>) -> Self {
+        Self::Styled(value)
+    }
+}
+impl From<String> for EitherContent {
+    fn from(value: String) -> Self {
+        Self::Raw(value)
+    }
+}
+impl From<usize> for EitherContent {
+    fn from(value: usize) -> Self {
+        Self::Width(value)
+    }
+}
+
+pub trait Printable: Display {
+    fn queue_print<W: Write>(&self, w: &mut W) -> io::Result<()>;
+    fn length(&self) -> usize;
+}
+impl Printable for usize {
+    fn queue_print<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        for _ in 0..*self {
+            queue_print!(w; ' ')?;
+        }
+        Ok(())
+    }
+
+    fn length(&self) -> usize {
+        *self
+    }
+}
+impl<'a> Printable for &'a str {
+    fn queue_print<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        queue_print!(w; self)
+    }
+
+    fn length(&self) -> usize {
+        self.len()
+    }
+}
+impl<'a> Printable for String {
+    fn queue_print<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        queue_print!(w; self)
+    }
+
+    fn length(&self) -> usize {
+        self.len()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Styled<P: Printable> {
+    content: P,
+    style: ContentStyle,
+}
+impl<P: Printable> Display for Styled<P> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.content)
+    }
+}
+impl<P: Printable> Printable for Styled<P> {
+    fn queue_print<W: Write>(&self, w: &mut W) -> io::Result<()> {
+        queue_print!(w; self.style => &self.content)
+    }
+
+    fn length(&self) -> usize {
+        self.content.length()
+    }
+}
+
+mod connects {
     pub trait ConnectNorth {
         fn connect_north(&mut self);
         fn connected_north(self) -> Self
@@ -260,6 +1320,7 @@ mod block {
             s
         }
     }
+
     impl ConnectNorth for char {
         #[inline(always)]
         fn connect_north(&mut self) {
@@ -398,502 +1459,52 @@ mod block {
             }
         }
     }
-    #[rustfmt::skip]
-    impl ConnectNorth for Track {
-        #[inline(always)]
-        fn connect_north(&mut self){
-            let [
-                [_, nn, _],
-                [_, cc, _],
-                [_, _,  _]
-            ] = &mut self.0.0;
-            nn.pass_vertical();
-            cc.connect_north();
-        }
-    }
-    #[rustfmt::skip]
-    impl ConnectEast for  Track {
-        fn connect_east(&mut self){
-            let [
-                [_, _,  _],
-                [_, cc, ee],
-                [_, _,  _]
-            ] = &mut self.0.0;
-            ee.pass_horizontal();
-            cc.connect_east();
-        }
-    }
-    #[rustfmt::skip]
-    impl ConnectSouth for Track {
-        #[inline(always)]
-        fn connect_south(&mut self)  {
-            let [
-                [_, _,  _],
-                [_, cc, _],
-                [_, ss, _]
-            ] = &mut self.0.0;
-            ss.pass_vertical();
-            cc.connect_south();
-        }
-    }
-    #[rustfmt::skip]
-    impl ConnectWest for  Track {
-        #[inline(always)]
-        fn connect_west(&mut self) {
-            let [
-                [_,  _,  _],
-                [ww, cc, _],
-                [_,  _,  _]
-            ] = &mut self.0.0;
-            ww.pass_horizontal();
-            cc.connect_west();
-        }
-    }
-    #[rustfmt::skip]
-    impl ConnectNorth for Gate {
-        #[inline(always)]
-        fn connect_north(&mut self){
-            let [
-                [_, nn, _],
-                [_, _,  _],
-                [_, _,  _]
-            ] = &mut self.0.0;
-            nn.connect_north();
-        }
-    }
-    #[rustfmt::skip]
-    impl ConnectEast for  Gate {
-        fn connect_east(&mut self){
-            let [
-                [_, _,  _],
-                [_, _,  ee],
-                [_, _,  _]
-            ] = &mut self.0.0;
-            ee.connect_east();
-        }
-    }
-    #[rustfmt::skip]
-    impl ConnectSouth for Gate {
-        #[inline(always)]
-        fn connect_south(&mut self)  {
-            let [
-                [_, _,  _],
-                [_, _,  _],
-                [_, ss, _]
-            ] = &mut self.0.0;
-            ss.connect_north();
-        }
-    }
-    #[rustfmt::skip]
-    impl ConnectWest for  Gate {
-        #[inline(always)]
-        fn connect_west(&mut self) {
-            let [
-                [_,  _,  _],
-                [ww, _,  _],
-                [_,  _,  _]
-            ] = &mut self.0.0;
-            ww.connect_east();
-        }
-    }
-
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > ConnectNorth for Track<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     type NOutput = Track<
-    //         NW, NN::VOutput, NE,
-    //         WW, CC::NOutput, EE,
-    //         SW, SS,          SE,
-    //     >;
-    //     const NRESULT: Self::NOutput = strack();
-    // }
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > ConnectEast for Track<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     type EOutput = Track<
-    //         NW, NN,          NE,
-    //         WW, CC::EOutput, EE::HOutput,
-    //         SW, SS,          SE,
-    //     >;
-    //     const ERESULT: Self::EOutput = strack();
-    // }
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > ConnectSouth for Track<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     type SOutput = Track<
-    //         NW, NN,          NE,
-    //         WW, CC::SOutput, EE,
-    //         SW, SS::VOutput, SE,
-    //     >;
-    //     const SRESULT: Self::SOutput = strack();
-    // }
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > ConnectWest for Track<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     type WOutput = Track<
-    //         NW,          NN,          NE,
-    //         WW::HOutput, CC::WOutput, EE,
-    //         SW,          SS,          SE,
-    //     >;
-    //     const WRESULT: Self::WOutput = strack();
-    // }
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > Connects for Track<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     const SELF: Self = strack();
-    // }
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > ConnectNorth for Gate<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     type NOutput = Gate<
-    //         NW, NN::VOutput, NE,
-    //         WW, CC,          EE,
-    //         SW, SS,          SE,
-    //     >;
-    //     const NRESULT: Self::NOutput = sgate();
-    // }
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > ConnectEast for Gate<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     type EOutput = Gate<
-    //         NW, NN, NE,
-    //         WW, CC, EE::HOutput,
-    //         SW, SS, SE,
-    //     >;
-    //     const ERESULT: Self::EOutput = sgate();
-    // }
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > ConnectSouth for Gate<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     type SOutput = Gate<
-    //         NW, NN,          NE,
-    //         WW, CC,          EE,
-    //         SW, SS::VOutput, SE,
-    //     >;
-    //     const SRESULT: Self::SOutput = sgate();
-    // }
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > ConnectWest for Gate<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     type WOutput = Gate<
-    //         NW,          NN, NE,
-    //         WW::HOutput, CC, EE,
-    //         SW,          SS, SE,
-    //     >;
-    //     const WRESULT: Self::WOutput = sgate();
-    // }
-    // #[rustfmt::skip]
-    // impl<
-    //     NW: Connects, NN: Connects, NE: Connects,
-    //     WW: Connects, CC: Connects, EE: Connects,
-    //     SW: Connects, SS: Connects, SE: Connects,
-    // > Connects for Gate<
-    //     NW, NN, NE,
-    //     WW, CC, EE,
-    //     SW, SS, SE,
-    // > {
-    //     const SELF: Self = sgate();
-    // }
-
-    // struct ConnectNorth<const C: char>;
-    // #[rustfmt::skip]
-    // impl ConnectNorth<' '> {const RESULT: char = ' '}
-    // #[inline(always)]
-    // const fn ctrl(block: Block) -> Block {
-    //     let mut block = block;
-    //     block[1][1] = '⬤';
-    //     block
-    // }
-
-    // #[inline(always)]
-    // const fn cinv(block: Block) -> Block {
-    //     let mut block = block;
-    //     block[1][1] = '⭘';
-    //     block
-    // }
-
-    // #[inline(always)]
-    // const fn cnot(block: Block) -> Block {
-    //     let mut block = block;
-    //     block[1][1] = '⨁';
-    //     block
-    // }
-
-    // #[inline(always)]
-    // const fn connect_north(block: Block) -> Block {
-    //     let mut block = block;
-    //     block[0][1] = '┴';
-    //     block
-    // }
-    // #[inline(always)]
-    // const fn connect_east(block: Block) -> Block {
-    //     let mut block = block;
-    //     block[1][2] = '├';
-    //     block
-    // }
-    // #[inline(always)]
-    // const fn connect_south(block: Block) -> Block {
-    //     let mut block = block;
-    //     block[2][1] = '┬';
-    //     block
-    // }
-    // #[inline(always)]
-    // const fn connect_west(block: Block) -> Block {
-    //     let mut block = block;
-    //     block[1][0] = '┤';
-    //     block
-    // }
-
-    pub mod track {
-        // use super::{Block, Char, NULL};
-
-        // type OOOO = NULL;
-
-        // def_block!(OOOW,
-        //     ' ' ' ' ' ';
-        //     '─' '─' ' ';
-        //     ' ' ' ' ' '
-        // );
-        // def_block!(OOSO,
-        //     ' ' ' ' ' ';
-        //     ' ' '│' ' ';
-        //     ' ' '│' ' '
-        // );
-        // def_block!(OEOO,
-        //     ' ' ' ' ' ';
-        //     ' ' '─' '─';
-        //     ' ' ' ' ' '
-        // );
-        // def_block!(NOOO,
-        //     ' ' '│' ' ';
-        //     ' ' '│' ' ';
-        //     ' ' ' ' ' '
-        // );
-        // const_block!(NOSO,
-        //     ' ' '│' ' ';
-        //     ' ' '│' ' ';
-        //     ' ' '│' ' '
-        // );
-        // const_block!(OEOW,
-        //     ' ' ' ' ' ';
-        //     '─' '─' '─';
-        //     ' ' ' ' ' '
-        // );
-        // const_block!(OOSW,
-        //     ' ' ' ' ' ';
-        //     '─' '┐' ' ';
-        //     ' ' '│' ' '
-        // );
-        // const_block!(OESO,
-        //     ' ' ' ' ' ';
-        //     ' ' '┌' '─';
-        //     ' ' '│' ' '
-        // );
-        // const_block!(NOOW,
-        //     ' ' '│' ' ';
-        //     '─' '┘' ' ';
-        //     ' ' ' ' ' '
-        // );
-        // const_block!(NEOO,
-        //     ' ' '│' ' ';
-        //     ' ' '└' '─';
-        //     ' ' ' ' ' '
-        // );
-        // const_block!(OESW,
-        //     ' ' ' ' ' ';
-        //     '─' '┬' '─';
-        //     ' ' '│' ' '
-        // );
-        // const_block!(NOSW,
-        //     ' ' '│' ' ';
-        //     '─' '┤' ' ';
-        //     ' ' '│' ' '
-        // );
-        // const_block!(NEOW,
-        //     ' ' '│' ' ';
-        //     '─' '┴' '─';
-        //     ' ' ' ' ' '
-        // );
-        // const_block!(NESO,
-        //     ' ' '│' ' ';
-        //     ' ' '├' '─';
-        //     ' ' '│' ' '
-        // );
-        // const_block!(NESW,
-        //     ' ' '│' ' ';
-        //     '─' '┼' '─';
-        //     ' ' '│' ' '
-        // );
-
-        // const_block!(NESW_PASS,
-        //     ' ' '│' ' ';
-        //     '⬤' '│' '⬤';
-        //     ' ' '│' ' '
-        // );
-    }
-
-    pub mod gate {
-        use super::Block;
-
-        // const_block!(NL,
-        //     ' ' ' ' ' ';
-        //     ' ' ' ' ' ';
-        //     ' ' ' ' ' '
-        // );
-        // const_block!(FL,
-        //     '┌' '─' '┐';
-        //     '│' ' ' '│';
-        //     '└' '─' '┘'
-        // );
-        // const_block!(NW,
-        //     '┌' '─' '─';
-        //     '│' ' ' ' ';
-        //     '│' ' ' ' '
-        // );
-        // const_block!(N,
-        //     '─' '─' '─';
-        //     ' ' ' ' ' ';
-        //     ' ' ' ' ' '
-        // );
-        // const_block!(NN,
-        //     '┌' '─' '┐';
-        //     '│' ' ' '│';
-        //     '│' ' ' '│'
-        // );
-        // const_block!(NE,
-        //     '─' '─' '┐';
-        //     ' ' ' ' '│';
-        //     ' ' ' ' '│'
-        // );
-        // const_block!(E,
-        //     ' ' ' ' '│';
-        //     ' ' ' ' '│';
-        //     ' ' ' ' '│'
-        // );
-        // const_block!(EE,
-        //     '─' '─' '┐';
-        //     ' ' ' ' '│';
-        //     '─' '─' '┘'
-        // );
-        // const_block!(SE,
-        //     ' ' ' ' '│';
-        //     ' ' ' ' '│';
-        //     '─' '─' '┘'
-        // );
-        // const_block!(S,
-        //     ' ' ' ' ' ';
-        //     ' ' ' ' ' ';
-        //     '─' '─' '─'
-        // );
-        // const_block!(SS,
-        //     '│' ' ' '│';
-        //     '│' ' ' '│';
-        //     '└' '─' '┘'
-        // );
-        // const_block!(SW,
-        //     '│' ' ' ' ';
-        //     '│' ' ' ' ';
-        //     '└' '─' '─'
-        // );
-        // const_block!(W,
-        //     '│' ' ' ' ';
-        //     '│' ' ' ' ';
-        //     '│' ' ' ' '
-        // );
-        // const_block!(WW,
-        //     '┌' '─' '─';
-        //     '│' ' ' ' ';
-        //     '└' '─' '─'
-        // );
-        // const_block!(WE,
-        //     '│' ' ' '│';
-        //     '│' ' ' '│';
-        //     '│' ' ' '│'
-        // );
-        // const_block!(SK,
-        //     ' ' ' ' ' ';
-        //     '⋮' ' ' '⋮';
-        //     ' ' ' ' ' '
-        // );
-    }
 }
+
 #[cfg(test)]
 mod tests {
-    use std::io::stdout;
+    use std::io::{Write, stdout};
 
-    use crate::debug_terminal::show_circuit::{Char, block::Connects};
+    use crate::debug_terminal::show_circuit::{Column, Primitive};
 
     #[test]
-    fn combine() {
-        println!(stdout(); "┌───┐");
-        println!(stdout(); "│ U │");
-        println!(stdout(); "└───┘");
-        // assert_eq!(
-        // <Char<'┌'> as Combine<Char<'│'>>>::CRESULT,
-        // <Char::<'├'> as Connects>::SELF
-        // );
+    fn rep_i() {
+        for bw in (5..16).step_by(2) {
+            assert_eq!(Primitive::rep_mid_i(bw, 0), 0);
+            assert_eq!(Primitive::rep_mid_i(bw, bw - 1), 2);
+            for i in 1..(bw - 1) {
+                assert_eq!(Primitive::rep_mid_i(bw, i), 1);
+            }
+
+            for i in 0..(bw / 2) {
+                assert_eq!(Primitive::rep_sides_i(bw, i), 0);
+            }
+            assert_eq!(Primitive::rep_sides_i(bw, bw / 2), 1);
+            for i in (bw / 2 + 1)..(bw) {
+                assert_eq!(Primitive::rep_sides_i(bw, i), 2);
+            }
+        }
+    }
+
+    #[test]
+    fn column() {
+        unsafe { std::env::set_var("RUST_BACKTRACE", "10") };
+        let w = &mut stdout();
+        let mut col = Column::init_with_gate(String::from("U"));
+        // let mut col = Column::init_with_track();
+        col.extend_with_gate();
+        col.extend_with_gate();
+        col.extend_with_track();
+        col.extend_with_track();
+        col.extend_with_gate();
+        col.extend_with_gate();
+        col.extend_with_gate();
+        // col.extend_with_gate();
+        col.extend_with_track();
+        for printme in col.into_iter() {
+            printme.queue_print(w).unwrap();
+            queue_print!(w; "\r\n").unwrap();
+        }
+        w.flush().unwrap();
     }
 }
