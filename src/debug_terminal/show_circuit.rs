@@ -76,6 +76,7 @@ type PrimitiveBlock = [[char; 3]; 3];
 pub enum TrackModifier {
     Ctrl,
     CtrlNot,
+    Swap
 }
 pub enum GateModifier {
     Ctrl,
@@ -110,6 +111,7 @@ impl Primitive {
             //'█',
             TrackModifier::Ctrl => *track.cc_mut() = '■',
             TrackModifier::CtrlNot => *track.cc_mut() = '□',
+            TrackModifier::Swap => *track.cc_mut() = '╳',
             // TrackModifier::CNOT => *track.cc_mut() = '⊕',
         };
         track
@@ -558,7 +560,7 @@ impl Column {
                 gate.get_target_bits(),
                 gate.get_control_bits(),
             ),
-            crate::gate::GateType::SWAP => todo!(),
+            crate::gate::GateType::SWAP => Self::from_swap_gate(nqubits, gate.get_target_bits(), gate.get_control_bits()),
         }
     }
 
@@ -610,6 +612,65 @@ impl Column {
             } else {
                 if (active_or(targets_north) && active_or(controls_south))
                     || (active_or(targets_south) && active_or(controls_north))
+                {
+                    column.extend_with_track();
+                } else {
+                    column.close_with_track();
+                }
+            }
+        }
+
+        column
+    }
+
+    pub fn from_swap_gate(
+        nqubits: usize,
+        targets: QBits,
+        controls: QBits,
+    ) -> Self {
+        let mut targets_north = 0usize;
+        let mut target = active1(targets.get_bitstring());
+        let mut targets_south = targets.get_bitstring() >> 1;
+        let mut controls_north = 0usize;
+        let mut control = active1(controls.get_bitstring());
+        let mut controls_south = controls.get_bitstring() >> 1;
+        let mut column;
+        if target {
+            column = Column::init_with_track_modifier(1, Some(TrackModifier::Swap));
+        } else if control {
+            column = Column::init_with_track_modifier(1, Some(TrackModifier::Ctrl));
+        } else {
+            column = Column::init_with_track(1);
+        }
+
+        for _ in 1..nqubits {
+            targets_north <<= 1;
+            targets_north |= target as usize;
+            target = active1(targets_south);
+            targets_south >>= 1;
+            controls_north <<= 1;
+            controls_north |= control as usize;
+            control = active1(controls_south);
+            controls_south >>= 1;
+
+            if target {
+                if active_or(targets_north) || active_or(controls_north) {
+                    column.extend_with_track_modifier(Some(TrackModifier::Swap));
+                } else {
+                    column.close_with_track_modifier(Some(TrackModifier::Swap));
+                }
+            } else if control {
+                if active_or(targets_north)
+                    || (active_or(controls_north) && active_or(targets_south))
+                {
+                    column.extend_with_track_modifier(Some(TrackModifier::Ctrl));
+                } else {
+                    column.close_with_track_modifier(Some(TrackModifier::Ctrl));
+                }
+            } else {
+                if (active_or(targets_north) && active_or(controls_south))
+                    || (active_or(targets_south) && active_or(controls_north))
+                    || (active_or(targets_north) && active_or(targets_south))
                 {
                     column.extend_with_track();
                 } else {
@@ -2071,10 +2132,9 @@ mod tests {
     #[test]
     #[allow(unreachable_code)]
     fn circuit() {
-        return;
         let w = &mut stdout();
 
-        let circuit = Circuit::new(7).hadamard(2).z(5).cnot(1, 3).x(6).y(2);
+        let circuit = Circuit::new(7).hadamard(2).z(5).cnot(1, 3).x(6).y(2).swap(3, 5).fredkin(2, 3, 4);
         let sim = DebugSimulator::build(circuit).unwrap();
         show_circuit(w, &sim).unwrap();
     }
