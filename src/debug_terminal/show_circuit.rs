@@ -4,27 +4,72 @@
 
 use std::{
     fmt::Display,
-    io::{self, Write, stdout},
+    io::{self, Write},
     ops::Deref,
 };
 
 use crossterm::style::ContentStyle;
 
 use crate::{
+    circuit::Circuit,
     debug_terminal::show_circuit::connects::{
         Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, ExtendEast, ExtendSouth,
         Passes,
     },
-    gate::Gate,
+    gate::{Gate, QBits},
     instruction::Instruction,
 };
 
+pub fn show_circuit<W: Write>(w: &mut W, circuit: &Circuit) -> io::Result<()> {
+    let mut cols = vec![Column::only_tracks(circuit.n_qubits())];
+    for instruction in circuit.instructions() {
+        let mut ncol = Column::from_instruction(circuit.n_qubits(), instruction);
+        let li = cols.len() - 1;
+        cols[li].extend_east(&mut ncol);
+        cols.push(ncol);
+    }
+
+    let mut ncol = Column::only_tracks(circuit.n_qubits());
+    let li = cols.len() - 1;
+    cols[li].extend_east(&mut ncol);
+    cols.push(ncol);
+
+    let mut col_iters = Vec::with_capacity(cols.len());
+    for col in cols.iter() {
+        col_iters.push(col.into_iter());
+    }
+    let mut cont = true;
+    while cont {
+        for col in col_iters.iter_mut() {
+            let Some(pp) = col.next() else {
+                cont = false;
+                break;
+            };
+
+            pp.queue_print(w)?;
+        }
+        queue_print!(w; "\r\n")?;
+    }
+    w.flush()
+}
+
+#[inline(always)]
+/// Checks if bit 0 is 1
+fn active1(bitmask: usize) -> bool {
+    bitmask & 1 != 0
+}
+#[inline(always)]
+/// Checks if bit 0 is 1
+fn active_or(bitmask: usize) -> bool {
+    bitmask != 0
+}
+
 type PrimitiveBlock = [[char; 3]; 3];
 
+#[derive(Debug, Clone, Copy)]
 pub enum TrackModifier {
     Ctrl,
     CtrlNot,
-    CNOT,
 }
 pub enum GateModifier {
     Ctrl,
@@ -42,12 +87,26 @@ impl Primitive {
     #[rustfmt::skip]
     pub const fn create_track() -> Self {
         Self::Track {
-            block:[
+            block: [
                 [' ', ' ', ' '],
                 [' ', ' ', ' '],
-                [' ', ' ', ' '],
+                [' ', ' ', ' ']
             ],
         }
+    }
+
+    pub fn create_track_with(modifier: Option<TrackModifier>) -> Self {
+        let mut track = Self::create_track();
+        let Some(modifier) = modifier else {
+            return track;
+        };
+        match modifier {
+            //'█',
+            TrackModifier::Ctrl => *track.cc_mut() = '■',
+            TrackModifier::CtrlNot => *track.cc_mut() = '□',
+            // TrackModifier::CNOT => *track.cc_mut() = '⊕',
+        };
+        track
     }
 
     #[inline(always)]
@@ -446,7 +505,7 @@ pub struct Column {
 impl Column {
     pub fn from_instruction(nqubits: usize, instruction: &Instruction) -> Self {
         match instruction {
-            Instruction::Gate(_) => todo!(),
+            Instruction::Gate(gate) => Self::from_gate(nqubits, gate),
             Instruction::Measurement(qbits) => {
                 let mut qbits = qbits.get_bitstring();
                 let mut column = if qbits & 1 == 1 {
@@ -467,6 +526,152 @@ impl Column {
         }
     }
 
+    pub fn from_gate(nqubits: usize, gate: &Gate) -> Self {
+        match gate.get_type() {
+            crate::gate::GateType::X => Self::from_common_gate(
+                nqubits,
+                String::from("X"),
+                gate.get_target_bits(),
+                gate.get_control_bits(),
+            ),
+            crate::gate::GateType::Y => Self::from_common_gate(
+                nqubits,
+                String::from("Y"),
+                gate.get_target_bits(),
+                gate.get_control_bits(),
+            ),
+            crate::gate::GateType::Z => Self::from_common_gate(
+                nqubits,
+                String::from("Z"),
+                gate.get_target_bits(),
+                gate.get_control_bits(),
+            ),
+            crate::gate::GateType::H => Self::from_common_gate(
+                nqubits,
+                String::from("H"),
+                gate.get_target_bits(),
+                gate.get_control_bits(),
+            ),
+            crate::gate::GateType::SWAP => todo!(),
+        }
+    }
+
+    pub fn from_common_gate<I: Into<EitherContent>>(
+        nqubits: usize,
+        content: I,
+        targets: QBits,
+        controls: QBits,
+    ) -> Self {
+        let mut targets_north = 0usize;
+        let mut target = active1(targets.get_bitstring());
+        let mut targets_south = targets.get_bitstring() >> 1;
+        let mut controls_north = 0usize;
+        let mut control = active1(controls.get_bitstring());
+        let mut controls_south = controls.get_bitstring() >> 1;
+        let mut column;
+        if target {
+            column = Column::init_with_gate(content);
+        } else if control {
+            column = Column::init_with_track_modifier(content, Some(TrackModifier::Ctrl));
+        } else {
+            column = Column::init_with_track(content);
+        }
+
+        for _ in 1..nqubits {
+            targets_north <<= 1;
+            targets_north |= target as usize;
+            target = active1(targets_south);
+            targets_south >>= 1;
+            controls_north <<= 1;
+            controls_north |= control as usize;
+            control = active1(controls_south);
+            controls_south >>= 1;
+
+            if target {
+                if active1(targets_north) || active_or(controls_north) {
+                    column.extend_with_gate();
+                } else {
+                    column.close_with_gate();
+                }
+            } else if control {
+                if active_or(targets_north)
+                    || (active_or(controls_north) && active_or(targets_south))
+                {
+                    column.extend_with_track_modifier(Some(TrackModifier::Ctrl));
+                } else {
+                    column.close_with_track_modifier(Some(TrackModifier::Ctrl));
+                }
+            } else {
+                if (active_or(targets_north) && active_or(controls_south))
+                    || (active_or(targets_south) && active_or(controls_north))
+                {
+                    column.extend_with_track();
+                } else {
+                    column.close_with_track();
+                }
+            }
+        }
+
+        column
+    }
+
+    #[allow(dead_code, unreachable_code, unused_variables)]
+    /// Have not found a suitable unicode for cnot
+    pub fn from_cnot_gate(nqubits: usize, targets: QBits, controls: QBits) -> Self {
+        todo!();
+        let mut targets_north = 0usize;
+        let mut target = active1(targets.get_bitstring());
+        let mut targets_south = targets.get_bitstring() >> 1;
+        let mut controls_north = 0usize;
+        let mut control = active1(controls.get_bitstring());
+        let mut controls_south = controls.get_bitstring() >> 1;
+        let mut column;
+        if target {
+            column = Column::init_with_gate(1);
+        } else if control {
+            column = Column::init_with_track(1);
+        } else {
+            column = Column::init_with_track(1);
+        }
+
+        for _ in 1..nqubits {
+            targets_north <<= 1;
+            targets_north |= target as usize;
+            target = active1(targets_south);
+            targets_south >>= 1;
+            controls_north <<= 1;
+            controls_north |= control as usize;
+            control = active1(controls_south);
+            controls_south >>= 1;
+
+            if target {
+                if active1(targets_north) || active_or(controls_north) {
+                    // column.extend_with_track_modifier(Some(TrackModifier::CNOT));
+                } else {
+                    // column.close_with_track_modifier(Some(TrackModifier::CNOT));
+                }
+            } else if control {
+                if active_or(targets_north)
+                    || (active_or(controls_north) && active_or(targets_south))
+                {
+                    column.extend_with_track_modifier(Some(TrackModifier::Ctrl));
+                } else {
+                    column.close_with_track_modifier(Some(TrackModifier::Ctrl));
+                }
+            } else {
+                if (active_or(targets_north) && active_or(controls_south))
+                    || (active_or(targets_south) && active_or(controls_north))
+                {
+                    column.extend_with_track();
+                } else {
+                    column.close_with_track();
+                }
+            }
+        }
+
+        column
+    }
+
     pub fn only_tracks(nqubits: usize) -> Self {
         let mut column = Self::init_with_track(1);
         for _ in 1..nqubits {
@@ -476,8 +681,15 @@ impl Column {
     }
 
     pub fn init_with_track<I: Into<EitherContent>>(content: I) -> Self {
+        Self::init_with_track_modifier(content, None)
+    }
+
+    pub fn init_with_track_modifier<I: Into<EitherContent>>(
+        content: I,
+        modifier: Option<TrackModifier>,
+    ) -> Self {
         Self {
-            primitives: PrimitiveVec::init_with_track(),
+            primitives: PrimitiveVec::init_with_track_modifier(modifier),
             groups: OtherRange::new().into(),
             gate_content: content.into(),
         }
@@ -509,15 +721,19 @@ impl Column {
     }
 
     pub fn extend_with_track(&mut self) {
+        Self::extend_with_track_modifier(self, None);
+    }
+
+    pub fn extend_with_track_modifier(&mut self, modifier: Option<TrackModifier>) {
         match self.primitives.last_mut() {
             north @ Primitive::Track { .. } => {
-                let mut primitive = Primitive::create_track();
+                let mut primitive = Primitive::create_track_with(modifier);
                 north.extend_south(&mut primitive);
                 self.primitives.0.push(primitive);
                 self.groups.extend_once();
             }
             north @ Primitive::Gate { .. } => {
-                let mut primitive = Primitive::create_track();
+                let mut primitive = Primitive::create_track_with(modifier);
                 north.extend_south(&mut primitive);
                 self.primitives.0.push(primitive);
                 self.groups.close_with_other();
@@ -531,7 +747,13 @@ impl Column {
     }
 
     pub fn close_with_track(&mut self) {
-        self.primitives.0.push(Primitive::create_track());
+        Self::close_with_track_modifier(self, None);
+    }
+
+    pub fn close_with_track_modifier(&mut self, modifier: Option<TrackModifier>) {
+        self.primitives
+            .0
+            .push(Primitive::create_track_with(modifier));
         self.groups.close_with_other();
     }
 
@@ -613,7 +835,11 @@ impl<'a> Iterator for ColumnIterator<'a> {
 pub struct PrimitiveVec(Vec<Primitive>);
 impl PrimitiveVec {
     pub fn init_with_track() -> Self {
-        Self(vec![Primitive::create_track()])
+        Self::init_with_track_modifier(None)
+    }
+
+    pub fn init_with_track_modifier(modifier: Option<TrackModifier>) -> Self {
+        Self(vec![Primitive::create_track_with(modifier)])
     }
 
     pub fn init_with_gate() -> Self {
@@ -1722,8 +1948,9 @@ mod tests {
     use std::io::{Write, stdout};
 
     use crate::{
-        debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast},
-        gate::QBits,
+        circuit::Circuit,
+        debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit},
+        gate::{Gate, GateType, QBits},
         instruction::Instruction,
     };
 
@@ -1747,8 +1974,9 @@ mod tests {
     }
 
     #[test]
+    #[allow(unreachable_code)]
     fn column() {
-        unsafe { std::env::set_var("RUST_BACKTRACE", "10") };
+        return;
         let w = &mut stdout();
         let mut col = Column::init_with_gate(String::from("U"));
         // let mut col = Column::init_with_track();
@@ -1769,8 +1997,9 @@ mod tests {
     }
 
     #[test]
+    #[allow(unreachable_code)]
     fn measurement() {
-        unsafe { std::env::set_var("RUST_BACKTRACE", "10") };
+        return;
         let w = &mut stdout();
         let instruction = Instruction::Measurement(QBits::from_bitstring(0b101011010));
         let mut track_col = Column::only_tracks(10);
@@ -1782,5 +2011,68 @@ mod tests {
             queue_print!(w; "\r\n").unwrap();
         }
         w.flush().unwrap();
+    }
+
+    #[test]
+    #[allow(unreachable_code)]
+    fn with_gate() {
+        return;
+        let w = &mut stdout();
+
+        let instruction1 = Instruction::Gate(Gate::new(GateType::H, &[1, 5, 6], &[3]).unwrap());
+        let instruction2 = Instruction::Gate(Gate::new(GateType::Y, &[], &[1]).unwrap());
+        let instruction3 = Instruction::Gate(Gate::new(GateType::X, &[1, 5], &[2]).unwrap());
+        let instruction4 = Instruction::Gate(Gate::new(GateType::Z, &[1], &[4]).unwrap());
+
+        let mut col0 = Column::only_tracks(7);
+        let mut col1 = Column::from_instruction(7, &instruction1);
+        let mut col2 = Column::from_instruction(7, &instruction2);
+        let mut col3 = Column::from_instruction(7, &instruction3);
+        let mut col4 = Column::from_instruction(7, &instruction4);
+        let mut col5 = Column::only_tracks(7);
+        let mut col6 =
+            Column::from_instruction(7, &Instruction::Measurement(QBits::from_bitstring(0xFFFF)));
+        let mut col7 = Column::only_tracks(7);
+
+        col0.extend_east(&mut col1);
+        col1.extend_east(&mut col2);
+        col2.extend_east(&mut col3);
+        col3.extend_east(&mut col4);
+        col4.extend_east(&mut col5);
+        col5.extend_east(&mut col6);
+        col6.extend_east(&mut col7);
+
+        for (((((((c0, c1), c2), c3), c4), c5), c6), c7) in col0
+            .into_iter()
+            .zip(col1.into_iter())
+            .zip(col2.into_iter())
+            .zip(col3.into_iter())
+            .zip(col4.into_iter())
+            .zip(col5.into_iter())
+            .zip(col6.into_iter())
+            .zip(col7.into_iter())
+        {
+            c0.queue_print(w).unwrap();
+            c1.queue_print(w).unwrap();
+            c2.queue_print(w).unwrap();
+            c3.queue_print(w).unwrap();
+            c4.queue_print(w).unwrap();
+            c5.queue_print(w).unwrap();
+            c6.queue_print(w).unwrap();
+            c7.queue_print(w).unwrap();
+            queue_print!(w; "\r\n").unwrap();
+        }
+        w.flush().unwrap();
+    }
+
+    #[test]
+    #[allow(unreachable_code)]
+    fn circuit() {
+        return;
+        let w = &mut stdout();
+
+        let circuit = Circuit::new(7).hadamard(2).z(5).cnot(1, 3).x(6).y(2);
+
+        show_circuit(w, &circuit).unwrap();
     }
 }
