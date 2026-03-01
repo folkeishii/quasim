@@ -11,7 +11,7 @@ use std::{
 use crossterm::style::ContentStyle;
 
 use crate::debug_terminal::show_circuit::connects::{
-    Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, Passes,
+    Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, ExtendEast, ExtendSouth, Passes,
 };
 
 type PrimitiveBlock = [[char; 3]; 3];
@@ -291,17 +291,37 @@ impl Primitive {
     const fn se_mut(&mut self) -> &mut char {
         &mut self.const_deref_mut()[2][2]
     }
+    #[inline(always)]
+    const fn block(&self) -> &PrimitiveBlock {
+        match self {
+            Primitive::Track { block, .. } | Primitive::Gate { block, .. } => block,
+        }
+    }
+    #[inline(always)]
+    const fn block_mut(&mut self) -> &mut PrimitiveBlock {
+        match self {
+            Primitive::Track { block, .. } | Primitive::Gate { block, .. } => block,
+        }
+    }
 }
 impl ConnectNorth for Primitive {
     fn connect_north(&mut self) {
         match self {
             Primitive::Track { .. } => {
-                self.nn_mut().pass_vertical();
+                self.nn_mut().connect_south();
                 self.cc_mut().connect_north();
             }
-            Primitive::Gate { .. } => {
-                self.nn_mut().connect_north();
+            Primitive::Gate { .. } => {}
+        }
+    }
+
+    fn clear_north(&mut self) {
+        match self {
+            Primitive::Track { .. } => {
+                self.nn_mut().clear_south();
+                self.cc_mut().clear_north();
             }
+            Primitive::Gate { .. } => {}
         }
     }
 }
@@ -309,12 +329,20 @@ impl ConnectEast for Primitive {
     fn connect_east(&mut self) {
         match self {
             Primitive::Track { .. } => {
-                self.nn_mut().pass_horizontal();
+                self.ee_mut().connect_west();
                 self.cc_mut().connect_east();
             }
-            Primitive::Gate { .. } => {
-                self.nn_mut().connect_east();
+            Primitive::Gate { .. } => {}
+        }
+    }
+
+    fn clear_east(&mut self) {
+        match self {
+            Primitive::Track { .. } => {
+                self.ee_mut().clear_west();
+                self.cc_mut().clear_east();
             }
+            Primitive::Gate { .. } => {}
         }
     }
 }
@@ -322,12 +350,20 @@ impl ConnectSouth for Primitive {
     fn connect_south(&mut self) {
         match self {
             Primitive::Track { .. } => {
-                self.nn_mut().pass_vertical();
+                self.ss_mut().connect_north();
                 self.cc_mut().connect_south();
             }
-            Primitive::Gate { .. } => {
-                self.nn_mut().connect_south();
+            Primitive::Gate { .. } => {}
+        }
+    }
+
+    fn clear_south(&mut self) {
+        match self {
+            Primitive::Track { .. } => {
+                self.ss_mut().clear_north();
+                self.cc_mut().clear_south();
             }
+            Primitive::Gate { .. } => {}
         }
     }
 }
@@ -335,11 +371,47 @@ impl ConnectWest for Primitive {
     fn connect_west(&mut self) {
         match self {
             Primitive::Track { .. } => {
-                self.nn_mut().pass_horizontal();
+                self.ww_mut().connect_east();
                 self.cc_mut().connect_west();
             }
-            Primitive::Gate { .. } => {
-                self.nn_mut().connect_west();
+            Primitive::Gate { .. } => {}
+        }
+    }
+
+    fn clear_west(&mut self) {
+        match self {
+            Primitive::Track { .. } => {
+                self.ww_mut().clear_east();
+                self.cc_mut().clear_west();
+            }
+            Primitive::Gate { .. } => {}
+        }
+    }
+}
+impl ExtendSouth for Primitive {
+    fn extend_south(&mut self, sth: &mut Self) {
+        match (self, sth) {
+            (north @ Primitive::Gate { .. }, south @ Primitive::Gate { .. }) => {
+                north.sw_mut().clear_horizontal();
+                north.ss_mut().clear_horizontal();
+                north.se_mut().clear_horizontal();
+                south.nw_mut().clear_horizontal();
+                south.nn_mut().clear_horizontal();
+                south.ne_mut().clear_horizontal();
+            }
+            (north, south) => {
+                north.connect_south();
+                south.connect_north();
+            }
+        }
+    }
+}
+impl ExtendEast for Primitive {
+    fn extend_east(&mut self, est: &mut Self) {
+        match (self, est) {
+            (west, east) => {
+                west.connect_east();
+                east.connect_west();
             }
         }
     }
@@ -388,11 +460,11 @@ pub struct Column {
     gate_content: EitherContent,
 }
 impl Column {
-    pub fn init_with_track() -> Self {
+    pub fn init_with_track<I: Into<EitherContent>>(content: I) -> Self {
         Self {
             primitives: PrimitiveVec::init_with_track(),
             groups: OtherRange::new().into(),
-            gate_content: EitherContent::Width(1),
+            gate_content: content.into(),
         }
     }
 
@@ -405,26 +477,34 @@ impl Column {
     }
 
     pub fn extend_with_gate(&mut self) {
-        match self.primitives.last() {
-            Primitive::Track { .. } => {
-                self.primitives.0.push(Primitive::create_gate());
+        match self.primitives.last_mut() {
+            north @ Primitive::Track { .. } => {
+                let mut primitive = Primitive::create_gate();
+                north.extend_south(&mut primitive);
+                self.primitives.0.push(primitive);
                 self.groups.close_with_gate();
             }
-            Primitive::Gate { .. } => {
-                self.primitives.0.push(Primitive::create_gate());
+            north @ Primitive::Gate { .. } => {
+                let mut primitive = Primitive::create_gate();
+                north.extend_south(&mut primitive);
+                self.primitives.0.push(primitive);
                 self.groups.extend_once();
             }
         }
     }
 
     pub fn extend_with_track(&mut self) {
-        match self.primitives.last() {
-            Primitive::Track { .. } => {
-                self.primitives.0.push(Primitive::create_track());
+        match self.primitives.last_mut() {
+            north @ Primitive::Track { .. } => {
+                let mut primitive = Primitive::create_track();
+                north.extend_south(&mut primitive);
+                self.primitives.0.push(primitive);
                 self.groups.extend_once();
             }
-            Primitive::Gate { .. } => {
-                self.primitives.0.push(Primitive::create_track());
+            north @ Primitive::Gate { .. } => {
+                let mut primitive = Primitive::create_track();
+                north.extend_south(&mut primitive);
+                self.primitives.0.push(primitive);
                 self.groups.close_with_other();
             }
         }
@@ -1205,6 +1285,7 @@ impl<P: Printable> Printable for Styled<P> {
 mod connects {
     pub trait ConnectNorth {
         fn connect_north(&mut self);
+        fn clear_north(&mut self);
         fn connected_north(self) -> Self
         where
             Self: Sized,
@@ -1213,9 +1294,18 @@ mod connects {
             s.connect_north();
             s
         }
+        fn cleared_north(self) -> Self
+        where
+            Self: Sized,
+        {
+            let mut s = self;
+            s.clear_north();
+            s
+        }
     }
     pub trait ConnectEast {
         fn connect_east(&mut self);
+        fn clear_east(&mut self);
         fn connected_east(self) -> Self
         where
             Self: Sized,
@@ -1224,9 +1314,18 @@ mod connects {
             s.connect_east();
             s
         }
+        fn cleared_east(self) -> Self
+        where
+            Self: Sized,
+        {
+            let mut s = self;
+            s.clear_east();
+            s
+        }
     }
     pub trait ConnectSouth {
         fn connect_south(&mut self);
+        fn clear_south(&mut self);
         fn connected_south(self) -> Self
         where
             Self: Sized,
@@ -1235,15 +1334,32 @@ mod connects {
             s.connect_south();
             s
         }
+        fn cleared_south(self) -> Self
+        where
+            Self: Sized,
+        {
+            let mut s = self;
+            s.clear_south();
+            s
+        }
     }
     pub trait ConnectWest {
         fn connect_west(&mut self);
+        fn clear_west(&mut self);
         fn connected_west(self) -> Self
         where
             Self: Sized,
         {
             let mut s = self;
             s.connect_west();
+            s
+        }
+        fn cleared_west(self) -> Self
+        where
+            Self: Sized,
+        {
+            let mut s = self;
+            s.clear_west();
             s
         }
     }
@@ -1257,6 +1373,16 @@ mod connects {
             s.pass_horizontal();
             s
         }
+        fn clear_horizontal(&mut self);
+        fn cleared_horizontal(self) -> Self
+        where
+            Self: Sized,
+        {
+            let mut s = self;
+            s.clear_horizontal();
+            s
+        }
+
         fn pass_vertical(&mut self);
         fn passed_vertical(self) -> Self
         where
@@ -1264,6 +1390,15 @@ mod connects {
         {
             let mut s = self;
             s.pass_vertical();
+            s
+        }
+        fn clear_vertical(&mut self);
+        fn cleared_vertical(self) -> Self
+        where
+            Self: Sized,
+        {
+            let mut s = self;
+            s.clear_vertical();
             s
         }
     }
@@ -1275,6 +1410,14 @@ mod connects {
         fn pass_vertical(&mut self) {
             self.connect_north();
             self.connect_south();
+        }
+        fn clear_horizontal(&mut self) {
+            self.clear_east();
+            self.clear_west();
+        }
+        fn clear_vertical(&mut self) {
+            self.clear_north();
+            self.clear_south();
         }
     }
     pub trait Connects: ConnectNorth + ConnectEast + ConnectSouth + ConnectWest + Passes {}
@@ -1321,10 +1464,24 @@ mod connects {
         }
     }
 
+    pub trait ExtendEast<Est = Self> {
+        fn extend_east(&mut self, est: &mut Est);
+    }
+    pub trait ExtendSouth<Sth = Self> {
+        fn extend_south(&mut self, sth: &mut Sth);
+    }
+    pub trait Extends<Nth: ExtendSouth<Self>, Wst: ExtendEast<Self>>: Sized {
+        fn extend_from(&mut self, nth: &mut Nth, wst: &mut Wst) {
+            nth.extend_south(self);
+            wst.extend_east(self);
+        }
+    }
+    impl<T, N: ExtendSouth<T>, W: ExtendEast<T>> Extends<N, W> for T {}
+
     impl ConnectNorth for char {
         #[inline(always)]
         fn connect_north(&mut self) {
-            *self = match self {
+            *self = match *self {
                 ' ' => '╵',
                 '╵' => '╵',
                 '╶' => '└',
@@ -1341,14 +1498,28 @@ mod connects {
                 '┤' => '┤',
                 '┬' => '┼',
                 '┼' => '┼',
-                _ => panic!("Cannot connect {} north", self),
+                c => c,
+            }
+        }
+        #[inline(always)]
+        fn clear_north(&mut self) {
+            *self = match *self {
+                '╵' => ' ',
+                '└' => '╶',
+                '│' => '╷',
+                '┘' => '╴',
+                '├' => '┌',
+                '┴' => '─',
+                '┤' => '┐',
+                '┼' => '┬',
+                c => c,
             }
         }
     }
     impl ConnectEast for char {
         #[inline(always)]
         fn connect_east(&mut self) {
-            *self = match self {
+            *self = match *self {
                 ' ' => '╶',
                 '╵' => '└',
                 '╶' => '╶',
@@ -1365,14 +1536,28 @@ mod connects {
                 '┤' => '┼',
                 '┬' => '┬',
                 '┼' => '┼',
-                _ => panic!("Cannot connect {} east", self),
+                c => c,
+            }
+        }
+        #[inline(always)]
+        fn clear_east(&mut self) {
+            *self = match *self {
+                '╶' => ' ',
+                '└' => '╵',
+                '┌' => '╷',
+                '─' => '╴',
+                '├' => '│',
+                '┴' => '┘',
+                '┬' => '┐',
+                '┼' => '┤',
+                c => c,
             }
         }
     }
     impl ConnectSouth for char {
         #[inline(always)]
         fn connect_south(&mut self) {
-            *self = match self {
+            *self = match *self {
                 ' ' => '╷',
                 '╵' => '│',
                 '╶' => '┌',
@@ -1389,14 +1574,28 @@ mod connects {
                 '┤' => '┤',
                 '┬' => '┬',
                 '┼' => '┼',
-                _ => panic!("Cannot connect {} south", self),
+                c => c,
+            }
+        }
+        #[inline(always)]
+        fn clear_south(&mut self) {
+            *self = match *self {
+                '╷' => ' ',
+                '│' => '╵',
+                '┌' => '╶',
+                '┐' => '╴',
+                '├' => '└',
+                '┤' => '┘',
+                '┬' => '─',
+                '┼' => '┴',
+                c => c,
             }
         }
     }
     impl ConnectWest for char {
         #[inline(always)]
         fn connect_west(&mut self) {
-            *self = match self {
+            *self = match *self {
                 ' ' => '╴',
                 '╵' => '┘',
                 '╶' => '─',
@@ -1413,8 +1612,22 @@ mod connects {
                 '┤' => '┤',
                 '┬' => '┬',
                 '┼' => '┼',
-                _ => panic!("Cannot connect {} west", self),
-            };
+                c => c,
+            }
+        }
+        #[inline(always)]
+        fn clear_west(&mut self) {
+            *self = match *self {
+                '╴' => ' ',
+                '┘' => '╵',
+                '─' => '╶',
+                '┐' => '╷',
+                '┴' => '└',
+                '┤' => '│',
+                '┬' => '┌',
+                '┼' => '├',
+                c => c,
+            }
         }
     }
     impl HasDirection for char {
