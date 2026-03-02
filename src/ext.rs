@@ -101,6 +101,7 @@ pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
         GateType::H => &Gate::HADAMARD_DATA,
         GateType::SWAP => &Gate::SWAP_DATA,
         GateType::U(theta, phi, lambda) => &u(theta, phi, lambda),
+        GateType::S => &Gate::PHASE_S_DATA,
     };
 
     let dim = 1 << gate.get_type().arity();

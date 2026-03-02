@@ -10,6 +10,7 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::ext::collapse;
+use crate::simulator::StoredCircuitSimulator;
 use crate::{
     circuit::Circuit,
     debug_simulator::DebugSimulator,
@@ -17,23 +18,26 @@ use crate::{
         breakpoint::{BreakpointList, PEBreakpoint},
         parse::into_tokens,
     },
-    simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
+    simulator::{BuildSimulator, DoubleEndedSimulator},
 };
 use std::io::{self, Write};
 use std::ops::Div;
 
-pub struct DebugTerminal {
-    simulator: DebugSimulator,
+pub struct DebugTerminal<S = DebugSimulator> {
+    simulator: S,
     /// Sorted array of breakpoints
     /// i.e. Breakpoints are in order
     /// of gate index
     breakpoints: BreakpointList,
 }
 
-impl DebugTerminal {
-    pub fn new(circuit: Circuit) -> Result<Self, <DebugSimulator as BuildSimulator>::E> {
+impl<S> DebugTerminal<S>
+where
+    S: BuildSimulator + DoubleEndedSimulator + StoredCircuitSimulator,
+{
+    pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E> {
         Ok(Self {
-            simulator: DebugSimulator::build(circuit)?,
+            simulator: S::build(circuit)?,
             breakpoints: Default::default(),
         })
     }
@@ -44,7 +48,11 @@ impl DebugTerminal {
         let mut input_buffer = String::default();
 
         loop {
-            print!(stdout; "qdb> ")?;
+            let current_step = match self.simulator.current_instruction() {
+                None => "end".to_string(),
+                Some((step, _)) => step.to_string(),
+            };
+            print!(stdout; "[{}] qdb> ", current_step)?;
             input_buffer.clear();
             stdin.read_line(&mut input_buffer)?;
             if input_buffer.ends_with('\n') {
@@ -135,8 +143,7 @@ impl DebugTerminal {
             }
             ContinueArgs::SkipBreaks(n) => {
                 let mut breakpoints_skipped = 0;
-                let mut skipped_index = 0;
-                for _breaks in 0..*n {
+                loop {
                     let next_break = self
                         .breakpoints
                         .iter()
@@ -179,19 +186,23 @@ impl DebugTerminal {
                             continue;
                         };
 
+                        // If we have skipped the desired amount of breakpoints
+                        if breakpoints_skipped == *n {
+                            println!(
+                                stdout;
+                                "Skipped {} breakpoints, continued to index {}",
+                                breakpoints_skipped, instruction_index
+                            )?;
+                            return Ok(());
+                        }
+
                         if instruction_index == next_break {
                             breakpoints_skipped += 1;
-                            skipped_index = next_break;
                             break;
                         }
                     }
                     self.simulator.next();
                 }
-                println!(
-                    stdout;
-                    "Skipped {} breakpoints, continued to index {}",
-                    breakpoints_skipped, skipped_index
-                )?;
             }
             ContinueArgs::IgnoreBreak => loop {
                 if self.simulator.next().is_none() {
@@ -201,8 +212,6 @@ impl DebugTerminal {
                 self.simulator.next();
             },
         }
-
-        Ok(())
     }
 
     fn handle_next<W: Write>(&mut self, stdout: &mut W, next_args: &NextArgs) -> io::Result<()> {
@@ -248,7 +257,7 @@ impl DebugTerminal {
         };
 
         // Check that all indices are actual gates
-        let gate_range = 0..self.simulator.instruction_count();
+        let gate_range = 0..self.simulator.circuit().instructions().len();
         for gate_index in gate_indices {
             if !gate_range.contains(gate_index) {
                 errorln!(

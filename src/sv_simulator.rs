@@ -9,7 +9,7 @@ use crate::{
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::{DebuggableSimulator, RunnableSimulator},
+    simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
 };
 
 pub struct SVExecutor<'a> {
@@ -185,6 +185,12 @@ impl<'a> SVExecutor<'a> {
     }
 }
 
+impl<'a> StoredCircuitSimulator for SVExecutor<'a> {
+    fn circuit(&self) -> &Circuit {
+        &self.circuit
+    }
+}
+
 pub struct SVSimulator {
     circuit: Circuit,
 }
@@ -247,6 +253,12 @@ impl<'a> DebuggableSimulator for SVSimulatorDebugger<'a> {
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
         &self.executor.state_vector
+    }
+}
+
+impl StoredCircuitSimulator for SVSimulator {
+    fn circuit(&self) -> &Circuit {
+        &self.circuit
     }
 }
 
