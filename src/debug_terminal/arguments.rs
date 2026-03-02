@@ -299,7 +299,7 @@ impl CollapseArgs {
 
 #[derive(Debug, Clone, Copy)]
 pub enum ShowArgs {
-    Circuit
+    Circuit,
 }
 impl ShowArgs {
     pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
@@ -316,8 +316,7 @@ impl ShowArgs {
 
         match arg {
             "circuit" => Ok(ShowArgs::Circuit),
-            arg => Err(ParseError::UnexpectedArgument(arg.into()))
+            arg => Err(ParseError::UnexpectedArgument(arg.into())),
         }
-
     }
 }

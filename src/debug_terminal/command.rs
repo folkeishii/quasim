@@ -1,7 +1,9 @@
 use std::fmt::Display;
 
 use crate::debug_terminal::{
-    BreakArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs, ShowArgs, StateArgs, parse::{ParseError, ParseResult, Token, TokenIterator}
+    BreakArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs,
+    ShowArgs, StateArgs,
+    parse::{ParseError, ParseResult, Token, TokenIterator},
 };
 
 #[derive(Debug, Clone)]
