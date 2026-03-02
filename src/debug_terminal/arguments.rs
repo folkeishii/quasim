@@ -296,3 +296,27 @@ impl CollapseArgs {
         Ok(CollapseArgs::Count(parse_usize!(arg)?))
     }
 }
+
+#[derive(Debug, Clone, Copy)]
+pub enum ShowArgs {
+    Circuit,
+}
+impl ShowArgs {
+    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
+        let mut tokens = tokens;
+        let arg = if let Some(token) = tokens.next() {
+            token
+        } else {
+            return Ok(ShowArgs::Circuit);
+        };
+
+        if let Some(token) = tokens.next() {
+            return Err(ParseError::UnexpectedArgument(token.into()));
+        }
+
+        match arg {
+            "circuit" => Ok(ShowArgs::Circuit),
+            arg => Err(ParseError::UnexpectedArgument(arg.into())),
+        }
+    }
+}

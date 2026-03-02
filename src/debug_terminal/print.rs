@@ -91,3 +91,8 @@ macro_rules! errorln {
         error!($w; $($arg1 $(=> $arg2)? $(, $disp)*);+; "\r\n")
     };
 }
+macro_rules! queue_print {
+    ($w:expr; $($arg1:expr $(=> $arg2:expr)? $(, $disp:expr)*);+) => {
+        crossterm::queue!($w, $(print_args!($arg1 $(=> $arg2)? $(, $disp)*)),+)
+    };
+}
