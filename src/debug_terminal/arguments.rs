@@ -307,7 +307,7 @@ impl ShowArgs {
         let arg = if let Some(token) = tokens.next() {
             token
         } else {
-            return Err(ParseError::ExpectedArgument("Nothing".into()));
+            return Ok(ShowArgs::Circuit);
         };
 
         if let Some(token) = tokens.next() {

@@ -101,6 +101,7 @@ pub enum Command {
     /// Show specified object in terminal
     ///
     /// Usage:
+    /// show            # Short-hand for show circuit
     /// show circuit    # Draws the current circuit
     Show(ShowArgs),
 }
