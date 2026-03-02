@@ -4,7 +4,14 @@ use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::{
-    cart, circuit::Circuit, expr_dsl::{Expr, Value}, ext::get_gate_matrix, gate::{Gate, QBits}, instruction::Instruction, register_file::RegisterFile, simulator::{DebuggableSimulator, RunnableSimulator}
+    cart,
+    circuit::Circuit,
+    expr_dsl::{Expr, Value},
+    ext::get_gate_matrix,
+    gate::{Gate, QBits},
+    instruction::Instruction,
+    register_file::RegisterFile,
+    simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
 };
 
 pub struct SVExecutor<'a> {
@@ -142,8 +149,6 @@ impl<'a> SVExecutor<'a> {
             .sum::<f64>()
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
-
-        self.pc += 1;
     }
 
     fn jump(&mut self, pc: usize) {
@@ -151,18 +156,24 @@ impl<'a> SVExecutor<'a> {
     }
 
     fn jump_if(&mut self, expr: &Expr, pc: usize) {
-        if let Value::Bool(b) = expr.eval(&self.registers) {
-            if b {
-                self.pc = pc;
-                return
+        match expr.eval(&self.registers) {
+            Ok(Value::Bool(b)) => {
+                if b {
+                    self.pc = pc
+                }
             }
+            Err(err) => panic!("{}", err),
+            _ => panic!(
+                "Expression was expected to evaluate to boolean type but got something else."
+            ),
         }
-        self.pc += 1;
     }
 
     fn assign(&mut self, expr: &Expr, reg: &str) {
-        self.registers[reg] = expr.eval(&self.registers);
-        self.pc += 1;
+        match expr.eval(&self.registers) {
+            Ok(value) => self.registers[reg] = value,
+            Err(err) => panic!("{}", err),
+        }
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
@@ -173,6 +184,12 @@ impl<'a> SVExecutor<'a> {
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
         }
+    }
+}
+
+impl<'a> StoredCircuitSimulator for SVExecutor<'a> {
+    fn circuit(&self) -> &Circuit {
+        &self.circuit
     }
 }
 
@@ -241,12 +258,23 @@ impl<'a> DebuggableSimulator for SVSimulatorDebugger<'a> {
     }
 }
 
+impl StoredCircuitSimulator for SVSimulator {
+    fn circuit(&self) -> &Circuit {
+        &self.circuit
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SVError {}
 
 #[cfg(test)]
 mod tests {
-    use crate::{circuit::Circuit, expr_dsl::expr_helpers::r, simulator::{BuildSimulator, RunnableSimulator}, sv_simulator::SVSimulator};
+    use crate::{
+        circuit::Circuit,
+        expr_dsl::expr_helpers::r,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
+    };
 
     #[test]
     fn test() {
@@ -260,29 +288,22 @@ mod tests {
             .hadamard(1)
             .hadamard(2)
             .hadamard(3)
-        
             .measure_bit(0, "r0")
             .measure_bit(1, "r1")
             .measure_bit(2, "r2")
             .measure_bit(3, "r3")
-
-            .jump_if(r("r0").eq(0), "L0")
+            .apply_if(r("r0").eq(1))
             .x(0)
-            .label("L0")
-
-            .jump_if(r("r1").eq(0), "L1")
+            .apply_if(r("r1").eq(1))
             .x(1)
-            .label("L1")
-
-            .jump_if(r("r2").eq(0), "L2")
+            .apply_if(r("r2").eq(1))
             .x(2)
-            .label("L2")
-
-            .jump_if(r("r3").eq(0), "L3")
-            .x(3)
-            .label("L3");
+            .apply_if(r("r3").eq(1))
+            .x(3);
 
         let sim = SVSimulator::build(circuit).unwrap();
+        let mut dbg = sim.attach_debugger();
+        dbg.executor.step_all();
         println!("{:04b}", sim.run());
         println!("{}", sim.final_state());
     }

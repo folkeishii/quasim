@@ -1,4 +1,7 @@
-use crate::{expr_dsl::Expr, gate::{Gate, QBits}};
+use crate::{
+    expr_dsl::Expr,
+    gate::{Gate, QBits},
+};
 
 #[derive(Debug, Clone)]
 pub enum Instruction {

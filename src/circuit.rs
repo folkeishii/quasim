@@ -110,6 +110,13 @@ impl Circuit {
         self
     }
 
+    pub fn s(mut self, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::S, &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
     // Classical instructions
 
     pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
@@ -137,9 +144,20 @@ impl Circuit {
         self
     }
 
+    /// Conditionally apply whichever instruction that comes after
+    pub fn apply_if(mut self, expr: Expr) -> Self {
+        self.instructions
+            .push(Instruction::JumpIf(!expr, self.instructions.len() + 1));
+        self
+    }
+
+    // takes register nr directly for now
     pub fn assign(mut self, reg: String, expr: Expr) -> Self {
         if !self.registers.contains(&reg) {
-            panic!("Tried to assign to nonexistent register with name '{}'.", reg)
+            panic!(
+                "Tried to assign to nonexistent register with name '{}'.",
+                reg
+            )
         }
         self.instructions.push(Instruction::Assign(expr, reg));
         self

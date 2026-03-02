@@ -2,13 +2,17 @@ use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Sub};
 
 use crate::register_file::RegisterFile;
 
+#[derive(Debug, thiserror::Error)]
+pub enum ValueError {
+    #[error("Operation type mismatch")]
+    TypeMismatch,
+}
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum Value {
     Int(i32),
     Float(f32),
     Bool(bool),
-
-    Err,
 }
 
 impl Default for Value {
@@ -18,59 +22,59 @@ impl Default for Value {
 }
 
 impl Value {
-    pub fn not(self) -> Value {
+    pub fn not(self) -> Result<Value, ValueError> {
         match self {
-            Value::Int(x) => Value::Int(!x),
-            Value::Bool(x) => Value::Bool(!x),
-            _ => Value::Err,
+            Value::Int(x) => Ok(Value::Int(!x)),
+            Value::Bool(x) => Ok(Value::Bool(!x)),
+            _ => Err(ValueError::TypeMismatch),
         }
     }
 
-    pub fn and(self, rhs: Value) -> Value {
+    pub fn and(self, rhs: Value) -> Result<Value, ValueError> {
         match (self, rhs) {
-            (Value::Int(x), Value::Int(y)) => Value::Int(x & y),
-            (Value::Bool(x), Value::Bool(y)) => Value::Bool(x && y),
-            _ => Value::Err,
+            (Value::Int(x), Value::Int(y)) => Ok(Value::Int(x & y)),
+            (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x && y)),
+            _ => Err(ValueError::TypeMismatch),
         }
     }
 
-    pub fn or(self, rhs: Value) -> Value {
+    pub fn or(self, rhs: Value) -> Result<Value, ValueError> {
         match (self, rhs) {
-            (Value::Int(x), Value::Int(y)) => Value::Int(x | y),
-            (Value::Bool(x), Value::Bool(y)) => Value::Bool(x || y),
-            _ => Value::Err,
+            (Value::Int(x), Value::Int(y)) => Ok(Value::Int(x | y)),
+            (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x || y)),
+            _ => Err(ValueError::TypeMismatch),
         }
     }
 
-    pub fn xor(self, rhs: Value) -> Value {
+    pub fn xor(self, rhs: Value) -> Result<Value, ValueError> {
         match (self, rhs) {
-            (Value::Int(x), Value::Int(y)) => Value::Int(x ^ y),
-            (Value::Bool(x), Value::Bool(y)) => Value::Bool(x ^ y),
-            _ => Value::Err,
+            (Value::Int(x), Value::Int(y)) => Ok(Value::Int(x ^ y)),
+            (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x ^ y)),
+            _ => Err(ValueError::TypeMismatch),
         }
     }
 
-    pub fn add(self, rhs: Value) -> Value {
+    pub fn add(self, rhs: Value) -> Result<Value, ValueError> {
         self.numeric_binop(rhs, |a, b| Value::Int(a + b), |x, y| Value::Float(x + y))
     }
 
-    pub fn sub(self, rhs: Value) -> Value {
+    pub fn sub(self, rhs: Value) -> Result<Value, ValueError> {
         self.numeric_binop(rhs, |a, b| Value::Int(a - b), |x, y| Value::Float(x - y))
     }
 
-    pub fn mul(self, rhs: Value) -> Value {
+    pub fn mul(self, rhs: Value) -> Result<Value, ValueError> {
         self.numeric_binop(rhs, |a, b| Value::Int(a * b), |x, y| Value::Float(x * y))
     }
 
-    pub fn div(self, rhs: Value) -> Value {
+    pub fn div(self, rhs: Value) -> Result<Value, ValueError> {
         self.numeric_binop(rhs, |a, b| Value::Int(a / b), |x, y| Value::Float(x / y))
     }
 
-    pub fn rem(self, rhs: Value) -> Value {
+    pub fn rem(self, rhs: Value) -> Result<Value, ValueError> {
         self.numeric_binop(rhs, |a, b| Value::Int(a % b), |x, y| Value::Float(x % y))
     }
 
-    pub fn lt(self, rhs: Value) -> Value {
+    pub fn lt(self, rhs: Value) -> Result<Value, ValueError> {
         self.numeric_binop(rhs, |a, b| Value::Bool(a < b), |x, y| Value::Bool(x < y))
     }
 
@@ -78,17 +82,22 @@ impl Value {
         Value::Bool(self == rhs)
     }
 
-    fn numeric_binop<FInt, FFloat>(self, rhs: Value, int_fn: FInt, float_fn: FFloat) -> Value
+    fn numeric_binop<FInt, FFloat>(
+        self,
+        rhs: Value,
+        int_fn: FInt,
+        float_fn: FFloat,
+    ) -> Result<Value, ValueError>
     where
         FInt: Fn(i32, i32) -> Value,
         FFloat: Fn(f32, f32) -> Value,
     {
         match (self, rhs) {
-            (Value::Int(x), Value::Int(y)) => int_fn(x, y),
-            (Value::Float(x), Value::Float(y)) => float_fn(x, y),
-            (Value::Int(x), Value::Float(y)) => float_fn(x as f32, y),
-            (Value::Float(x), Value::Int(y)) => float_fn(x, y as f32),
-            _ => Value::Err,
+            (Value::Int(x), Value::Int(y)) => Ok(int_fn(x, y)),
+            (Value::Float(x), Value::Float(y)) => Ok(float_fn(x, y)),
+            (Value::Int(x), Value::Float(y)) => Ok(float_fn(x as f32, y)),
+            (Value::Float(x), Value::Int(y)) => Ok(float_fn(x, y as f32)),
+            _ => Err(ValueError::TypeMismatch),
         }
     }
 }
@@ -134,24 +143,24 @@ impl Expr {
         Expr::Not(Box::new(Expr::Lt(Box::new(self), Box::new(rhs.into()))))
     }
 
-    pub fn eval(&self, regs: &RegisterFile<Value>) -> Value {
+    pub fn eval(&self, regs: &RegisterFile<Value>) -> Result<Value, ValueError> {
         match self {
-            Expr::Val(v) => *v,
-            Expr::Reg(name) => regs[name],
+            Expr::Val(v) => Ok(*v),
+            Expr::Reg(name) => Ok(regs[name]),
 
-            Expr::Not(e) => e.eval(regs).not(),
-            Expr::And(a, b) => a.eval(regs).and(b.eval(regs)),
-            Expr::Or(a, b) => a.eval(regs).or(b.eval(regs)),
-            Expr::Xor(a, b) => a.eval(regs).xor(b.eval(regs)),
+            Expr::Not(e) => e.eval(regs)?.not(),
+            Expr::And(a, b) => a.eval(regs)?.and(b.eval(regs)?),
+            Expr::Or(a, b) => a.eval(regs)?.or(b.eval(regs)?),
+            Expr::Xor(a, b) => a.eval(regs)?.xor(b.eval(regs)?),
 
-            Expr::Add(a, b) => a.eval(regs).add(b.eval(regs)),
-            Expr::Sub(a, b) => a.eval(regs).sub(b.eval(regs)),
-            Expr::Mul(a, b) => a.eval(regs).mul(b.eval(regs)),
-            Expr::Div(a, b) => a.eval(regs).div(b.eval(regs)),
-            Expr::Rem(a, b) => a.eval(regs).rem(b.eval(regs)),
+            Expr::Add(a, b) => a.eval(regs)?.add(b.eval(regs)?),
+            Expr::Sub(a, b) => a.eval(regs)?.sub(b.eval(regs)?),
+            Expr::Mul(a, b) => a.eval(regs)?.mul(b.eval(regs)?),
+            Expr::Div(a, b) => a.eval(regs)?.div(b.eval(regs)?),
+            Expr::Rem(a, b) => a.eval(regs)?.rem(b.eval(regs)?),
 
-            Expr::Eq(a, b) => a.eval(regs).eq(b.eval(regs)),
-            Expr::Lt(a, b) => a.eval(regs).lt(b.eval(regs)),
+            Expr::Eq(a, b) => Ok(a.eval(regs)?.eq(b.eval(regs)?)),
+            Expr::Lt(a, b) => a.eval(regs)?.lt(b.eval(regs)?),
         }
     }
 }
