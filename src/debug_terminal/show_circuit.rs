@@ -225,7 +225,6 @@ impl Primitive {
         x: usize,
         y: usize,
     ) -> char {
-        let ix = Self::track_ix(modifier, block_width, x);
         match (y, ix, modifier) {
             (1, 1, Some(TrackModifier::Ctrl)) => '■',
             (1, 1, Some(TrackModifier::CtrlNot)) => '□',
@@ -254,10 +253,61 @@ impl Primitive {
         }
     }
 
-    const fn track_ix(modifier: &Option<TrackModifier>, block_width: usize, x: usize) -> usize {
-        match modifier {
-            _ => Self::rep_sides_i(block_width, x),
+    fn track_char_1_mid(
+        _direction@IsDirection{
+            north: dn,
+            east: de,
+            south: ds,
+            west: dw
+        }: &IsDirection,
+        modifier: &Option<TrackModifier>,
+        block_width: usize,
+        x: usize,
+        y: usize,
+    ) -> char {
+        let ix = Self::rep_sides_i(block_width, x);
+        match (y, ix, modifier, ) {
+            (1, 1, Some(TrackModifier::Ctrl)) => '■',
+            (1, 1, Some(TrackModifier::CtrlNot)) => '□',
+            (1, 1, Some(TrackModifier::Swap)) => '╳',
+            (1, 1, None) => {
+                let mut ret = ' ';
+                if direction.north {
+                    ret.connect_north();
+                }
+                if direction.east {
+                    ret.connect_east();
+                }
+                if direction.south {
+                    ret.connect_south();
+                }
+                if direction.west {
+                    ret.connect_west();
+                }
+                ret
+            }
+            (0, 1, _) if direction.north => ' '.connected_south(),
+            (1, 0, _) if direction.west => ' '.passed_horizontal(),
+            (1, 2, _) if direction.east => ' '.passed_horizontal(),
+            (2, 1, _) if direction.south => ' '.connected_north(),
+            _ => ' ',
         }
+    }
+
+    fn track_char_3_mid(
+        _direction@IsDirection{
+            north: dn,
+            east: de,
+            south: ds,
+            west: dw
+        }: &IsDirection,
+        modifier: TrackModifier,
+        block_width: usize,
+        x: usize,
+        y: usize,
+    ) -> char {
+        let ix = Self::rep_sides_i(block_width, x);
+        todo!()
     }
 
     #[rustfmt::skip]
@@ -360,6 +410,31 @@ impl Primitive {
         let bw = (block_width - 1) as isize;
         let i = i as isize;
         ((2 * i - bw).signum() + 1) as usize
+    }
+
+    #[inline(always)]
+    // returned value is within range [0,5)
+    const fn rep_sides_3_mid_i(block_width: usize, i: usize) -> usize {
+        // 1: i *= 2
+        // 2: i -= bw
+        // 3: let is = i.signum()
+        //    i -= 2 * is
+        // 4: i = i.signum()
+        // 5: i += is
+        // 4: i += 2
+        // odd block_width = 7 ==> bw = 6
+        // index:
+        //    0   0  -6  -4  -1  -2   0
+        //    1   2  -4  -2  -1  -2   0
+        //    2   4  -2   0   0  -1   1
+        //    3   6   0   0   0   0   2
+        //    4   8   2   0   0   1   3
+        //    5  10   4   2   1   2   4
+        //    6  12   6   4   1   2   4
+        let bw = (block_width - 1) as isize;
+        let i = 2 * i as isize - bw;
+        let is = i.signum();
+        ((i - 2 * is).signum() + is + 2) as usize
     }
 }
 impl ConnectNorth for Primitive {
@@ -2004,6 +2079,16 @@ mod tests {
             assert_eq!(Primitive::rep_sides_i(bw, bw / 2), 1);
             for i in (bw / 2 + 1)..(bw) {
                 assert_eq!(Primitive::rep_sides_i(bw, i), 2);
+            }
+
+            for i in 0..(bw / 2 - 1) {
+                assert_eq!(Primitive::rep_sides_3_mid_i(bw, i), 0);
+            }
+            assert_eq!(Primitive::rep_sides_3_mid_i(bw, bw / 2 - 1), 1);
+            assert_eq!(Primitive::rep_sides_3_mid_i(bw, bw / 2), 2);
+            assert_eq!(Primitive::rep_sides_3_mid_i(bw, bw / 2 + 1), 3);
+            for i in (bw / 2 + 2)..(bw) {
+                assert_eq!(Primitive::rep_sides_3_mid_i(bw, i), 4);
             }
         }
     }
