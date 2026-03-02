@@ -154,15 +154,24 @@ impl<'a> SVExecutor<'a> {
     }
 
     fn jump_if(&mut self, expr: &Expr, pc: usize) {
-        if let Value::Bool(b) = expr.eval(&self.registers) {
-            if b {
-                self.pc = pc;
+        match expr.eval(&self.registers) {
+            Ok(Value::Bool(b)) => {
+                if b {
+                    self.pc = pc
+                }
             }
+            Err(err) => panic!("{}", err),
+            _ => panic!(
+                "Expression was expected to evaluate to boolean type but got something else."
+            ),
         }
     }
 
     fn assign(&mut self, expr: &Expr, reg: &str) {
-        self.registers[reg] = expr.eval(&self.registers);
+        match expr.eval(&self.registers) {
+            Ok(value) => self.registers[reg] = value,
+            Err(err) => panic!("{}", err),
+        }
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {

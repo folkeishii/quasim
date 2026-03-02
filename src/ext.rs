@@ -4,7 +4,6 @@ use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
 use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
 
-use crate::cart;
 use crate::gate::{Gate, GateType};
 
 #[macro_export]
