@@ -4,9 +4,11 @@ use rand::distr::{Distribution, weighted::WeightedIndex};
 use crate::{
     cart,
     circuit::Circuit,
+    expr_dsl::{Expr, Value},
     ext::get_gate_matrix,
     gate::{Gate, QBits},
     instruction::Instruction,
+    register_file::RegisterFile,
     simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
 };
 
@@ -14,6 +16,7 @@ pub struct SVExecutor<'a> {
     state_vector: DVector<Complex<f64>>,
     circuit: &'a Circuit,
     pc: usize,
+    registers: RegisterFile<Value>,
 }
 
 impl<'a> SVExecutor<'a> {
@@ -117,10 +120,17 @@ impl<'a> SVExecutor<'a> {
         }
     }
 
-    fn measure(&mut self, targets: QBits) {
+    fn measure(&mut self, targets: QBits, reg: &str) {
         let measurement = self.get_collapsed_state();
         let mask = targets.get_bitstring();
         let collapsed_bitstring = measurement & mask;
+
+        let mut bits_compacted = 0;
+        for (i, bit) in targets.get_indices().into_iter().enumerate() {
+            let value = (collapsed_bitstring >> bit) & 1;
+            bits_compacted |= value << i;
+        }
+        self.registers[reg] = Value::Int(bits_compacted as i32);
 
         // Go through state vector and remove amplitude for all states that do not align with measurement
         for (i, amp) in self.state_vector.iter_mut().enumerate() {
@@ -139,10 +149,38 @@ impl<'a> SVExecutor<'a> {
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
     }
 
+    fn jump(&mut self, pc: usize) {
+        self.pc = pc;
+    }
+
+    fn jump_if(&mut self, expr: &Expr, pc: usize) {
+        match expr.eval(&self.registers) {
+            Ok(Value::Bool(b)) => {
+                if b {
+                    self.pc = pc
+                }
+            }
+            Err(err) => panic!("{}", err),
+            _ => panic!(
+                "Expression was expected to evaluate to boolean type but got something else."
+            ),
+        }
+    }
+
+    fn assign(&mut self, expr: &Expr, reg: &str) {
+        match expr.eval(&self.registers) {
+            Ok(value) => self.registers[reg] = value,
+            Err(err) => panic!("{}", err),
+        }
+    }
+
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
-            Instruction::Measurement(qbits) => self.measure(*qbits),
+            Instruction::Measurement(qbits, reg) => self.measure(*qbits, reg),
+            Instruction::Jump(pc) => self.jump(*pc),
+            Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
+            Instruction::Assign(expr, reg) => self.assign(expr, reg),
         }
     }
 }
@@ -185,6 +223,7 @@ impl SVSimulator {
             state_vector: init_state_vector,
             circuit: &self.circuit,
             pc: 0,
+            registers: RegisterFile::from(self.circuit.registers()),
         }
     }
 
@@ -225,3 +264,45 @@ impl StoredCircuitSimulator for SVSimulator {
 
 #[derive(Debug, thiserror::Error)]
 pub enum SVError {}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        circuit::Circuit,
+        expr_dsl::expr_helpers::r,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
+    };
+
+    #[test]
+    fn test() {
+        let circuit = Circuit::new(4)
+            .new_reg("r0")
+            .new_reg("r1")
+            .new_reg("r2")
+            .new_reg("r3")
+            // Init random state
+            .hadamard(0)
+            .hadamard(1)
+            .hadamard(2)
+            .hadamard(3)
+            .measure_bit(0, "r0")
+            .measure_bit(1, "r1")
+            .measure_bit(2, "r2")
+            .measure_bit(3, "r3")
+            .apply_if(r("r0").eq(1))
+            .x(0)
+            .apply_if(r("r1").eq(1))
+            .x(1)
+            .apply_if(r("r2").eq(1))
+            .x(2)
+            .apply_if(r("r3").eq(1))
+            .x(3);
+
+        let sim = SVSimulator::build(circuit).unwrap();
+        let mut dbg = sim.attach_debugger();
+        dbg.executor.step_all();
+        println!("{:04b}", sim.run());
+        println!("{}", sim.final_state());
+    }
+}
