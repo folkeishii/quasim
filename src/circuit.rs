@@ -5,9 +5,13 @@ use crate::{
     gate::{Gate, GateType, QBits},
     instruction::Instruction,
 };
+mod qasm_parse;
+
 use log::{info, warn};
 use oq3_syntax::{SourceFile, SyntaxNode, SyntaxText, ast::AstNode};
-use std::{fs::read_to_string, io};
+use std::fs::read_to_string;
+
+pub use qasm_parse::*;
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
@@ -18,22 +22,7 @@ pub struct Circuit {
     unresolved_labels: Vec<(String, usize)>,
 }
 
-#[derive(Debug, thiserror::Error)]
-pub enum QASMParseError {
-    #[error("could not read QASM source file: {0}")]
-    FileError(#[from] io::Error),
-    #[error("a gate call was missing qubits")]
-    GateCallMissingQubits,
-    #[error("gate {0} was called with {1} qubits, but it requires {2}")]
-    WrongNumberOfQubits(String, usize, usize), // gate name, number of qubits provided, number of qubits required
-    #[error("unrecognized gate: {0}")]
-    UnrecognizedGate(String),
-    #[error("gate call was missing the name of the gate to call, how even..?")]
-    UnlabeledGateCall,
-    #[error("tried to parse '{0}' as a qubit index, but it wasn't a valid number")]
-    FailedToParseQubitIndex(String),
-}
-
+// This does not contain builder methods, see builder.rs
 impl Circuit {
     pub fn new(n_qubits: usize) -> Self {
         Self {
@@ -94,11 +83,10 @@ impl Circuit {
         );
 
         // First pass: count the number of qubits
-        let n_qubits = Self::count_qubits_from_syntax_tree(parse_tree.syntax())?;
+        let n_qubits = count_qubits_from_syntax_tree(parse_tree.syntax())?;
 
         // Second pass: build the circuit by applying gates
-        let circuit =
-            Self::apply_gates_from_syntax_tree(Circuit::new(n_qubits), parse_tree.syntax())?;
+        let circuit = apply_gates_from_syntax_tree(Circuit::new(n_qubits), parse_tree.syntax())?;
 
         return Ok(circuit);
     }
