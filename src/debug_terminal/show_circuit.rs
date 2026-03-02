@@ -5,6 +5,7 @@
 use std::{
     fmt::Display,
     io::{self, Write},
+    iter::repeat,
 };
 
 use crossterm::style::ContentStyle;
@@ -28,7 +29,13 @@ where
     S: DebuggableSimulator + StoredCircuitSimulator,
 {
     let circuit = simulator.circuit();
-    let mut cols = vec![Column::only_tracks(circuit.n_qubits())];
+    let mut cols = vec![Column::only_kets(repeat('0').take(circuit.n_qubits()))];
+    // Add seperator
+    let mut ncol = Column::only_tracks(circuit.n_qubits());
+    let li = cols.len() - 1;
+    cols[li].extend_east(&mut ncol);
+    cols.push(ncol);
+
     for instruction in circuit.instructions() {
         let mut ncol = Column::from_instruction(circuit.n_qubits(), instruction);
         let li = cols.len() - 1;
@@ -78,6 +85,7 @@ pub enum TrackModifier {
     Ctrl,
     CtrlNot,
     Swap,
+    Ket(char),
 }
 pub enum GateModifier {
     Ctrl,
@@ -226,12 +234,15 @@ impl Primitive {
     ) -> char {
         let ix_1_mid = Self::rep_sides_i(block_width, x);
         let ix_3_mid = Self::rep_sides_3_mid_i(block_width, x);
-        match modifier {
+        match *modifier {
             Some(TrackModifier::Ctrl) => {
                 Self::track_char_3_mid(direction, TrackModifier::Ctrl, ix_3_mid, y)
             }
             Some(TrackModifier::CtrlNot) => {
                 Self::track_char_3_mid(direction, TrackModifier::CtrlNot, ix_3_mid, y)
+            }
+            Some(TrackModifier::Ket(c)) => {
+                Self::track_char_3_mid(direction, TrackModifier::Ket(c), ix_3_mid, y)
             }
             Some(TrackModifier::Swap) => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
             None => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
@@ -250,7 +261,7 @@ impl Primitive {
         x: usize,
         y: usize,
     ) -> char {
-        match (y, x, dn, de, ds, dw, modifier) {
+        match (y, x, dn, de, ds, dw, *modifier) {
               (0, 1, T,  _,  _,  _,  _) => ' '.connected_south(),
 
               (1, 1, T,  _,  _,  _,  _) => ' '.passed_vertical(),
@@ -258,6 +269,7 @@ impl Primitive {
               (2, 0, _,  _,  _,  T,  _) => ' '.passed_horizontal(),
               (2, 1, _,  _,  _,  _,  Some(TrackModifier::Ctrl)) => '■',
               (2, 1, _,  _,  _,  _,  Some(TrackModifier::CtrlNot)) => '□',
+              (2, 1, _,  _,  _,  _,  Some(TrackModifier::Ket(c))) => c,
               (2, 1, _,  _,  _,  _,  Some(TrackModifier::Swap)) => '╳',
               (2, 1, F,  F,  F,  F,  None) => ' ',
               (2, 1, F,  F,  F,  T,  None) => ' '.connected_west(),
@@ -306,13 +318,18 @@ impl Primitive {
               (1, 3, _,  _,  _,  _, _) => ' ',
               (1, 4, _,  _,  _,  _, _) => ' ',
 
+              (2, 0, _,  _,  _,  _, TrackModifier::Ket(_)) => ' ',
               (2, 0, _,  _,  _,  F, _) => ' ',
               (2, 0, _,  _,  _,  T, _) => ' '.passed_horizontal(),
+              (2, 1, _,  _,  _,  _, TrackModifier::Ket(_)) => '|',
               (2, 1, _,  _,  _,  T, _) => ' '.passed_vertical().connected_west(),
               (2, 2, _,  _,  _,  _, TrackModifier::Ctrl) => '■',
               (2, 2, _,  _,  _,  _, TrackModifier::CtrlNot) => '□',
+              (2, 2, _,  _,  _,  _, TrackModifier::Ket(c)) => c,
               (2, 2, _,  _,  _,  _, TrackModifier::Swap) => '╳',
+              (2, 3, _,  _,  _,  _, TrackModifier::Ket(_)) => '⟩',
               (2, 3, _,  T,  _,  _, _) => ' '.passed_vertical().connected_east(),
+              (2, 4, _,  _,  _,  _, TrackModifier::Ket(_)) => ' ',
               (2, 4, _,  F,  _,  _, _) => ' ',
               (2, 4, _,  T,  _,  _, _) => ' '.passed_horizontal(),
 
@@ -424,7 +441,7 @@ impl Primitive {
         let bw = (block_width - 1) as isize;
         let i = 2 * i as isize - bw;
         let is = i.signum();
-        (i/bw + is + 2) as usize
+        (i / bw + is + 2) as usize
     }
 
     #[inline(always)]
@@ -826,6 +843,20 @@ impl Column {
         for _ in 1..nqubits {
             column.close_with_track();
         }
+        column
+    }
+
+    pub fn only_kets<I: IntoIterator<Item = char>>(ket_ids: I) -> Self {
+        let mut kets = ket_ids.into_iter();
+        let mut column = kets
+            .next()
+            .map(|c| Self::init_with_track_modifier(1, Some(TrackModifier::Ket(c))))
+            .expect("Expected at least one ket");
+
+        while let Some(c) = kets.next() {
+            column.close_with_track_modifier(Some(TrackModifier::Ket(c)));
+        }
+
         column
     }
 
@@ -2111,11 +2142,11 @@ mod tests {
     fn rep_i() {
         for bw in (5..16).step_by(2) {
             assert_eq!(Primitive::rep_mid_i(bw, 0), 0);
-            for i in 1..(bw/2) {
+            for i in 1..(bw / 2) {
                 assert_eq!(Primitive::rep_mid_i(bw, i), 1);
             }
-            assert_eq!(Primitive::rep_mid_i(bw, bw/2), 2);
-            for i in (bw/2+1)..(bw-1) {
+            assert_eq!(Primitive::rep_mid_i(bw, bw / 2), 2);
+            for i in (bw / 2 + 1)..(bw - 1) {
                 assert_eq!(Primitive::rep_mid_i(bw, i), 3);
             }
             assert_eq!(Primitive::rep_mid_i(bw, bw - 1), 4);
