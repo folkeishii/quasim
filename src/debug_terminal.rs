@@ -22,10 +22,6 @@ use crate::{
     },
     simulator::{BuildSimulator, DoubleEndedSimulator},
 };
-use crossterm::{
-    execute,
-    style::{self, Attributes, Color, ContentStyle, StyledContent},
-};
 use std::io::{self, Write};
 use std::ops::Div;
 

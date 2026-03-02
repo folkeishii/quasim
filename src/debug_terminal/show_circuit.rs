@@ -583,7 +583,7 @@ impl Column {
     pub fn from_instruction(nqubits: usize, instruction: &Instruction) -> Self {
         match instruction {
             Instruction::Gate(gate) => Self::from_gate(nqubits, gate),
-            Instruction::Measurement(qbits) => {
+            Instruction::Measurement(qbits, _) => {
                 let mut qbits = qbits.get_bitstring();
                 let mut column = if qbits & 1 == 1 {
                     Column::init_with_gate(String::from("╭─╱─╮"))
@@ -600,6 +600,9 @@ impl Column {
                 }
                 column
             }
+            Instruction::Jump(_) => todo!(),
+            Instruction::JumpIf(_, _) => todo!(),
+            Instruction::Assign(_, _) => todo!(),
         }
     }
 
@@ -632,6 +635,18 @@ impl Column {
             crate::gate::GateType::SWAP => {
                 Self::from_swap_gate(nqubits, gate.get_target_bits(), gate.get_control_bits())
             }
+            crate::gate::GateType::S => Self::from_common_gate(
+                nqubits,
+                String::from("S"),
+                gate.get_target_bits(),
+                gate.get_control_bits(),
+            ),
+            crate::gate::GateType::U(_,_,_) => Self::from_common_gate(
+                nqubits,
+                String::from("U"),
+                gate.get_target_bits(),
+                gate.get_control_bits(),
+            ),
         }
     }
 
@@ -2153,7 +2168,7 @@ mod tests {
     fn measurement() {
         return;
         let w = &mut stdout();
-        let instruction = Instruction::Measurement(QBits::from_bitstring(0b101011010));
+        let instruction = Instruction::Measurement(QBits::from_bitstring(0b101011010), "".into());
         let mut track_col = Column::only_tracks(10);
         let mut measure_col = Column::from_instruction(10, &instruction);
         track_col.extend_east(&mut measure_col);
@@ -2183,7 +2198,7 @@ mod tests {
         let mut col4 = Column::from_instruction(7, &instruction4);
         let mut col5 = Column::only_tracks(7);
         let mut col6 =
-            Column::from_instruction(7, &Instruction::Measurement(QBits::from_bitstring(0xFFFF)));
+            Column::from_instruction(7, &Instruction::Measurement(QBits::from_bitstring(0xFFFF), "".into()));
         let mut col7 = Column::only_tracks(7);
 
         col0.extend_east(&mut col1);
