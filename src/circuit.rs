@@ -5,8 +5,8 @@ use crate::{
     gate::{Gate, GateType, QBits},
     instruction::Instruction,
 };
-use std::{fs::read_to_string, io};
 use oq3_syntax::{SourceFile, SyntaxNode, SyntaxText, ast::AstNode};
+use std::{fs::read_to_string, io};
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
@@ -91,73 +91,106 @@ impl Circuit {
             syntax_errors.len(),
             syntax_errors
         );
-        let instructions = Self::instructions_from_syntax_tree(parse_tree.syntax())?;
-        let n_qubits = Self::number_of_qubits(&instructions);
-        return Ok(Circuit {
-            instructions,
-            n_qubits,
-        });
+
+        // First pass: count the number of qubits
+        let n_qubits = Self::count_qubits_from_syntax_tree(parse_tree.syntax())?;
+
+        // Second pass: build the circuit by applying gates
+        let circuit =
+            Self::apply_gates_from_syntax_tree(Circuit::new(n_qubits), parse_tree.syntax())?;
+
+        return Ok(circuit);
     }
 
-    fn number_of_qubits(instructions: &Vec<Instruction>) -> usize {
-        let mut greatest_found: usize = 0;
-        for instruction in instructions {
-            for index in instruction.get_controls() {
-                if index > greatest_found {
-                    greatest_found = index;
-                }
-            }
-            for index in instruction.get_targets() {
-                if index > greatest_found {
-                    greatest_found = index;
-                }
-            }
-        }
-        return greatest_found + 1; // +1 because qubits are 0-indexed
-    }
-
-    fn instructions_from_syntax_tree(
-        node: &SyntaxNode,
-    ) -> Result<Vec<Instruction>, QASMParseError> {
+    /// This does not work well if there are multiple qubit registers.
+    /// All this does is find the greatest qubit index used in the program,
+    /// and adds 1 to it to get the number of qubits...
+    /// TODO: make this work with multiple registers, be wary of register offsets (?)
+    fn count_qubits_from_syntax_tree(node: &SyntaxNode) -> Result<usize, QASMParseError> {
         use oq3_syntax::SyntaxKind::*;
-        let recurse = Self::instructions_from_syntax_tree;
-        let mut instructions = Vec::<Instruction>::default();
+        let mut greatest_found: usize = 0;
+
         for child in node.children() {
             match child.kind() {
                 EXPR_STMT => {
                     // Expression statements can contain gate calls!
-                    instructions.append(&mut recurse(&child)?);
+                    let count = Self::count_qubits_from_syntax_tree(&child)?;
+                    if count > greatest_found {
+                        greatest_found = count;
+                    }
                 }
                 GATE_CALL_EXPR => {
-                    instructions.push(Self::parse_gate_call_expr(&child)?);
+                    let qubits = Self::extract_qubits_from_gate_call(&child)?;
+                    for qubit in qubits {
+                        if qubit > greatest_found {
+                            greatest_found = qubit;
+                        }
+                    }
                 }
-                LITERAL => {
-                    // A literal has no children
-                    println!("Literal, literally: {:?}", child.text());
-                }
-                _ => {
-                    // Ignore everything else at top level for now... Huge TODO
-                    // println!("Unknown instruction: {:?}", child),
-                }
+                _ => {}
             }
         }
-        return Ok(instructions);
+
+        return Ok(greatest_found + 1); // +1 because qubits are 0-indexed
     }
 
-    // This may have to return a Vec instead, depending on if OpenQASM gate calls
-    // can represent multiple gates in a circuit...
-    fn parse_gate_call_expr(node: &SyntaxNode) -> Result<Instruction, QASMParseError> {
+    /// Extracts qubit indexes from a gate call node.
+    fn extract_qubits_from_gate_call(node: &SyntaxNode) -> Result<Vec<usize>, QASMParseError> {
+        use oq3_syntax::SyntaxKind::*;
+        let mut qubit_indexes: Vec<usize> = vec![];
+
+        // TODO: Double check that a gate call was actually supplied...
+
+        for child in node.children() {
+            match child.kind() {
+                QUBIT_LIST => {
+                    qubit_indexes = Self::indexes_in_qubit_list(&child)?;
+                }
+                _ => (),
+            }
+        }
+
+        Ok(qubit_indexes)
+    }
+
+    /// This finds gate calls in the syntax tree and applies them to the circuit by calling
+    /// apply_gate_call_expr on them.
+    fn apply_gates_from_syntax_tree(
+        circuit: Circuit,
+        node: &SyntaxNode,
+    ) -> Result<Circuit, QASMParseError> {
+        use oq3_syntax::SyntaxKind::*;
+        let mut result = circuit;
+
+        for child in node.children() {
+            match child.kind() {
+                EXPR_STMT => {
+                    // Expression statements can contain gate calls!
+                    result = Self::apply_gates_from_syntax_tree(result, &child)?;
+                }
+                GATE_CALL_EXPR => {
+                    result = Self::apply_gate_call_expr(result, &child)?;
+                }
+                _ => {}
+            }
+        }
+
+        return Ok(result);
+    }
+
+    /// This applies a gate call expression to the circuit by calling the appropriate builder method.
+    fn apply_gate_call_expr(
+        mut circuit: Circuit,
+        node: &SyntaxNode,
+    ) -> Result<Circuit, QASMParseError> {
         use oq3_syntax::SyntaxKind::*;
 
         let mut gate_name: Option<SyntaxText> = None;
-        let mut qubit_indexes: Vec<usize> = vec![];
+        let qubit_indexes: Vec<usize> = Self::extract_qubits_from_gate_call(node)?;
 
         for child in node.children() {
             match child.kind() {
                 IDENTIFIER => gate_name = Some(child.text()),
-                QUBIT_LIST => {
-                    qubit_indexes = Self::indexes_in_qubit_list(&child)?;
-                }
                 _ => (),
             }
         }
@@ -167,12 +200,12 @@ impl Circuit {
                 return Err(QASMParseError::GateCallMissingQubits);
             }
 
-            // TODO: Is there a more "automatic" way to do this?
+            // Apply the gate via builder method
             match name.to_string().as_str() {
-                "x" => return Ok(Instruction::X(qubit_indexes[0])),
-                "y" => return Ok(Instruction::Y(qubit_indexes[0])),
-                "z" => return Ok(Instruction::Z(qubit_indexes[0])),
-                "h" => return Ok(Instruction::H(qubit_indexes[0])),
+                "x" => circuit = circuit.x(qubit_indexes[0]),
+                "y" => circuit = circuit.y(qubit_indexes[0]),
+                "z" => circuit = circuit.z(qubit_indexes[0]),
+                "h" => circuit = circuit.hadamard(qubit_indexes[0]),
                 "cx" => {
                     if qubit_indexes.len() != 2 {
                         return Err(QASMParseError::WrongNumberOfQubits(
@@ -181,13 +214,15 @@ impl Circuit {
                             2,
                         ));
                     }
-                    return Ok(Instruction::CNOT(qubit_indexes[0], qubit_indexes[1]));
+                    circuit = circuit.cnot(qubit_indexes[0], qubit_indexes[1]);
                 }
                 _ => return Err(QASMParseError::UnrecognizedGate(name.to_string())),
             }
         } else {
             return Err(QASMParseError::UnlabeledGateCall);
         }
+
+        Ok(circuit)
     }
 
     fn find_first_identifier(node: &SyntaxNode) -> Option<SyntaxText> {
