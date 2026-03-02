@@ -5,7 +5,6 @@
 use std::{
     fmt::Display,
     io::{self, Write},
-    ops::Deref,
 };
 
 use crossterm::style::ContentStyle;
@@ -168,7 +167,7 @@ impl Primitive {
         width: usize,
     ) -> io::Result<()> {
         let width = width + 5 - (width & 1); // ensure odd width
-        let self_chars = (0..width).map(|x| self.char(width, x, 2));
+        let self_chars = (0..width).map(|x| self.char(width, x, 4));
         let soth_chars = (0..width).map(|x| south.char(width, x, 0));
         let chars: String = self_chars
             .zip(soth_chars)
@@ -187,8 +186,8 @@ impl Primitive {
         let width = content.length() + 5 - (content.length() & 1); // ensure odd width
         let pre_width = 2;
         let suf_width = width - content.length() - pre_width;
-        let self_pre = (0..pre_width).map(|x| self.char(width, x, 2));
-        let self_suf = ((width - 2)..width).map(|x| self.char(width, x, 2));
+        let self_pre = (0..pre_width).map(|x| self.char(width, x, 4));
+        let self_suf = ((width - 2)..width).map(|x| self.char(width, x, 4));
         let soth_pre = (0..pre_width).map(|x| south.char(width, x, 0));
         let soth_suf = ((width - suf_width)..width).map(|x| south.char(width, x, 0));
         let pre: String = self_pre
@@ -228,8 +227,12 @@ impl Primitive {
         let ix_1_mid = Self::rep_sides_i(block_width, x);
         let ix_3_mid = Self::rep_sides_3_mid_i(block_width, x);
         match modifier {
-            Some(TrackModifier::Ctrl) => Self::track_char_3_mid(direction, TrackModifier::Ctrl, ix_3_mid, y),
-            Some(TrackModifier::CtrlNot) => Self::track_char_3_mid(direction, TrackModifier::CtrlNot, ix_3_mid, y),
+            Some(TrackModifier::Ctrl) => {
+                Self::track_char_3_mid(direction, TrackModifier::Ctrl, ix_3_mid, y)
+            }
+            Some(TrackModifier::CtrlNot) => {
+                Self::track_char_3_mid(direction, TrackModifier::CtrlNot, ix_3_mid, y)
+            }
             Some(TrackModifier::Swap) => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
             None => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
         }
@@ -248,29 +251,36 @@ impl Primitive {
         y: usize,
     ) -> char {
         match (y, x, dn, de, ds, dw, modifier) {
-              (1, 1, _,  _,  _,  _,  Some(TrackModifier::Ctrl)) => '■',
-              (1, 1, _,  _,  _,  _,  Some(TrackModifier::CtrlNot)) => '□',
-              (1, 1, _,  _,  _,  _,  Some(TrackModifier::Swap)) => '╳',
-              (1, 1, F,  F,  F,  F,  None) => ' ',
-              (1, 1, F,  F,  F,  T,  None) => ' '.connected_west(),
-              (1, 1, F,  F,  T,  F,  None) => ' '.connected_south(),
-              (1, 1, F,  F,  T,  T,  None) => ' '.connected_west().connected_south(),
-              (1, 1, F,  T,  F,  F,  None) => ' '.connected_east(),
-              (1, 1, F,  T,  F,  T,  None) => ' '.connected_west().connected_east(),
-              (1, 1, F,  T,  T,  F,  None) => ' '.connected_south().connected_east(),
-              (1, 1, F,  T,  T,  T,  None) => ' '.connected_west().connected_south().connected_east(),
-              (1, 1, T,  F,  F,  F,  None) => ' '.connected_north(),
-              (1, 1, T,  F,  F,  T,  None) => ' '.connected_west().connected_north(),
-              (1, 1, T,  F,  T,  F,  None) => ' '.connected_south().connected_north(),
-              (1, 1, T,  F,  T,  T,  None) => ' '.connected_west().connected_south().connected_north(),
-              (1, 1, T,  T,  F,  F,  None) => ' '.connected_east().connected_north(),
-              (1, 1, T,  T,  F,  T,  None) => ' '.connected_west().connected_east().connected_north(),
-              (1, 1, T,  T,  T,  F,  None) => ' '.connected_south().connected_east().connected_north(),
-              (1, 1, T,  T,  T,  T,  None) => ' '.connected_west().connected_south().connected_east().connected_north(),
               (0, 1, T,  _,  _,  _,  _) => ' '.connected_south(),
-              (1, 0, _,  _,  _,  T,  _) => ' '.passed_horizontal(),
-              (1, 2, _,  T,  _,  _,  _) => ' '.passed_horizontal(),
-              (2, 1, _,  _,  T,  _,  _) => ' '.connected_north(),
+
+              (1, 1, T,  _,  _,  _,  _) => ' '.passed_vertical(),
+
+              (2, 0, _,  _,  _,  T,  _) => ' '.passed_horizontal(),
+              (2, 1, _,  _,  _,  _,  Some(TrackModifier::Ctrl)) => '■',
+              (2, 1, _,  _,  _,  _,  Some(TrackModifier::CtrlNot)) => '□',
+              (2, 1, _,  _,  _,  _,  Some(TrackModifier::Swap)) => '╳',
+              (2, 1, F,  F,  F,  F,  None) => ' ',
+              (2, 1, F,  F,  F,  T,  None) => ' '.connected_west(),
+              (2, 1, F,  F,  T,  F,  None) => ' '.connected_south(),
+              (2, 1, F,  F,  T,  T,  None) => ' '.connected_west().connected_south(),
+              (2, 1, F,  T,  F,  F,  None) => ' '.connected_east(),
+              (2, 1, F,  T,  F,  T,  None) => ' '.connected_west().connected_east(),
+              (2, 1, F,  T,  T,  F,  None) => ' '.connected_south().connected_east(),
+              (2, 1, F,  T,  T,  T,  None) => ' '.connected_west().connected_south().connected_east(),
+              (2, 1, T,  F,  F,  F,  None) => ' '.connected_north(),
+              (2, 1, T,  F,  F,  T,  None) => ' '.connected_west().connected_north(),
+              (2, 1, T,  F,  T,  F,  None) => ' '.connected_south().connected_north(),
+              (2, 1, T,  F,  T,  T,  None) => ' '.connected_west().connected_south().connected_north(),
+              (2, 1, T,  T,  F,  F,  None) => ' '.connected_east().connected_north(),
+              (2, 1, T,  T,  F,  T,  None) => ' '.connected_west().connected_east().connected_north(),
+              (2, 1, T,  T,  T,  F,  None) => ' '.connected_south().connected_east().connected_north(),
+              (2, 1, T,  T,  T,  T,  None) => ' '.connected_west().connected_south().connected_east().connected_north(),
+              (2, 2, _,  T,  _,  _,  _) => ' '.passed_horizontal(),
+
+              (3, 1, _,  _,  T,  _,  _) => ' '.passed_vertical(),
+
+              (4, 1, _,  _,  T,  _,  _) => ' '.connected_north(),
+
               _ => ' ',
         }
     }
@@ -288,31 +298,33 @@ impl Primitive {
         y: usize,
     ) -> char {
         match (y, x, dn, de, ds, dw, modifier) {
-              (0, 0, _,  _,  _,  _, _) => ' ',
-              (0, 1, _,  _,  _,  _, _) => ' ',
-              (0, 2, _,  _,  _,  _, _) => ' '.passed_horizontal(),
-              (0, 3, _,  _,  _,  _, _) => ' ',
-              (0, 4, _,  _,  _,  _, _) => ' ',
+              (0, 2, T,  _,  _,  _, _) => ' '.connected_south(),
 
-              (1, 0, _,  _,  _,  F, _) => ' ',
-              (1, 0, _,  _,  _,  T, _) => ' '.passed_horizontal(),
-              (1, 1, _,  _,  _,  F, _) => ' '.passed_vertical(),
-              (1, 1, _,  _,  _,  T, _) => ' '.passed_vertical().connected_west(),
-              (1, 2, _,  _,  _,  _, TrackModifier::Ctrl) => '■',
-              (1, 2, _,  _,  _,  _, TrackModifier::CtrlNot) => '□',
-              (1, 2, _,  _,  _,  _, TrackModifier::Swap) => '╳',
-              (1, 3, _,  F,  _,  _, _) => ' '.passed_vertical(),
-              (1, 3, _,  T,  _,  _, _) => ' '.passed_vertical().connected_east(),
-              (1, 4, _,  F,  _,  _, _) => ' ',
-              (1, 4, _,  T,  _,  _, _) => ' '.passed_horizontal(),
+              (1, 0, _,  _,  _,  _, _) => ' ',
+              (1, 1, _,  _,  _,  _, _) => ' ',
+              (1, 2, T,  _,  _,  _, _) => ' '.passed_horizontal().connected_north(),
+              (1, 3, _,  _,  _,  _, _) => ' ',
+              (1, 4, _,  _,  _,  _, _) => ' ',
 
-              (2, 0, _,  _,  _,  _, _) => ' ',
-              (2, 1, _,  _,  _,  _, _) => ' ',
-              (2, 2, _,  _,  _,  _, _) => ' '.passed_horizontal(),
-              (2, 3, _,  _,  _,  _, _) => ' ',
-              (2, 4, _,  _,  _,  _, _) => ' ',
+              (2, 0, _,  _,  _,  F, _) => ' ',
+              (2, 0, _,  _,  _,  T, _) => ' '.passed_horizontal(),
+              (2, 1, _,  _,  _,  T, _) => ' '.passed_vertical().connected_west(),
+              (2, 2, _,  _,  _,  _, TrackModifier::Ctrl) => '■',
+              (2, 2, _,  _,  _,  _, TrackModifier::CtrlNot) => '□',
+              (2, 2, _,  _,  _,  _, TrackModifier::Swap) => '╳',
+              (2, 3, _,  T,  _,  _, _) => ' '.passed_vertical().connected_east(),
+              (2, 4, _,  F,  _,  _, _) => ' ',
+              (2, 4, _,  T,  _,  _, _) => ' '.passed_horizontal(),
 
-              _ => todo!()
+              (3, 0, _,  _,  _,  _, _) => ' ',
+              (3, 1, _,  _,  _,  _, _) => ' ',
+              (3, 2, _,  _,  T,  _, _) => ' '.passed_horizontal().connected_south(),
+              (3, 3, _,  _,  _,  _, _) => ' ',
+              (3, 4, _,  _,  _,  _, _) => ' ',
+
+              (4, 2, _,  _,  T,  _, _) => ' '.connected_north(),
+
+              _ => ' '
         }
     }
 
@@ -325,7 +337,9 @@ impl Primitive {
             west: ww,
         }: &IsDirection,
         _connected @ &IsDirection {
+            north: cn,
             east: ce,
+            south: cs,
             west: cw,
             ..
         }: &IsDirection,
@@ -336,25 +350,51 @@ impl Primitive {
         let iy = y;
         let ix = Self::gate_ix(block_width, x);
 
-        match (iy, ix, wn, we, ws, ww, ce, cw) {
-              (0,  0,  T,  _,  _,  T,  _,  _) => ' '.connected_east().connected_south(),
-              (0,  0,  T,  _,  _,  F,  _,  _) => ' '.passed_horizontal(),
-              (0,  0,  F,  _,  _,  T,  _,  _) => ' '.connected_south(),
-              (0,  1,  T,  _,  _,  _,  _,  _) => ' '.passed_horizontal(),
-              (0,  2,  T,  T,  _,  _,  _,  _) => ' '.connected_west().connected_south(),
-              (0,  2,  T,  F,  _,  _,  _,  _) => ' '.passed_horizontal(),
-              (0,  2,  F,  T,  _,  _,  _,  _) => ' '.connected_south(),
-              (1,  0,  _,  _,  _,  T,  _,  T) => ' '.passed_vertical().connected_west(),
-              (1,  0,  _,  _,  _,  T,  _,  F) => ' '.passed_vertical(),
-              (1,  2,  _,  T,  _,  _,  T,  _) => ' '.passed_vertical().connected_east(),
-              (1,  2,  _,  T,  _,  _,  F,  _) => ' '.passed_vertical(),
-              (2,  0,  _,  _,  T,  T,  _,  _) => ' '.connected_east().connected_north(),
-              (2,  0,  _,  _,  T,  F,  _,  _) => ' '.passed_horizontal(),
-              (2,  0,  _,  _,  F,  T,  _,  _) => ' '.connected_north(),
-              (2,  1,  _,  _,  T,  _,  _,  _) => ' '.passed_horizontal(),
-              (2,  2,  _,  T,  T,  _,  _,  _) => ' '.connected_west().connected_north(),
-              (2,  2,  _,  F,  T,  _,  _,  _) => ' '.passed_horizontal(),
-              (2,  2,  _,  T,  F,  _,  _,  _) => ' '.connected_north(),
+        match (iy, ix, wn, we, ws, ww, cn, ce, cs, cw) {
+              (0,  0,  F,  _,  _,  T,  _,  _,  _,  _) => ' '.connected_south(),
+              (0,  2,  _,  _,  _,  _,  T,  _,  _,  _) => ' '.connected_south(),
+              (0,  4,  F,  T,  _,  _,  _,  _,  _,  _) => ' '.connected_south(),
+
+              (1,  0,  F,  _,  _,  T,  _,  _,  _,  _) => ' '.passed_vertical(),
+              (1,  0,  T,  _,  _,  F,  _,  _,  _,  _) => ' '.passed_horizontal(),
+              (1,  0,  T,  _,  _,  T,  _,  _,  _,  _) => ' '.connected_east().connected_south(),
+
+              (1,  1,  T,  _,  _,  _,  _,  _,  _,  _) => ' '.passed_horizontal(),
+
+              (1,  2,  T,  _,  _,  _,  F,  _,  _,  _) => ' '.passed_horizontal(),
+              (1,  2,  T,  _,  _,  _,  T,  _,  _,  _) => ' '.passed_horizontal().connected_north(),
+
+              (1,  3,  T,  _,  _,  _,  _,  _,  _,  _) => ' '.passed_horizontal(),
+
+              (1,  4,  F,  T,  _,  _,  _,  _,  _,  _) => ' '.passed_vertical(),
+              (1,  4,  T,  F,  _,  _,  _,  _,  _,  _) => ' '.passed_horizontal(),
+              (1,  4,  T,  T,  _,  _,  _,  _,  _,  _) => ' '.connected_west().connected_south(),
+
+              (2,  0,  _,  _,  _,  T,  _,  _,  _,  F) => ' '.passed_vertical(),
+              (2,  0,  _,  _,  _,  T,  _,  _,  _,  T) => ' '.passed_vertical().connected_west(),
+
+              (2,  4,  _,  T,  _,  _,  _,  F,  _,  _) => ' '.passed_vertical(),
+              (2,  4,  _,  T,  _,  _,  _,  T,  _,  _) => ' '.passed_vertical().connected_east(),
+
+              (3,  0,  _,  _,  F,  T,  _,  _,  _,  _) => ' '.passed_vertical(),
+              (3,  0,  _,  _,  T,  F,  _,  _,  _,  _) => ' '.passed_horizontal(),
+              (3,  0,  _,  _,  T,  T,  _,  _,  _,  _) => ' '.connected_east().connected_north(),
+
+              (3,  1,  _,  _,  T,  _,  _,  _,  _,  _) => ' '.passed_horizontal(),
+
+              (3,  2,  _,  _,  T,  _,  _,  _,  F,  _) => ' '.passed_horizontal(),
+              (3,  2,  _,  _,  T,  _,  _,  _,  T,  _) => ' '.passed_horizontal().connected_south(),
+
+              (3,  3,  _,  _,  T,  _,  _,  _,  _,  _) => ' '.passed_horizontal(),
+
+              (3,  4,  _,  T,  F,  _,  _,  _,  _,  _) => ' '.passed_vertical(),
+              (3,  4,  _,  F,  T,  _,  _,  _,  _,  _) => ' '.passed_horizontal(),
+              (3,  4,  _,  T,  T,  _,  _,  _,  _,  _) => ' '.connected_west().connected_north(),
+
+              (4,  0,  _,  _,  F,  T,  _,  _,  _,  _) => ' '.connected_north(),
+              (4,  2,  _,  _,  _,  _,  _,  _,  T,  _) => ' '.connected_north(),
+              (4,  4,  _,  T,  F,  _,  _,  _,  _,  _) => ' '.connected_north(),
+
               _ => ' ',
         }
     }
@@ -365,30 +405,26 @@ impl Primitive {
 
     #[inline(always)]
     const fn rep_mid_i(block_width: usize, i: usize) -> usize {
-        // ops:
         // 1: i *= 2
         // 2: i -= bw
-        // 3: i /= bw
-        // 4: i += 1
-        // odd block_width = 5 ==> bw = 4
+        // 3: let is = i.signum()
+        //    i /= bw
+        // 5: i += is
+        // 4: i += 2
+        // odd block_width = 7 ==> bw = 6
         // index:
-        //    0   0  -4  -1   0
-        //    1   2  -2   0   1
-        //    2   4   0   0   1
-        //    3   6   2   0   1
-        //    4   8   4   1   2
-        // even block_width = 6 ==> bw = 5
-        // index:
-        //    0   0  -5  -1   0
-        //    1   2  -3   0   1
-        //    2   4  -1   0   1
-        //    3   6   1   0   1
-        //    4   8   3   0   1
-        //    5  10   5   1   2
+        //    0   0  -6  -1  -2   0
+        //    1   2  -4   0  -1   1
+        //    2   4  -2   0  -1   1
+        //    3   6   0   0   0   2
+        //    4   8   2   0   1   3
+        //    5  10   4   0   1   3
+        //    6  12   6   1   2   4
         //
         let bw = (block_width - 1) as isize;
-        let i = i as isize;
-        ((2 * i - bw) / bw + 1) as usize
+        let i = 2 * i as isize - bw;
+        let is = i.signum();
+        (i/bw + is + 2) as usize
     }
 
     #[inline(always)]
@@ -446,37 +482,29 @@ impl Primitive {
 impl ConnectNorth for Primitive {
     fn connect_north(&mut self) {
         match self {
-            Primitive::Track { direction, .. } => {
-                direction.north = true;
-            }
-            Primitive::Gate { .. } => {}
+            Primitive::Track { direction, .. } => direction.north = true,
+            Primitive::Gate { connected, .. } => connected.north = true,
         }
     }
 
     fn clear_north(&mut self) {
         match self {
-            Primitive::Track { direction, .. } => {
-                direction.north = false;
-            }
-            Primitive::Gate { .. } => {}
+            Primitive::Track { direction, .. } => direction.north = false,
+            Primitive::Gate { connected, .. } => connected.north = false,
         }
     }
 }
 impl ConnectEast for Primitive {
     fn connect_east(&mut self) {
         match self {
-            Primitive::Track { direction, .. } => {
-                direction.east = true;
-            }
+            Primitive::Track { direction, .. } => direction.east = true,
             Primitive::Gate { connected, .. } => connected.east = true,
         }
     }
 
     fn clear_east(&mut self) {
         match self {
-            Primitive::Track { direction, .. } => {
-                direction.east = false;
-            }
+            Primitive::Track { direction, .. } => direction.east = false,
             Primitive::Gate { connected, .. } => connected.east = false,
         }
     }
@@ -484,37 +512,29 @@ impl ConnectEast for Primitive {
 impl ConnectSouth for Primitive {
     fn connect_south(&mut self) {
         match self {
-            Primitive::Track { direction, .. } => {
-                direction.south = true;
-            }
-            Primitive::Gate { .. } => {}
+            Primitive::Track { direction, .. } => direction.south = true,
+            Primitive::Gate { connected, .. } => connected.south = true,
         }
     }
 
     fn clear_south(&mut self) {
         match self {
-            Primitive::Track { direction, .. } => {
-                direction.south = false;
-            }
-            Primitive::Gate { .. } => {}
+            Primitive::Track { direction, .. } => direction.south = false,
+            Primitive::Gate { connected, .. } => connected.south = false,
         }
     }
 }
 impl ConnectWest for Primitive {
     fn connect_west(&mut self) {
         match self {
-            Primitive::Track { direction, .. } => {
-                direction.west = true;
-            }
+            Primitive::Track { direction, .. } => direction.west = true,
             Primitive::Gate { connected, .. } => connected.west = true,
         }
     }
 
     fn clear_west(&mut self) {
         match self {
-            Primitive::Track { direction, .. } => {
-                direction.west = false;
-            }
+            Primitive::Track { direction, .. } => direction.west = false,
             Primitive::Gate { connected, .. } => connected.west = false,
         }
     }
@@ -1212,6 +1232,7 @@ impl OtherRange {
         self.closed = false;
         let mut ni = self.end_non_inclusive();
         ni.next();
+        ni.next();
         GateRange {
             start: self.end_non_inclusive(),
             primitive_count: 1,
@@ -1234,22 +1255,22 @@ impl OtherRange {
             match self.start {
                 SharedRelIndex::Single { north, .. } => SharedRelIndex::Single {
                     north: north + self.primitive_count - 1,
-                    rel_y: 2,
+                    rel_y: 4,
                 },
                 SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
                     north: south + self.primitive_count - 1,
-                    rel_y: 2,
+                    rel_y: 4,
                 },
             }
         } else {
             match self.start {
                 SharedRelIndex::Single { north, .. } => SharedRelIndex::Single {
                     north: north + self.primitive_count - 1,
-                    rel_y: 1,
+                    rel_y: 3,
                 },
                 SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
                     north: south + self.primitive_count - 1,
-                    rel_y: 1,
+                    rel_y: 3,
                 },
             }
         }
@@ -1314,7 +1335,7 @@ impl GateRange {
     pub fn new() -> Self {
         Self {
             start: SharedRelIndex::Single { north: 0, rel_y: 0 },
-            named_index: SharedRelIndex::Single { north: 0, rel_y: 1 },
+            named_index: SharedRelIndex::Single { north: 0, rel_y: 2 },
             primitive_count: 1,
             closed: true,
         }
@@ -1329,7 +1350,7 @@ impl GateRange {
             },
             SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
                 north: south,
-                rel_y: 1,
+                rel_y: 2,
             },
         };
     }
@@ -1337,6 +1358,7 @@ impl GateRange {
     pub fn close_with_gate(&mut self) -> GateRange {
         self.closed = false;
         let mut ni = self.end_non_inclusive();
+        ni.next();
         ni.next();
         GateRange {
             start: self.end_non_inclusive(),
@@ -1360,22 +1382,22 @@ impl GateRange {
             match self.start {
                 SharedRelIndex::Single { north, .. } => SharedRelIndex::Single {
                     north: north + self.primitive_count - 1,
-                    rel_y: 2,
+                    rel_y: 4,
                 },
                 SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
                     north: south + self.primitive_count - 1,
-                    rel_y: 2,
+                    rel_y: 4,
                 },
             }
         } else {
             match self.start {
                 SharedRelIndex::Single { north, .. } => SharedRelIndex::Single {
                     north: north + self.primitive_count - 1,
-                    rel_y: 1,
+                    rel_y: 3,
                 },
                 SharedRelIndex::Shared { south, .. } => SharedRelIndex::Single {
                     north: south + self.primitive_count - 1,
-                    rel_y: 1,
+                    rel_y: 3,
                 },
             }
         }
@@ -1475,7 +1497,7 @@ impl SharedRelIndex {
     const fn to_rel_y(&self) -> usize {
         match self {
             SharedRelIndex::Single { rel_y, .. } => *rel_y,
-            SharedRelIndex::Shared { .. } => 2,
+            SharedRelIndex::Shared { .. } => 4,
         }
     }
 }
@@ -1485,7 +1507,7 @@ impl Iterator for SharedRelIndex {
     fn next(&mut self) -> Option<Self::Item> {
         let item = *self;
         match self {
-            SharedRelIndex::Single { north, rel_y: 1 } => {
+            SharedRelIndex::Single { north, rel_y: 3 } => {
                 *self = SharedRelIndex::Shared {
                     north: *north,
                     south: *north + 1,
@@ -2074,10 +2096,14 @@ mod tests {
     fn rep_i() {
         for bw in (5..16).step_by(2) {
             assert_eq!(Primitive::rep_mid_i(bw, 0), 0);
-            assert_eq!(Primitive::rep_mid_i(bw, bw - 1), 2);
-            for i in 1..(bw - 1) {
+            for i in 1..(bw/2) {
                 assert_eq!(Primitive::rep_mid_i(bw, i), 1);
             }
+            assert_eq!(Primitive::rep_mid_i(bw, bw/2), 2);
+            for i in (bw/2+1)..(bw-1) {
+                assert_eq!(Primitive::rep_mid_i(bw, i), 3);
+            }
+            assert_eq!(Primitive::rep_mid_i(bw, bw - 1), 4);
 
             for i in 0..(bw / 2) {
                 assert_eq!(Primitive::rep_sides_i(bw, i), 0);
