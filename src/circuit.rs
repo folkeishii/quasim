@@ -147,7 +147,7 @@ impl Circuit {
     /// Conditionally apply whichever instruction that comes after
     pub fn apply_if(mut self, expr: Expr) -> Self {
         self.instructions
-            .push(Instruction::JumpIf(!expr, self.instructions.len() + 1));
+            .push(Instruction::JumpIf(!expr, self.instructions.len() + 2));
         self
     }
 
@@ -167,6 +167,11 @@ impl Circuit {
 
     pub fn label(mut self, label: &str) -> Self {
         let pc = self.instructions.len();
+
+        if let Some(idx) = self.labels.get(label) {
+            panic!("Label '{label}' was already defined on instruction row {idx}")
+        }
+        
         self.labels.insert(label.to_owned(), pc);
 
         // After a new label has been added we try to resolve unresolved labels and patch instructions

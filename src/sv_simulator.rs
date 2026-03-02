@@ -149,6 +149,8 @@ impl<'a> SVExecutor<'a> {
             .sum::<f64>()
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
+
+        self.pc += 1;
     }
 
     fn jump(&mut self, pc: usize) {
@@ -159,8 +161,10 @@ impl<'a> SVExecutor<'a> {
         match expr.eval(&self.registers) {
             Ok(Value::Bool(b)) => {
                 if b {
-                    self.pc = pc
+                    self.pc = pc;
+                    return;
                 }
+                self.pc += 1;
             }
             Err(err) => panic!("{}", err),
             _ => panic!(
@@ -174,6 +178,7 @@ impl<'a> SVExecutor<'a> {
             Ok(value) => self.registers[reg] = value,
             Err(err) => panic!("{}", err),
         }
+        self.pc += 1;
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
