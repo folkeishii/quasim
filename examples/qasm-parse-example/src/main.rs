@@ -4,8 +4,10 @@ use quasim::{
     simulator::{BuildSimulator, RunnableSimulator},
     sv_simulator::SVSimulator,
 };
+extern crate pretty_env_logger;
 
 fn main() {
+    pretty_env_logger::init();
     let circuit = match Circuit::from_qasm_file("src/circuit.qasm") {
         Ok(circuit) => circuit,
         Err(e) => panic!("Error reading QASM file: {}", e),

@@ -5,6 +5,7 @@ use crate::{
     gate::{Gate, GateType, QBits},
     instruction::Instruction,
 };
+use log::{info, warn};
 use oq3_syntax::{SourceFile, SyntaxNode, SyntaxText, ast::AstNode};
 use std::{fs::read_to_string, io};
 
@@ -81,12 +82,12 @@ impl Circuit {
         let file_string = read_to_string(file_name)?;
         let parsed_source = SourceFile::parse(&file_string);
         let parse_tree: SourceFile = parsed_source.tree();
-        println!(
+        info!(
             "Found {} statements",
             parse_tree.statements().collect::<Vec<_>>().len()
         );
         let syntax_errors = parsed_source.errors();
-        println!(
+        warn!(
             "Found {} parse errors:\n{:?}\n",
             syntax_errors.len(),
             syntax_errors
