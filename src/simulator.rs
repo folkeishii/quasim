@@ -1,8 +1,4 @@
-use crate::{
-    circuit::Circuit,
-    expr_dsl::{Expr, Value},
-    instruction::Instruction,
-};
+use crate::{circuit::Circuit, instruction::Instruction};
 use nalgebra::{Complex, DVector};
 
 /// # BuildSimulator

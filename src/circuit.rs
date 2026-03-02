@@ -1,7 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    expr_dsl::Expr, gate::{Gate, GateType, QBits}, instruction::Instruction
+    expr_dsl::Expr,
+    gate::{Gate, GateType, QBits},
+    instruction::Instruction,
 };
 
 #[derive(Debug, Clone)]
@@ -95,7 +97,7 @@ impl Circuit {
         ));
         self
     }
-    
+
     pub fn u(mut self, theta: f64, phi: f64, lambda: f64, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::U(theta, phi, lambda), &[], &[target]).unwrap(),
@@ -120,7 +122,10 @@ impl Circuit {
     // Classical instructions
 
     pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
-        self.instructions.push(Instruction::Measurement(QBits::from_bitstring(1 << target), reg.to_owned()));
+        self.instructions.push(Instruction::Measurement(
+            QBits::from_bitstring(1 << target),
+            reg.to_owned(),
+        ));
         self
     }
 
@@ -129,7 +134,7 @@ impl Circuit {
             Some(label_pc) => label_pc,
             None => 0, // Placeholder pc
         };
-        
+
         self.instructions.push(Instruction::Jump(pc));
         self
     }
@@ -139,7 +144,7 @@ impl Circuit {
             Some(label_pc) => label_pc,
             None => 0, // Placeholder pc
         };
-        
+
         self.instructions.push(Instruction::JumpIf(expr, pc));
         self
     }
@@ -171,7 +176,7 @@ impl Circuit {
         if let Some(idx) = self.labels.get(label) {
             panic!("Label '{label}' was already defined on instruction row {idx}")
         }
-        
+
         self.labels.insert(label.to_owned(), pc);
 
         // After a new label has been added we try to resolve unresolved labels and patch instructions
@@ -181,7 +186,7 @@ impl Circuit {
 
     fn try_to_resolve_label(&mut self, label: &str) -> Option<usize> {
         if let Some(pc) = self.labels.get(label) {
-            return Some(*pc)
+            return Some(*pc);
         }
 
         // 1. If label doesnt exist, add it to list of unresolved labels with accompanying instruction index
@@ -199,11 +204,9 @@ impl Circuit {
                 let inst = &mut self.instructions[*inst_index];
 
                 *inst = match inst {
-                    Instruction::Jump(_) =>
-                        Instruction::Jump(resolved_pc),
+                    Instruction::Jump(_) => Instruction::Jump(resolved_pc),
 
-                    Instruction::JumpIf(expr, _) =>
-                        Instruction::JumpIf(expr.clone(), resolved_pc),
+                    Instruction::JumpIf(expr, _) => Instruction::JumpIf(expr.clone(), resolved_pc),
 
                     _ => continue,
                 };
@@ -215,6 +218,5 @@ impl Circuit {
         // 3. Remove resolved labels after patching
         self.unresolved_labels
             .retain(|(label, idx)| !to_remove.contains(&(label.clone(), *idx)));
-
     }
 }
