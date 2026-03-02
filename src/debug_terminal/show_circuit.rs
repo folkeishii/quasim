@@ -658,7 +658,7 @@ impl Column {
                 gate.get_target_bits(),
                 gate.get_control_bits(),
             ),
-            crate::gate::GateType::U(_,_,_) => Self::from_common_gate(
+            crate::gate::GateType::U(_, _, _) => Self::from_common_gate(
                 nqubits,
                 String::from("U"),
                 gate.get_target_bits(),
@@ -2228,8 +2228,10 @@ mod tests {
         let mut col3 = Column::from_instruction(7, &instruction3);
         let mut col4 = Column::from_instruction(7, &instruction4);
         let mut col5 = Column::only_tracks(7);
-        let mut col6 =
-            Column::from_instruction(7, &Instruction::Measurement(QBits::from_bitstring(0xFFFF), "".into()));
+        let mut col6 = Column::from_instruction(
+            7,
+            &Instruction::Measurement(QBits::from_bitstring(0xFFFF), "".into()),
+        );
         let mut col7 = Column::only_tracks(7);
 
         col0.extend_east(&mut col1);
