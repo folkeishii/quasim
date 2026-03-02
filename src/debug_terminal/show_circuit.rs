@@ -225,89 +225,95 @@ impl Primitive {
         x: usize,
         y: usize,
     ) -> char {
-        match (y, ix, modifier) {
-            (1, 1, Some(TrackModifier::Ctrl)) => '■',
-            (1, 1, Some(TrackModifier::CtrlNot)) => '□',
-            (1, 1, Some(TrackModifier::Swap)) => '╳',
-            (1, 1, None) => {
-                let mut ret = ' ';
-                if direction.north {
-                    ret.connect_north();
-                }
-                if direction.east {
-                    ret.connect_east();
-                }
-                if direction.south {
-                    ret.connect_south();
-                }
-                if direction.west {
-                    ret.connect_west();
-                }
-                ret
-            }
-            (0, 1, _) if direction.north => ' '.connected_south(),
-            (1, 0, _) if direction.west => ' '.passed_horizontal(),
-            (1, 2, _) if direction.east => ' '.passed_horizontal(),
-            (2, 1, _) if direction.south => ' '.connected_north(),
-            _ => ' ',
+        let ix_1_mid = Self::rep_sides_i(block_width, x);
+        let ix_3_mid = Self::rep_sides_3_mid_i(block_width, x);
+        match modifier {
+            Some(TrackModifier::Ctrl) => Self::track_char_3_mid(direction, TrackModifier::Ctrl, ix_3_mid, y),
+            Some(TrackModifier::CtrlNot) => Self::track_char_3_mid(direction, TrackModifier::CtrlNot, ix_3_mid, y),
+            Some(TrackModifier::Swap) => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
+            None => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
         }
     }
 
+    #[rustfmt::skip]
     fn track_char_1_mid(
-        _direction@IsDirection{
+        _direction @ &IsDirection {
             north: dn,
             east: de,
             south: ds,
-            west: dw
+            west: dw,
         }: &IsDirection,
         modifier: &Option<TrackModifier>,
-        block_width: usize,
         x: usize,
         y: usize,
     ) -> char {
-        let ix = Self::rep_sides_i(block_width, x);
-        match (y, ix, modifier, ) {
-            (1, 1, Some(TrackModifier::Ctrl)) => '■',
-            (1, 1, Some(TrackModifier::CtrlNot)) => '□',
-            (1, 1, Some(TrackModifier::Swap)) => '╳',
-            (1, 1, None) => {
-                let mut ret = ' ';
-                if direction.north {
-                    ret.connect_north();
-                }
-                if direction.east {
-                    ret.connect_east();
-                }
-                if direction.south {
-                    ret.connect_south();
-                }
-                if direction.west {
-                    ret.connect_west();
-                }
-                ret
-            }
-            (0, 1, _) if direction.north => ' '.connected_south(),
-            (1, 0, _) if direction.west => ' '.passed_horizontal(),
-            (1, 2, _) if direction.east => ' '.passed_horizontal(),
-            (2, 1, _) if direction.south => ' '.connected_north(),
-            _ => ' ',
+        match (y, x, dn, de, ds, dw, modifier) {
+              (1, 1, _,  _,  _,  _,  Some(TrackModifier::Ctrl)) => '■',
+              (1, 1, _,  _,  _,  _,  Some(TrackModifier::CtrlNot)) => '□',
+              (1, 1, _,  _,  _,  _,  Some(TrackModifier::Swap)) => '╳',
+              (1, 1, F,  F,  F,  F,  None) => ' ',
+              (1, 1, F,  F,  F,  T,  None) => ' '.connected_west(),
+              (1, 1, F,  F,  T,  F,  None) => ' '.connected_south(),
+              (1, 1, F,  F,  T,  T,  None) => ' '.connected_west().connected_south(),
+              (1, 1, F,  T,  F,  F,  None) => ' '.connected_east(),
+              (1, 1, F,  T,  F,  T,  None) => ' '.connected_west().connected_east(),
+              (1, 1, F,  T,  T,  F,  None) => ' '.connected_south().connected_east(),
+              (1, 1, F,  T,  T,  T,  None) => ' '.connected_west().connected_south().connected_east(),
+              (1, 1, T,  F,  F,  F,  None) => ' '.connected_north(),
+              (1, 1, T,  F,  F,  T,  None) => ' '.connected_west().connected_north(),
+              (1, 1, T,  F,  T,  F,  None) => ' '.connected_south().connected_north(),
+              (1, 1, T,  F,  T,  T,  None) => ' '.connected_west().connected_south().connected_north(),
+              (1, 1, T,  T,  F,  F,  None) => ' '.connected_east().connected_north(),
+              (1, 1, T,  T,  F,  T,  None) => ' '.connected_west().connected_east().connected_north(),
+              (1, 1, T,  T,  T,  F,  None) => ' '.connected_south().connected_east().connected_north(),
+              (1, 1, T,  T,  T,  T,  None) => ' '.connected_west().connected_south().connected_east().connected_north(),
+              (0, 1, T,  _,  _,  _,  _) => ' '.connected_south(),
+              (1, 0, _,  _,  _,  T,  _) => ' '.passed_horizontal(),
+              (1, 2, _,  T,  _,  _,  _) => ' '.passed_horizontal(),
+              (2, 1, _,  _,  T,  _,  _) => ' '.connected_north(),
+              _ => ' ',
         }
     }
 
+    #[rustfmt::skip]
     fn track_char_3_mid(
-        _direction@IsDirection{
+        _direction @ &IsDirection {
             north: dn,
             east: de,
             south: ds,
-            west: dw
+            west: dw,
         }: &IsDirection,
         modifier: TrackModifier,
-        block_width: usize,
         x: usize,
         y: usize,
     ) -> char {
-        let ix = Self::rep_sides_i(block_width, x);
-        todo!()
+        match (y, x, dn, de, ds, dw, modifier) {
+              (0, 0, _,  _,  _,  _, _) => ' ',
+              (0, 1, _,  _,  _,  _, _) => ' ',
+              (0, 2, _,  _,  _,  _, _) => ' '.passed_horizontal(),
+              (0, 3, _,  _,  _,  _, _) => ' ',
+              (0, 4, _,  _,  _,  _, _) => ' ',
+
+              (1, 0, _,  _,  _,  F, _) => ' ',
+              (1, 0, _,  _,  _,  T, _) => ' '.passed_horizontal(),
+              (1, 1, _,  _,  _,  F, _) => ' '.passed_vertical(),
+              (1, 1, _,  _,  _,  T, _) => ' '.passed_vertical().connected_west(),
+              (1, 2, _,  _,  _,  _, TrackModifier::Ctrl) => '■',
+              (1, 2, _,  _,  _,  _, TrackModifier::CtrlNot) => '□',
+              (1, 2, _,  _,  _,  _, TrackModifier::Swap) => '╳',
+              (1, 3, _,  F,  _,  _, _) => ' '.passed_vertical(),
+              (1, 3, _,  T,  _,  _, _) => ' '.passed_vertical().connected_east(),
+              (1, 4, _,  F,  _,  _, _) => ' ',
+              (1, 4, _,  T,  _,  _, _) => ' '.passed_horizontal(),
+
+              (2, 0, _,  _,  _,  _, _) => ' ',
+              (2, 1, _,  _,  _,  _, _) => ' ',
+              (2, 2, _,  _,  _,  _, _) => ' '.passed_horizontal(),
+              (2, 3, _,  _,  _,  _, _) => ' ',
+              (2, 4, _,  _,  _,  _, _) => ' ',
+
+              _ => todo!()
+        }
     }
 
     #[rustfmt::skip]
