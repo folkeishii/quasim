@@ -13,12 +13,15 @@ use crossterm::style::ContentStyle;
 use crate::{
     debug_terminal::show_circuit::connects::{
         Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, ExtendEast, ExtendSouth,
-        Passes,
+        IsDirection, Passes,
     },
     gate::{Gate, QBits},
     instruction::Instruction,
     simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
+
+const T: bool = true;
+const F: bool = false;
 
 pub fn show_circuit<W, S>(w: &mut W, simulator: &S) -> io::Result<()>
 where
@@ -38,7 +41,6 @@ where
         cols[li].extend_east(&mut ncol);
         cols.push(ncol);
     }
-
 
     let mut col_iters = Vec::with_capacity(cols.len());
     for col in cols.iter() {
@@ -76,7 +78,7 @@ type PrimitiveBlock = [[char; 3]; 3];
 pub enum TrackModifier {
     Ctrl,
     CtrlNot,
-    Swap
+    Swap,
 }
 pub enum GateModifier {
     Ctrl,
@@ -86,46 +88,49 @@ pub enum GateModifier {
 
 #[derive(Debug, Clone, Copy)]
 pub enum Primitive {
-    Track { block: PrimitiveBlock },
-    Gate { block: PrimitiveBlock },
+    Track {
+        direction: IsDirection,
+        modifier: Option<TrackModifier>,
+    },
+    Gate {
+        walls: IsDirection,
+        connected: IsDirection,
+    },
 }
 impl Primitive {
     #[inline(always)]
-    #[rustfmt::skip]
     pub const fn create_track() -> Self {
-        Self::Track {
-            block: [
-                [' ', ' ', ' '],
-                [' ', ' ', ' '],
-                [' ', ' ', ' ']
-            ],
-        }
-    }
-
-    pub fn create_track_with(modifier: Option<TrackModifier>) -> Self {
-        let mut track = Self::create_track();
-        let Some(modifier) = modifier else {
-            return track;
-        };
-        match modifier {
-            //'█',
-            TrackModifier::Ctrl => *track.cc_mut() = '■',
-            TrackModifier::CtrlNot => *track.cc_mut() = '□',
-            TrackModifier::Swap => *track.cc_mut() = '╳',
-            // TrackModifier::CNOT => *track.cc_mut() = '⊕',
-        };
-        track
+        Self::create_track_with(None)
     }
 
     #[inline(always)]
-    #[rustfmt::skip]
+    pub const fn create_track_with(modifier: Option<TrackModifier>) -> Self {
+        Self::Track {
+            direction: IsDirection {
+                north: false,
+                east: false,
+                south: false,
+                west: false,
+            },
+            modifier,
+        }
+    }
+
+    #[inline(always)]
     pub const fn create_gate() -> Self {
         Self::Gate {
-            block: [
-                ['┌', '─', '┐'],
-                ['│', ' ', '│'],
-                ['└', '─', '┘'],
-            ],
+            walls: IsDirection {
+                north: true,
+                east: true,
+                south: true,
+                west: true,
+            },
+            connected: IsDirection {
+                north: false,
+                east: false,
+                south: false,
+                west: false,
+            },
         }
     }
     //
@@ -200,24 +205,106 @@ impl Primitive {
         queue_print!(w; suf)
     }
 
-    #[inline(always)]
-    const fn char(&self, width: usize, x: usize, y: usize) -> char {
+    fn char(&self, block_width: usize, x: usize, y: usize) -> char {
         match self {
-            Primitive::Track { .. } => self.char_repeat_sides(width, x, y),
-            Primitive::Gate { .. } => self.char_repeat_mid(width, x, y),
+            Primitive::Track {
+                direction,
+                modifier,
+                ..
+            } => Self::track_char(direction, modifier, block_width, x, y),
+            Primitive::Gate {
+                walls, connected, ..
+            } => Self::gate_char(walls, connected, block_width, x, y),
         }
     }
 
-    #[inline(always)]
-    const fn char_repeat_mid(&self, block_width: usize, x: usize, y: usize) -> char {
-        let ix = Self::rep_mid_i(block_width, x);
-        self.const_deref()[y][ix]
+    fn track_char(
+        direction: &IsDirection,
+        modifier: &Option<TrackModifier>,
+        block_width: usize,
+        x: usize,
+        y: usize,
+    ) -> char {
+        let ix = Self::track_ix(modifier, block_width, x);
+        match (y, ix, modifier) {
+            (1, 1, Some(TrackModifier::Ctrl)) => '■',
+            (1, 1, Some(TrackModifier::CtrlNot)) => '□',
+            (1, 1, Some(TrackModifier::Swap)) => '╳',
+            (1, 1, None) => {
+                let mut ret = ' ';
+                if direction.north {
+                    ret.connect_north();
+                }
+                if direction.east {
+                    ret.connect_east();
+                }
+                if direction.south {
+                    ret.connect_south();
+                }
+                if direction.west {
+                    ret.connect_west();
+                }
+                ret
+            }
+            (0, 1, _) if direction.north => ' '.connected_south(),
+            (1, 0, _) if direction.west => ' '.passed_horizontal(),
+            (1, 2, _) if direction.east => ' '.passed_horizontal(),
+            (2, 1, _) if direction.south => ' '.connected_north(),
+            _ => ' ',
+        }
     }
 
-    #[inline(always)]
-    const fn char_repeat_sides(&self, block_width: usize, x: usize, y: usize) -> char {
-        let ix = Self::rep_sides_i(block_width, x);
-        self.const_deref()[y][ix]
+    const fn track_ix(modifier: &Option<TrackModifier>, block_width: usize, x: usize) -> usize {
+        match modifier {
+            _ => Self::rep_sides_i(block_width, x),
+        }
+    }
+
+    #[rustfmt::skip]
+    fn gate_char(
+        _walls @ &IsDirection {
+            north: wn,
+            east: we,
+            south: ws,
+            west: ww,
+        }: &IsDirection,
+        _connected @ &IsDirection {
+            east: ce,
+            west: cw,
+            ..
+        }: &IsDirection,
+        block_width: usize,
+        x: usize,
+        y: usize,
+    ) -> char {
+        let iy = y;
+        let ix = Self::gate_ix(block_width, x);
+
+        match (iy, ix, wn, we, ws, ww, ce, cw) {
+              (0,  0,  T,  _,  _,  T,  _,  _) => ' '.connected_east().connected_south(),
+              (0,  0,  T,  _,  _,  F,  _,  _) => ' '.passed_horizontal(),
+              (0,  0,  F,  _,  _,  T,  _,  _) => ' '.connected_south(),
+              (0,  1,  T,  _,  _,  _,  _,  _) => ' '.passed_horizontal(),
+              (0,  2,  T,  T,  _,  _,  _,  _) => ' '.connected_west().connected_south(),
+              (0,  2,  T,  F,  _,  _,  _,  _) => ' '.passed_horizontal(),
+              (0,  2,  F,  T,  _,  _,  _,  _) => ' '.connected_south(),
+              (1,  0,  _,  _,  _,  T,  _,  T) => ' '.passed_vertical().connected_west(),
+              (1,  0,  _,  _,  _,  T,  _,  F) => ' '.passed_vertical(),
+              (1,  2,  _,  T,  _,  _,  T,  _) => ' '.passed_vertical().connected_east(),
+              (1,  2,  _,  T,  _,  _,  F,  _) => ' '.passed_vertical(),
+              (2,  0,  _,  _,  T,  T,  _,  _) => ' '.connected_east().connected_north(),
+              (2,  0,  _,  _,  T,  F,  _,  _) => ' '.passed_horizontal(),
+              (2,  0,  _,  _,  F,  T,  _,  _) => ' '.connected_north(),
+              (2,  1,  _,  _,  T,  _,  _,  _) => ' '.passed_horizontal(),
+              (2,  2,  _,  T,  T,  _,  _,  _) => ' '.connected_west().connected_north(),
+              (2,  2,  _,  F,  T,  _,  _,  _) => ' '.passed_horizontal(),
+              (2,  2,  _,  T,  F,  _,  _,  _) => ' '.connected_north(),
+              _ => ' ',
+        }
+    }
+
+    const fn gate_ix(block_width: usize, x: usize) -> usize {
+        Self::rep_mid_i(block_width, x)
     }
 
     #[inline(always)]
@@ -274,114 +361,12 @@ impl Primitive {
         let i = i as isize;
         ((2 * i - bw).signum() + 1) as usize
     }
-
-    #[inline(always)]
-    pub const fn const_deref(&self) -> &PrimitiveBlock {
-        match self {
-            Self::Track { block, .. } | Self::Gate { block, .. } => &block,
-        }
-    }
-
-    #[inline(always)]
-    const fn const_deref_mut(&mut self) -> &mut PrimitiveBlock {
-        match self {
-            Self::Track { block, .. } | Self::Gate { block, .. } => block,
-        }
-    }
-}
-// impl "Getters"
-impl Primitive {
-    #[inline(always)]
-    pub const fn nw(self) -> char {
-        self.const_deref()[0][0]
-    }
-    #[inline(always)]
-    pub const fn nn(self) -> char {
-        self.const_deref()[0][1]
-    }
-    #[inline(always)]
-    pub const fn ne(self) -> char {
-        self.const_deref()[0][2]
-    }
-    #[inline(always)]
-    pub const fn ww(self) -> char {
-        self.const_deref()[1][0]
-    }
-    #[inline(always)]
-    pub const fn cc(self) -> char {
-        self.const_deref()[1][1]
-    }
-    #[inline(always)]
-    pub const fn ee(self) -> char {
-        self.const_deref()[1][2]
-    }
-    #[inline(always)]
-    pub const fn sw(self) -> char {
-        self.const_deref()[2][0]
-    }
-    #[inline(always)]
-    pub const fn ss(self) -> char {
-        self.const_deref()[2][1]
-    }
-    #[inline(always)]
-    pub const fn se(self) -> char {
-        self.const_deref()[2][2]
-    }
-    #[inline(always)]
-    const fn nw_mut(&mut self) -> &mut char {
-        &mut self.const_deref_mut()[0][0]
-    }
-    #[inline(always)]
-    const fn nn_mut(&mut self) -> &mut char {
-        &mut self.const_deref_mut()[0][1]
-    }
-    #[inline(always)]
-    const fn ne_mut(&mut self) -> &mut char {
-        &mut self.const_deref_mut()[0][2]
-    }
-    #[inline(always)]
-    const fn ww_mut(&mut self) -> &mut char {
-        &mut self.const_deref_mut()[1][0]
-    }
-    #[inline(always)]
-    const fn cc_mut(&mut self) -> &mut char {
-        &mut self.const_deref_mut()[1][1]
-    }
-    #[inline(always)]
-    const fn ee_mut(&mut self) -> &mut char {
-        &mut self.const_deref_mut()[1][2]
-    }
-    #[inline(always)]
-    const fn sw_mut(&mut self) -> &mut char {
-        &mut self.const_deref_mut()[2][0]
-    }
-    #[inline(always)]
-    const fn ss_mut(&mut self) -> &mut char {
-        &mut self.const_deref_mut()[2][1]
-    }
-    #[inline(always)]
-    const fn se_mut(&mut self) -> &mut char {
-        &mut self.const_deref_mut()[2][2]
-    }
-    #[inline(always)]
-    const fn block(&self) -> &PrimitiveBlock {
-        match self {
-            Primitive::Track { block, .. } | Primitive::Gate { block, .. } => block,
-        }
-    }
-    #[inline(always)]
-    const fn block_mut(&mut self) -> &mut PrimitiveBlock {
-        match self {
-            Primitive::Track { block, .. } | Primitive::Gate { block, .. } => block,
-        }
-    }
 }
 impl ConnectNorth for Primitive {
     fn connect_north(&mut self) {
         match self {
-            Primitive::Track { .. } => {
-                self.nn_mut().connect_south();
-                self.cc_mut().connect_north();
+            Primitive::Track { direction, .. } => {
+                direction.north = true;
             }
             Primitive::Gate { .. } => {}
         }
@@ -389,9 +374,8 @@ impl ConnectNorth for Primitive {
 
     fn clear_north(&mut self) {
         match self {
-            Primitive::Track { .. } => {
-                self.nn_mut().clear_south();
-                self.cc_mut().clear_north();
+            Primitive::Track { direction, .. } => {
+                direction.north = false;
             }
             Primitive::Gate { .. } => {}
         }
@@ -400,34 +384,27 @@ impl ConnectNorth for Primitive {
 impl ConnectEast for Primitive {
     fn connect_east(&mut self) {
         match self {
-            Primitive::Track { .. } => {
-                self.ee_mut().pass_horizontal();
-                self.cc_mut().connect_east();
+            Primitive::Track { direction, .. } => {
+                direction.east = true;
             }
-            Primitive::Gate { .. } => {
-                self.ee_mut().connect_east();
-            }
+            Primitive::Gate { connected, .. } => connected.east = true,
         }
     }
 
     fn clear_east(&mut self) {
         match self {
-            Primitive::Track { .. } => {
-                self.ee_mut().clear_west();
-                self.cc_mut().clear_east();
+            Primitive::Track { direction, .. } => {
+                direction.east = false;
             }
-            Primitive::Gate { .. } => {
-                self.ee_mut().clear_east();
-            }
+            Primitive::Gate { connected, .. } => connected.east = false,
         }
     }
 }
 impl ConnectSouth for Primitive {
     fn connect_south(&mut self) {
         match self {
-            Primitive::Track { .. } => {
-                self.ss_mut().connect_north();
-                self.cc_mut().connect_south();
+            Primitive::Track { direction, .. } => {
+                direction.south = true;
             }
             Primitive::Gate { .. } => {}
         }
@@ -435,9 +412,8 @@ impl ConnectSouth for Primitive {
 
     fn clear_south(&mut self) {
         match self {
-            Primitive::Track { .. } => {
-                self.ss_mut().clear_north();
-                self.cc_mut().clear_south();
+            Primitive::Track { direction, .. } => {
+                direction.south = false;
             }
             Primitive::Gate { .. } => {}
         }
@@ -446,38 +422,37 @@ impl ConnectSouth for Primitive {
 impl ConnectWest for Primitive {
     fn connect_west(&mut self) {
         match self {
-            Primitive::Track { .. } => {
-                self.ww_mut().pass_horizontal();
-                self.cc_mut().connect_west();
+            Primitive::Track { direction, .. } => {
+                direction.west = true;
             }
-            Primitive::Gate { .. } => {
-                self.ww_mut().connect_west();
-            }
+            Primitive::Gate { connected, .. } => connected.west = true,
         }
     }
 
     fn clear_west(&mut self) {
         match self {
-            Primitive::Track { .. } => {
-                self.ww_mut().clear_east();
-                self.cc_mut().clear_west();
+            Primitive::Track { direction, .. } => {
+                direction.west = false;
             }
-            Primitive::Gate { .. } => {
-                self.ww_mut().clear_west();
-            }
+            Primitive::Gate { connected, .. } => connected.west = false,
         }
     }
 }
 impl ExtendSouth for Primitive {
     fn extend_south(&mut self, sth: &mut Self) {
         match (self, sth) {
-            (north @ Primitive::Gate { .. }, south @ Primitive::Gate { .. }) => {
-                north.sw_mut().clear_horizontal();
-                north.ss_mut().clear_horizontal();
-                north.se_mut().clear_horizontal();
-                south.nw_mut().clear_horizontal();
-                south.nn_mut().clear_horizontal();
-                south.ne_mut().clear_horizontal();
+            (
+                Primitive::Gate {
+                    walls: IsDirection { south: north, .. },
+                    ..
+                },
+                Primitive::Gate {
+                    walls: IsDirection { north: south, .. },
+                    ..
+                },
+            ) => {
+                *north = false;
+                *south = false;
             }
             (north, south) => {
                 north.connect_south();
@@ -494,13 +469,6 @@ impl ExtendEast for Primitive {
                 east.connect_west();
             }
         }
-    }
-}
-impl Deref for Primitive {
-    type Target = PrimitiveBlock;
-
-    fn deref(&self) -> &Self::Target {
-        self.const_deref()
     }
 }
 
@@ -560,7 +528,9 @@ impl Column {
                 gate.get_target_bits(),
                 gate.get_control_bits(),
             ),
-            crate::gate::GateType::SWAP => Self::from_swap_gate(nqubits, gate.get_target_bits(), gate.get_control_bits()),
+            crate::gate::GateType::SWAP => {
+                Self::from_swap_gate(nqubits, gate.get_target_bits(), gate.get_control_bits())
+            }
         }
     }
 
@@ -623,11 +593,7 @@ impl Column {
         column
     }
 
-    pub fn from_swap_gate(
-        nqubits: usize,
-        targets: QBits,
-        controls: QBits,
-    ) -> Self {
+    pub fn from_swap_gate(nqubits: usize, targets: QBits, controls: QBits) -> Self {
         let mut targets_north = 0usize;
         let mut target = active1(targets.get_bitstring());
         let mut targets_south = targets.get_bitstring() >> 1;
@@ -1760,10 +1726,10 @@ mod connects {
     impl<T: ConnectNorth + ConnectEast + ConnectSouth + ConnectWest + Passes> Connects for T {}
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct IsDirection {
-        north: bool,
-        east: bool,
-        south: bool,
-        west: bool,
+        pub north: bool,
+        pub east: bool,
+        pub south: bool,
+        pub west: bool,
     }
     #[rustfmt::skip]
     macro_rules! expand_direction {
@@ -2015,7 +1981,12 @@ mod tests {
     use std::io::{Write, stdout};
 
     use crate::{
-        circuit::Circuit, debug_simulator::DebugSimulator, debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit}, gate::{Gate, GateType, QBits}, instruction::Instruction, simulator::BuildSimulator
+        circuit::Circuit,
+        debug_simulator::DebugSimulator,
+        debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit},
+        gate::{Gate, GateType, QBits},
+        instruction::Instruction,
+        simulator::BuildSimulator,
     };
 
     #[test]
@@ -2135,7 +2106,14 @@ mod tests {
         return;
         let w = &mut stdout();
 
-        let circuit = Circuit::new(7).hadamard(2).z(5).cnot(1, 3).x(6).y(2).swap(3, 5).fredkin(2, 3, 4);
+        let circuit = Circuit::new(7)
+            .hadamard(2)
+            .z(5)
+            .cnot(1, 3)
+            .x(6)
+            .y(2)
+            .swap(3, 5)
+            .fredkin(2, 3, 4);
         let sim = DebugSimulator::build(circuit).unwrap();
         show_circuit(w, &sim).unwrap();
     }
