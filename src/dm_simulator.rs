@@ -1,12 +1,11 @@
 use crate::{
     cart,
     circuit::Circuit,
-    ext::{eval_tensor_product, expand_matrix_from_gate, get_gate_matrix, identity_tensor_factors},
-    gate::Gate,
+    ext::{eval_tensor_product, expand_matrix_from_gate, identity_tensor_factors},
     instruction::Instruction,
 };
 use nalgebra::{Complex, DMatrix, dmatrix};
-
+use rand::Rng;
 #[derive(Debug, Clone)]
 pub struct DMSimulator {
     current_state: DMatrix<Complex<f64>>,
@@ -51,6 +50,67 @@ impl TryFrom<Circuit> for DMSimulator {
 }
 
 impl DMSimulator {
+    /// # measure
+    /// Returns the mesurement a probable density matrix after measurement.
+    fn measure(
+        density: &DMatrix<Complex<f64>>,
+        target: usize,
+        n_qubits: usize,
+    ) -> (usize, DMatrix<Complex<f64>>) {
+        // Choose a collapsed state
+        let prob_target_eq_zero = density
+            .diagonal()
+            .iter()
+            .enumerate()
+            .filter(|&(idx, _)| (1 << target) & idx == 0) // Using |..q_1q_0> convetion
+            .map(|(_, c)| c.re) // Diagonal elements of density matrices should always be positive & real.
+            .sum::<f64>();
+
+        let mut rng = rand::rng();
+        let random_value = rng.random_range(0.0..1.0);
+        let mut result = 1;
+        let mut result_density = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
+        if random_value < prob_target_eq_zero {
+            // 0 was chosen as collapsed state.
+            result = 0;
+            result_density = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
+        }
+
+        // Calculate projection operator, M
+        let mut projection_operator_prod = identity_tensor_factors(n_qubits);
+        projection_operator_prod[target] = result_density;
+        let projection_operator = eval_tensor_product(projection_operator_prod);
+
+        /* Use formula for next state:
+         *
+         *               MpM'
+         *  p`  ==   ___________
+         *            tr(M'Mp)
+         *
+         * Note that M is always diagonal and has only elements 0 and 1. Such matricies
+         * must be Hermitian so: M' == M. and we can rewrite as:
+         *
+         *               MpM
+         *  p`  ==   ___________
+         *            tr(M^2p)
+         *
+         * Note that M always being diagonal and elements being 0 and 1 ==> M^2 == M.
+         * We can therefore rewrite the formula as:
+         *
+         *               MpM
+         *  p`  ==   ___________
+         *             tr(Mp)
+         *
+         * */
+
+        let proj_op_times_density = projection_operator.clone() * density; //Mp
+        let norm = proj_op_times_density.trace(); // tr(Mp)
+        (result, proj_op_times_density * projection_operator / norm)
+    }
+
+    /// # reduced_state
+    /// Returns the reduced state (partial trace) of a density matrix,
+    /// where `targets` specifies the subsystem of qubits.
     fn reduced_state(
         density: &DMatrix<Complex<f64>>,
         targets: &[usize],
@@ -145,12 +205,7 @@ pub enum DMSimulatorError {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        cart,
-        circuit::Circuit,
-        dm_simulator::DMSimulator,
-        simulator::{BuildSimulator},
-    };
+    use crate::{cart, circuit::Circuit, dm_simulator::DMSimulator, simulator::BuildSimulator};
     use nalgebra::{Complex, DMatrix, dmatrix};
 
     fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
@@ -215,7 +270,7 @@ mod tests {
         let rho_02 = DMSimulator::reduced_state(rho, &[0, 2], 3);
         assert!(is_matrix_equal_to(expected_pairs_rho, rho_02));
 
-        let rho_reduce = DMSimulator::reduced_state(rho, &[0,1,2], 3);
+        let rho_reduce = DMSimulator::reduced_state(rho, &[0, 1, 2], 3);
         assert!(is_matrix_equal_to(rho_reduce, rho.clone()));
     }
 }
