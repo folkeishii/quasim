@@ -4,7 +4,7 @@ use rand::distr::{Distribution, weighted::WeightedIndex};
 use crate::simulator::HybridSimulator;
 use crate::{
     cart,
-    circuit::{Circuit, LabelPc},
+    circuit::{Circuit, CircuitPc},
     expr_dsl::{Expr, Value},
     ext::get_gate_matrix,
     gate::{Gate, QBits},
@@ -168,7 +168,7 @@ impl SVExecutor {
         self.pc += 1;
     }
 
-    fn jump(&mut self, label_pc: &LabelPc) {
+    fn jump(&mut self, label_pc: &CircuitPc) {
         if let Some(_sub_circuit) = label_pc.sub_circuit() {
             todo!("TODO: handle label inside sub circuit")
         } else {
@@ -176,7 +176,7 @@ impl SVExecutor {
         }
     }
 
-    fn jump_if(&mut self, expr: &Expr, label_pc: &LabelPc) {
+    fn jump_if(&mut self, expr: &Expr, label_pc: &CircuitPc) {
         match expr.eval(&self.registers) {
             Ok(Value::Bool(true)) => self.jump(label_pc),
             Ok(Value::Bool(false)) => self.pc += 1,

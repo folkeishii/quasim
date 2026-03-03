@@ -1,5 +1,4 @@
 mod arguments;
-mod breakpoint;
 mod command;
 mod parse;
 #[macro_use]
@@ -16,8 +15,8 @@ use crate::simulator::StoredCircuitSimulator;
 use crate::{
     circuit::Circuit,
     debug_simulator::DebugSimulator,
+    breakpoint::{BreakpointList, PEBreakpoint},
     debug_terminal::{
-        breakpoint::{BreakpointList, PEBreakpoint},
         parse::into_tokens,
     },
     simulator::{BuildSimulator, DoubleEndedSimulator},

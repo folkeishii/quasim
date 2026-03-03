@@ -1,6 +1,8 @@
 use std::{
+    borrow::{Borrow, Cow},
     collections::{HashMap, HashSet},
     fmt::{Display, Write},
+    ops::{Deref, DerefMut},
 };
 
 use crate::{
@@ -21,8 +23,8 @@ pub struct Circuit {
     instructions: Vec<Instruction>,
     n_qubits: usize,
     registers: HashSet<String>,
-    labels: HashMap<String, CircuitPc>,
-    unresolved_labels: Vec<(String, CircuitPc)>,
+    labels: HashMap<CircuitLabel, CircuitPc>,
+    unresolved_labels: Vec<(CircuitLabel, CircuitPc)>,
     sub_circuits: HashMap<String, SubCircuit>,
     unresolved_sub_circuits: Vec<(String, CircuitPc)>,
 }
@@ -45,11 +47,7 @@ impl Circuit {
         self
     }
 
-    pub fn new_sub_circuit<I: Into<String>>(
-        mut self,
-        name: I,
-        circuit: Circuit,
-    ) -> Self {
+    pub fn new_sub_circuit<I: Into<String>>(mut self, name: I, circuit: Circuit) -> Self {
         let name = name.into();
 
         let (
@@ -66,37 +64,51 @@ impl Circuit {
         if let Some(existing) = self.sub_circuits.get(&name)
             && sub_circuit.eq(existing)
         {
-            panic!("Cannot add {}: A different sub circuit with the same name already exists", name)
+            panic!(
+                "Cannot add {}: A different sub circuit with the same name already exists",
+                name
+            )
         }
 
         for (imported_name, imported_sub_circuit) in sub_circuits.iter() {
             if let Some(existing) = self.sub_circuits.get(imported_name)
                 && !imported_sub_circuit.eq(existing)
             {
-                panic!("Cannot add {}: Duplicate definition of sub circuit {}", name, imported_name)
+                panic!(
+                    "Cannot add {}: Duplicate definition of sub circuit {}",
+                    name, imported_name
+                )
             } else if name.eq(imported_name) && !sub_circuit.eq(imported_sub_circuit) {
-                panic!("Cannot add {}: Duplicate definition of sub circuit {}", name, imported_name)
+                panic!(
+                    "Cannot add {}: Duplicate definition of sub circuit {}",
+                    name, imported_name
+                )
             }
         }
 
         self.registers.extend(registers);
-        self.labels.extend(
-            labels
-                .into_iter()
-                .map(|(label, circuit_pc)| (label, circuit_pc.map_sub_circuit(name.clone()))),
-        );
-        self.unresolved_labels.extend(
-            unresolved_labels
-                .into_iter()
-                .map(|(label, circuit_pc)| (label, circuit_pc.map_sub_circuit(name.clone()))),
-        );
+        self.labels
+            .extend(labels.into_iter().map(|(label, circuit_pc)| {
+                (
+                    label.map_sub_circuit(name.clone()),
+                    circuit_pc.map_sub_circuit(name.clone()),
+                )
+            }));
+        self.unresolved_labels
+            .extend(unresolved_labels.into_iter().map(|(label, circuit_pc)| {
+                (
+                    label.map_sub_circuit(name.clone()),
+                    circuit_pc.map_sub_circuit(name.clone()),
+                )
+            }));
         self.unresolved_sub_circuits.extend(
             unresolved_sub_circuits
                 .into_iter()
                 .map(|(label, circuit_pc)| (label, circuit_pc.map_sub_circuit(name.clone())))
                 .filter(|(label, _)| label != &name),
         );
-        self.unresolved_sub_circuits.retain_mut(|(unresolved_name, _)| unresolved_name != &name);
+        self.unresolved_sub_circuits
+            .retain_mut(|(unresolved_name, _)| unresolved_name != &name);
         self.sub_circuits.insert(name, sub_circuit);
         self
     }
@@ -215,11 +227,11 @@ impl Circuit {
         self
     }
 
-
     // Sub circuit
 
     pub fn sub_circuit<I: Into<String>>(mut self, name: I, first_qubit: usize) -> Self {
-        self.instructions.push(Instruction::SubCircuit(name.into(), first_qubit));
+        self.instructions
+            .push(Instruction::SubCircuit(name.into(), first_qubit));
         self
     }
 
@@ -257,7 +269,8 @@ impl Circuit {
             None => CircuitPc::at_main(0), // Placeholder pc
         };
 
-        self.instructions.push(Instruction::JumpIf(expr, circuit_pc));
+        self.instructions
+            .push(Instruction::JumpIf(expr, circuit_pc));
         self
     }
 
@@ -333,13 +346,14 @@ impl Circuit {
 
     // Label
     pub fn label(mut self, label: &str) -> Self {
+        let circuit_label = CircuitLabelRef::at_main(label);
         let pc = self.instructions.len();
 
-        if let Some(idx) = self.labels.get(label) {
-            panic!("Label '{label}' was already defined on instruction row {idx}")
+        if let Some(idx) = self.labels.get(&circuit_label) {
+            panic!("Label '{circuit_label}' was already defined on instruction row {idx}")
         }
 
-        self.labels.insert(label.to_owned(), CircuitPc::at_main(pc));
+        self.labels.insert(circuit_label.to_owned(), CircuitPc::at_main(pc));
 
         // After a new label has been added we try to resolve unresolved labels and patch instructions
         self.try_to_patch_instructions();
@@ -347,12 +361,16 @@ impl Circuit {
     }
 
     fn try_to_resolve_label(&mut self, label: &str) -> Option<&CircuitPc> {
-        if let Some(circuit_pc) = self.labels.get(label) {
+        let circuit_label = CircuitLabelRef::at_main(label);
+        if let Some(circuit_pc) = self.labels.get(&circuit_label) {
             return Some(circuit_pc);
         }
 
         // 1. If label doesnt exist, add it to list of unresolved labels with accompanying instruction index
-        let pair = (label.to_owned(), CircuitPc::at_main(self.instructions.len()));
+        let pair = (
+            circuit_label.to_owned(),
+            CircuitPc::at_main(self.instructions.len()),
+        );
         self.unresolved_labels.push(pair);
         None
     }
@@ -368,7 +386,7 @@ impl Circuit {
                 todo!("TODO: handle label inside sub circuit")
             }
 
-            let Some(resolved_pc) = self.try_to_resolve_label(&label).cloned() else {
+            let Some(resolved_pc) = self.try_to_resolve_label(label.label()).cloned() else {
                 continue;
             };
 
@@ -407,7 +425,7 @@ impl SubCircuit {
             labels,
             unresolved_labels,
             sub_circuits,
-            unresolved_sub_circuits
+            unresolved_sub_circuits,
         } = circuit;
         (
             Self {
@@ -419,19 +437,31 @@ impl SubCircuit {
                 labels,
                 unresolved_labels,
                 sub_circuits,
-                unresolved_sub_circuits
+                unresolved_sub_circuits,
             },
         )
+    }
+
+    pub fn instructions(&self) -> &[Instruction] {
+        &self.instructions
+    }
+
+    pub fn instructions_mut(&mut self) -> &mut [Instruction] {
+        &mut self.instructions
+    }
+
+    pub fn n_qubits(&self) -> usize {
+        self.n_qubits
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct SubCircuitPeriphs {
     registers: HashSet<String>,
-    labels: HashMap<String, CircuitPc>,
-    unresolved_labels: Vec<(String, CircuitPc)>,
+    labels: HashMap<CircuitLabel, CircuitPc>,
+    unresolved_labels: Vec<(CircuitLabel, CircuitPc)>,
     sub_circuits: HashMap<String, SubCircuit>,
-    unresolved_sub_circuits: Vec<(String, CircuitPc)>
+    unresolved_sub_circuits: Vec<(String, CircuitPc)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -602,5 +632,157 @@ mod tests {
             cart!(0.0),           // |1111>
         ];
         assert_is_vector_equal!(expected_vec, sim.final_state());
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct CircuitLabel(CircuitLabelRef<'static>);
+impl CircuitLabel {
+    pub fn at_main(label: String) -> Self {
+        Self(CircuitLabelRef::at_main_static(label))
+    }
+
+    pub fn at_sub_circuit(sub_circuit: String, label: String) -> Self {
+        Self(CircuitLabelRef::at_sub_circuit_static(sub_circuit, label))
+    }
+
+    /// Maps a None into Some(sub_circuit)
+    pub fn map_sub_circuit(self, sub_circuit: String) -> Self {
+        Self(self.0.map_sub_circuit_static(sub_circuit))
+    }
+}
+impl<'a> Borrow<CircuitLabelRef<'a>> for CircuitLabel {
+    fn borrow(&self) -> &CircuitLabelRef<'a> {
+        &self.0
+    }
+}
+impl Clone for CircuitLabel {
+    fn clone(&self) -> Self {
+        Self(CircuitLabelRef {
+            sub_circuit: self.sub_circuit.clone(),
+            label: self.label.clone(),
+        })
+    }
+}
+impl AsRef<CircuitLabelRef<'static>> for CircuitLabel {
+    fn as_ref(&self) -> &CircuitLabelRef<'static> {
+        &self.0
+    }
+}
+impl Deref for CircuitLabel {
+    type Target = CircuitLabelRef<'static>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl DerefMut for CircuitLabel {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl Display for CircuitLabel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(sc) = self.sub_circuit.as_ref() {
+            write!(f, "{}::", sc)?;
+        }
+        write!(f, "{}", self.label)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// `CircuitLabelRef` is to `CircuitLabel` what
+/// `&str` is to `String`
+///
+/// i.e if we have `HashMap<String, T>` we use `.get(key: &str)`
+///
+/// and if we have `HashMap<CircuitLabel, T>` we can use `.get(key: CircuitLabelRef)`
+pub struct CircuitLabelRef<'a> {
+    pub(self)sub_circuit: Option<Cow<'a, str>>,
+    pub(self)label: Cow<'a, str>,
+}
+impl CircuitLabelRef<'static> {
+    fn at_main_static(label: String) -> Self {
+        Self {
+            sub_circuit: None,
+            label: Cow::Owned(label),
+        }
+    }
+
+    fn at_sub_circuit_static(sub_circuit: String, label: String) -> Self {
+        Self {
+            sub_circuit: Some(Cow::Owned(sub_circuit)),
+            label: Cow::Owned(label),
+        }
+    }
+
+    /// Maps a None into Some(sub_circuit)
+    fn map_sub_circuit_static(self, sub_circuit: String) -> Self {
+        match self {
+            Self {
+                sub_circuit: None,
+                label,
+            } => Self {
+                sub_circuit: Some(Cow::Owned(sub_circuit)),
+                label,
+            },
+            circuit_label => circuit_label,
+        }
+    }
+}
+impl<'a> CircuitLabelRef<'a> {
+    pub fn at_main(label: &'a str) -> Self {
+        Self {
+            sub_circuit: None,
+            label: Cow::Borrowed(label),
+        }
+    }
+
+    pub fn at_sub_circuit(sub_circuit: &'a str, label: &'a str) -> Self {
+        Self {
+            sub_circuit: Some(Cow::Borrowed(sub_circuit)),
+            label: Cow::Borrowed(label),
+        }
+    }
+
+    /// Maps a None into Some(sub_circuit)
+    pub fn map_sub_circuit(self, sub_circuit: &'a str) -> Self {
+        match self {
+            Self {
+                sub_circuit: None,
+                label,
+            } => Self {
+                sub_circuit: Some(Cow::Borrowed(sub_circuit)),
+                label,
+            },
+            circuit_label => circuit_label,
+        }
+    }
+
+    pub fn sub_circuit(&self) -> Option<&str> {
+        self.sub_circuit.as_ref().map(Deref::deref)
+    }
+
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+}
+impl<'a> ToOwned for CircuitLabelRef<'a> {
+    type Owned = CircuitLabel;
+
+    fn to_owned(&self) -> Self::Owned {
+        if let Some(sc) = self.sub_circuit() {
+            CircuitLabel::at_sub_circuit(sc.to_owned(), self.label().to_owned())
+        } else {
+            CircuitLabel::at_main(self.label().to_owned())
+        }
+    }
+}
+impl<'a> Display for CircuitLabelRef<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(sc) = self.sub_circuit.as_ref() {
+            write!(f, "{}::", sc)?;
+        }
+        write!(f, "{}", self.label)
     }
 }

@@ -112,6 +112,10 @@ impl Breakpoint {
     }
 }
 
+pub enum BreakWhere {
+    Label()
+}
+
 #[derive(Debug, Clone)]
 pub enum PEBreakpoint {
     Inserted,
