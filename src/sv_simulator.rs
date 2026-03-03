@@ -9,25 +9,39 @@ use crate::{
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
+    simulator::{DebuggableSimulator, DoubleEndedSimulator, RunnableSimulator, StoredCircuitSimulator},
 };
 
-pub struct SVExecutor<'a> {
+struct SVExecutor {
     state_vector: DVector<Complex<f64>>,
-    circuit: &'a Circuit,
+    circuit: Circuit,
     pc: usize,
     registers: RegisterFile<Value>,
 }
 
-impl<'a> SVExecutor<'a> {
+impl SVExecutor {
+    fn new(circuit: Circuit) -> Self {
+        let size = 1 << circuit.n_qubits();
+        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
+        init_state_vector[0] = cart![1.0];
+
+        let registers = RegisterFile::from(circuit.registers());
+        Self {
+            state_vector: init_state_vector,
+            circuit: circuit,
+            pc: 0,
+            registers: registers,
+        }
+    }
+
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
         if self.pc >= self.circuit.instructions().len() {
             return None;
         }
 
-        let inst = &self.circuit.instructions()[self.pc];
-        self.apply_instruction(inst);
+        let inst = self.circuit.instructions()[self.pc].clone();
+        self.apply_instruction(&inst);
 
         Some(&self.state_vector)
     }
@@ -190,11 +204,7 @@ impl<'a> SVExecutor<'a> {
     }
 }
 
-impl<'a> StoredCircuitSimulator for SVExecutor<'a> {
-    fn circuit(&self) -> &Circuit {
-        &self.circuit
-    }
-}
+// SVSimulator
 
 pub struct SVSimulator {
     circuit: Circuit,
@@ -210,40 +220,29 @@ impl TryFrom<Circuit> for SVSimulator {
 
 impl RunnableSimulator for SVSimulator {
     fn run(&self) -> usize {
-        self.get_executor().step_all().get_collapsed_state()
+        SVExecutor::new(self.circuit.clone()).step_all().get_collapsed_state()
     }
 
     fn final_state(&self) -> DVector<Complex<f64>> {
-        self.get_executor().step_all().state_vector().clone()
+        SVExecutor::new(self.circuit.clone()).step_all().state_vector().clone()
     }
 }
 
-impl SVSimulator {
-    pub fn get_executor(&self) -> SVExecutor<'_> {
-        let size = 1 << self.circuit.n_qubits();
-        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
-        init_state_vector[0] = cart![1.0];
+// SVSimulatorDebugger
 
-        SVExecutor {
-            state_vector: init_state_vector,
-            circuit: &self.circuit,
-            pc: 0,
-            registers: RegisterFile::from(self.circuit.registers()),
-        }
-    }
+pub struct SVSimulatorDebugger {
+    executor: SVExecutor,
+}
 
-    pub fn attach_debugger(&self) -> SVSimulatorDebugger<'_> {
-        SVSimulatorDebugger {
-            executor: self.get_executor(),
-        }
+impl TryFrom<Circuit> for SVSimulatorDebugger {
+    type Error = SVError;
+
+    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+        Ok(Self { executor: SVExecutor::new(value) })
     }
 }
 
-pub struct SVSimulatorDebugger<'a> {
-    executor: SVExecutor<'a>,
-}
-
-impl<'a> DebuggableSimulator for SVSimulatorDebugger<'a> {
+impl DebuggableSimulator for SVSimulatorDebugger {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         self.executor.step()
     }
@@ -261,9 +260,15 @@ impl<'a> DebuggableSimulator for SVSimulatorDebugger<'a> {
     }
 }
 
-impl StoredCircuitSimulator for SVSimulator {
+impl StoredCircuitSimulator for SVSimulatorDebugger {
     fn circuit(&self) -> &Circuit {
-        &self.circuit
+        &self.executor.circuit
+    }
+}
+
+impl DoubleEndedSimulator for SVSimulatorDebugger {
+    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+        todo!() // For the sake of being able to run debug terminal
     }
 }
 
@@ -276,7 +281,7 @@ mod tests {
         circuit::Circuit,
         expr_dsl::expr_helpers::r,
         simulator::{BuildSimulator, RunnableSimulator},
-        sv_simulator::SVSimulator,
+        sv_simulator::{SVSimulator, SVSimulatorDebugger},
     };
 
     #[test]
@@ -304,10 +309,8 @@ mod tests {
             .apply_if(r("r3").eq(1))
             .x(3);
 
-        let sim = SVSimulator::build(circuit).unwrap();
-        let mut dbg = sim.attach_debugger();
-        dbg.executor.step_all();
-        println!("{:04b}", sim.run());
+        let sim = SVSimulator::build(circuit.clone()).unwrap();
+
         println!("{}", sim.final_state());
     }
 }
