@@ -2,7 +2,6 @@ use std::{
     collections::{HashMap, HashSet},
     f64::consts::PI,
     fmt::{Display, Write},
-    ops::Range,
 };
 
 use crate::{
@@ -24,8 +23,9 @@ pub struct Circuit {
     n_qubits: usize,
     registers: HashSet<String>,
     labels: HashMap<String, LabelPc>,
-    sub_circuits: HashMap<String, SubCircuit>,
     unresolved_labels: Vec<(String, LabelPc)>,
+    sub_circuits: HashMap<String, SubCircuit>,
+    unresolved_sub_circuits: Vec<(String, LabelPc)>,
 }
 
 impl Circuit {
@@ -35,18 +35,70 @@ impl Circuit {
             n_qubits: n_qubits,
             registers: HashSet::new(),
             labels: HashMap::new(),
-            sub_circuits: HashMap::new(),
             unresolved_labels: Vec::new(),
+            sub_circuits: HashMap::new(),
+            unresolved_sub_circuits: Vec::new(),
         }
     }
 
-    pub fn new_reg(mut self, name: &str) -> Self {
-        self.registers.insert(name.to_owned());
+    pub fn new_reg<I: Into<String>>(mut self, name: I) -> Self {
+        self.registers.insert(name.into());
         self
     }
 
-    pub fn new_sub_circuit(mut self, name: String) -> Self {
-        self.registers.insert(name.to_owned());
+    pub fn new_sub_circuit<I: Into<String>>(
+        mut self,
+        name: I,
+        circuit: Circuit,
+    ) -> Self {
+        let name = name.into();
+
+        let (
+            sub_circuit,
+            SubCircuitPeriphs {
+                registers,
+                labels,
+                unresolved_labels,
+                sub_circuits,
+                unresolved_sub_circuits,
+            },
+        ) = SubCircuit::from_circuit(circuit);
+
+        if let Some(existing) = self.sub_circuits.get(&name)
+            && sub_circuit.eq(existing)
+        {
+            panic!("Cannot add {}: A different sub circuit with the same name already exists", name)
+        }
+
+        for (imported_name, imported_sub_circuit) in sub_circuits.iter() {
+            if let Some(existing) = self.sub_circuits.get(imported_name)
+                && !imported_sub_circuit.eq(existing)
+            {
+                panic!("Cannot add {}: Duplicate definition of sub circuit {}", name, imported_name)
+            } else if name.eq(imported_name) && !sub_circuit.eq(imported_sub_circuit) {
+                panic!("Cannot add {}: Duplicate definition of sub circuit {}", name, imported_name)
+            }
+        }
+
+        self.registers.extend(registers);
+        self.labels.extend(
+            labels
+                .into_iter()
+                .map(|(label, label_pc)| (label, label_pc.map_sub_circuit(name.clone()))),
+        );
+        self.unresolved_labels.extend(
+            unresolved_labels
+                .into_iter()
+                .map(|(label, label_pc)| (label, label_pc.map_sub_circuit(name.clone()))),
+        );
+        self.unresolved_sub_circuits.extend(
+            unresolved_sub_circuits
+                .into_iter()
+                .map(|(label, label_pc)| (label, label_pc.map_sub_circuit(name.clone())))
+                .filter(|(label, _)| label != &name),
+        );
+        self.unresolved_sub_circuits.retain_mut(|(unresolved_name, _)| unresolved_name != &name);
+        self.sub_circuits.insert(name, sub_circuit);
         self
     }
 
@@ -241,6 +293,13 @@ impl Circuit {
         self
     }
 
+    // Sub circuit
+
+    pub fn sub_circuit<I: Into<String>>(mut self, name: I, first_qubit: usize) -> Self {
+        self.instructions.push(Instruction::SubCircuit(name.into(), first_qubit));
+        self
+    }
+
     // Classical instructions
 
     pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
@@ -379,11 +438,11 @@ impl Circuit {
 
             let inst = &mut self.instructions[inst_index];
 
-            *inst = match inst {
-                Instruction::Jump(_) => Instruction::Jump(resolved_pc.clone()),
+            match inst {
+                Instruction::Jump(jump_label_pc) => *jump_label_pc = resolved_pc,
 
-                Instruction::JumpIf(expr, _) => {
-                    Instruction::JumpIf(expr.clone(), resolved_pc.clone())
+                Instruction::JumpIf(_expr, jump_label_pc) => {
+                    *jump_label_pc = resolved_pc;
                 }
 
                 _ => continue,
@@ -413,10 +472,45 @@ impl Circuit {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct SubCircuit {
     instructions: Vec<Instruction>,
-    qubits: Range<usize>,
+    n_qubits: usize,
+}
+impl SubCircuit {
+    pub fn from_circuit(circuit: Circuit) -> (Self, SubCircuitPeriphs) {
+        let Circuit {
+            instructions,
+            n_qubits,
+            registers,
+            labels,
+            unresolved_labels,
+            sub_circuits,
+            unresolved_sub_circuits
+        } = circuit;
+        (
+            Self {
+                instructions,
+                n_qubits,
+            },
+            SubCircuitPeriphs {
+                registers,
+                labels,
+                unresolved_labels,
+                sub_circuits,
+                unresolved_sub_circuits
+            },
+        )
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct SubCircuitPeriphs {
+    registers: HashSet<String>,
+    labels: HashMap<String, LabelPc>,
+    unresolved_labels: Vec<(String, LabelPc)>,
+    sub_circuits: HashMap<String, SubCircuit>,
+    unresolved_sub_circuits: Vec<(String, LabelPc)>
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -432,10 +526,21 @@ impl LabelPc {
         }
     }
 
-    pub fn at_sub_circuit(sub_cicuit: String, pc: usize) -> Self {
+    pub fn at_sub_circuit(sub_circuit: String, pc: usize) -> Self {
         LabelPc {
-            sub_circuit: Some(sub_cicuit),
+            sub_circuit: Some(sub_circuit),
             pc,
+        }
+    }
+
+    /// Maps a None into Some(sub_circuit)
+    pub fn map_sub_circuit(self, sub_circuit: String) -> Self {
+        match self {
+            LabelPc {
+                sub_circuit: None,
+                pc,
+            } => Self::at_sub_circuit(sub_circuit, pc),
+            label_pc => label_pc,
         }
     }
 
