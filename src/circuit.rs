@@ -7,7 +7,7 @@ use std::
 ;
 
 use crate::{
-    circuit::{label::{CircuitLabel, CircuitLabelRef}, pc::CircuitPc}, expr_dsl::Expr, gate::{Gate, GateType, QBits}, instruction::Instruction
+    circuit::{breakpoint::{BreakpointList}, label::{CircuitLabel, CircuitLabelRef}, pc::CircuitPc}, expr_dsl::Expr, gate::{Gate, GateType, QBits}, instruction::Instruction
 };
 mod qasm_parse;
 
@@ -26,6 +26,7 @@ pub struct Circuit {
     unresolved_labels: Vec<(CircuitLabel, CircuitPc)>,
     sub_circuits: HashMap<String, SubCircuit>,
     unresolved_sub_circuits: Vec<(String, CircuitPc)>,
+    breakpoints: BreakpointList,
 }
 
 impl Circuit {
@@ -38,6 +39,7 @@ impl Circuit {
             unresolved_labels: Vec::new(),
             sub_circuits: HashMap::new(),
             unresolved_sub_circuits: Vec::new(),
+            breakpoints: Default::default()
         }
     }
 
@@ -414,6 +416,7 @@ impl Circuit {
 pub struct SubCircuit {
     instructions: Vec<Instruction>,
     n_qubits: usize,
+    breakpoints: BreakpointList
 }
 impl SubCircuit {
     pub fn from_circuit(circuit: Circuit) -> (Self, SubCircuitPeriphs) {
@@ -425,11 +428,13 @@ impl SubCircuit {
             unresolved_labels,
             sub_circuits,
             unresolved_sub_circuits,
+            breakpoints
         } = circuit;
         (
             Self {
                 instructions,
                 n_qubits,
+                breakpoints
             },
             SubCircuitPeriphs {
                 registers,

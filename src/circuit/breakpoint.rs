@@ -1,6 +1,6 @@
 use std::ops::{Deref, Index, IndexMut};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct BreakpointList(Vec<Breakpoint>);
 impl BreakpointList {
     /// Returns PEBreakpoint::Inserted if breakpoint was inserted or PEBreakpoint::Enabled
@@ -124,6 +124,11 @@ impl Breakpoint {
 
     pub fn enabled(&self) -> bool {
         self.enabled
+    }
+}
+impl PartialEq for Breakpoint {
+    fn eq(&self, other: &Self) -> bool {
+        self.pc == other.pc
     }
 }
 
