@@ -175,6 +175,20 @@ impl Circuit {
         self
     }
 
+    /// Controlled R_k
+    pub fn crk(mut self, k: usize, control: usize, target: usize) -> Self {
+        let pow2_inv = 1.0 / (1 << (k - 1)) as f64;
+        self.instructions.push(Instruction::Gate(
+            Gate::new(
+                GateType::U(0.0, 0.0, pow2_inv * std::f64::consts::PI),
+                &[control],
+                &[target],
+            )
+            .unwrap(),
+        ));
+        self
+    }
+
     /// Appends a circuit implementing the quantum Fourier transform.
     /// Targets are normally specified in order of least significance,
     /// for example [0,1,2,3,4].
@@ -184,19 +198,6 @@ impl Circuit {
          * be the same as figure 5.1 but "upside down".
          * */
 
-        /// Controlled R_k
-        fn cr(k: usize, control: usize, target: usize) -> Instruction {
-            let pow2_inv = 1.0 / (1 << (k - 1)) as f64;
-            Instruction::Gate(
-                Gate::new(
-                    GateType::U(0.0, 0.0, pow2_inv * std::f64::consts::PI),
-                    &[control],
-                    &[target],
-                )
-                .unwrap(),
-            )
-        }
-
         let n = targets.len();
 
         for i in (0..n).rev() {
@@ -204,7 +205,7 @@ impl Circuit {
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
-                self.instructions.push(cr(k, control as usize, targets[i]));
+                self = self.crk(k, control as usize, targets[i]);
                 control -= 1;
             }
         }
