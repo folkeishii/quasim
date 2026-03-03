@@ -22,10 +22,10 @@ pub struct Circuit {
     instructions: Vec<Instruction>,
     n_qubits: usize,
     registers: HashSet<String>,
-    labels: HashMap<String, LabelPc>,
-    unresolved_labels: Vec<(String, LabelPc)>,
+    labels: HashMap<String, CircuitPc>,
+    unresolved_labels: Vec<(String, CircuitPc)>,
     sub_circuits: HashMap<String, SubCircuit>,
-    unresolved_sub_circuits: Vec<(String, LabelPc)>,
+    unresolved_sub_circuits: Vec<(String, CircuitPc)>,
 }
 
 impl Circuit {
@@ -84,17 +84,17 @@ impl Circuit {
         self.labels.extend(
             labels
                 .into_iter()
-                .map(|(label, label_pc)| (label, label_pc.map_sub_circuit(name.clone()))),
+                .map(|(label, circuit_pc)| (label, circuit_pc.map_sub_circuit(name.clone()))),
         );
         self.unresolved_labels.extend(
             unresolved_labels
                 .into_iter()
-                .map(|(label, label_pc)| (label, label_pc.map_sub_circuit(name.clone()))),
+                .map(|(label, circuit_pc)| (label, circuit_pc.map_sub_circuit(name.clone()))),
         );
         self.unresolved_sub_circuits.extend(
             unresolved_sub_circuits
                 .into_iter()
-                .map(|(label, label_pc)| (label, label_pc.map_sub_circuit(name.clone())))
+                .map(|(label, circuit_pc)| (label, circuit_pc.map_sub_circuit(name.clone())))
                 .filter(|(label, _)| label != &name),
         );
         self.unresolved_sub_circuits.retain_mut(|(unresolved_name, _)| unresolved_name != &name);
@@ -319,22 +319,22 @@ impl Circuit {
     }
 
     pub fn jump(mut self, label: &str) -> Self {
-        let label_pc = match self.try_to_resolve_label(label) {
-            Some(label_pc) => label_pc.clone(),
-            None => LabelPc::at_main(0), // Placeholder pc
+        let circuit_pc = match self.try_to_resolve_label(label) {
+            Some(circuit_pc) => circuit_pc.clone(),
+            None => CircuitPc::at_main(0), // Placeholder pc
         };
 
-        self.instructions.push(Instruction::Jump(label_pc));
+        self.instructions.push(Instruction::Jump(circuit_pc));
         self
     }
 
     pub fn jump_if(mut self, expr: Expr, label: &str) -> Self {
-        let label_pc = match self.try_to_resolve_label(label) {
-            Some(label_pc) => label_pc.clone(),
-            None => LabelPc::at_main(0), // Placeholder pc
+        let circuit_pc = match self.try_to_resolve_label(label) {
+            Some(circuit_pc) => circuit_pc.clone(),
+            None => CircuitPc::at_main(0), // Placeholder pc
         };
 
-        self.instructions.push(Instruction::JumpIf(expr, label_pc));
+        self.instructions.push(Instruction::JumpIf(expr, circuit_pc));
         self
     }
 
@@ -342,7 +342,7 @@ impl Circuit {
     pub fn apply_if(mut self, expr: Expr) -> Self {
         self.instructions.push(Instruction::JumpIf(
             !expr,
-            LabelPc::at_main(self.instructions.len() + 2),
+            CircuitPc::at_main(self.instructions.len() + 2),
         ));
         self
     }
@@ -403,20 +403,20 @@ impl Circuit {
             panic!("Label '{label}' was already defined on instruction row {idx}")
         }
 
-        self.labels.insert(label.to_owned(), LabelPc::at_main(pc));
+        self.labels.insert(label.to_owned(), CircuitPc::at_main(pc));
 
         // After a new label has been added we try to resolve unresolved labels and patch instructions
         self.try_to_patch_instructions();
         self
     }
 
-    fn try_to_resolve_label(&mut self, label: &str) -> Option<&LabelPc> {
-        if let Some(label_pc) = self.labels.get(label) {
-            return Some(label_pc);
+    fn try_to_resolve_label(&mut self, label: &str) -> Option<&CircuitPc> {
+        if let Some(circuit_pc) = self.labels.get(label) {
+            return Some(circuit_pc);
         }
 
         // 1. If label doesnt exist, add it to list of unresolved labels with accompanying instruction index
-        let pair = (label.to_owned(), LabelPc::at_main(self.instructions.len()));
+        let pair = (label.to_owned(), CircuitPc::at_main(self.instructions.len()));
         self.unresolved_labels.push(pair);
         None
     }
@@ -425,10 +425,10 @@ impl Circuit {
         let mut to_remove = Vec::new();
 
         // 2. Patch instructions
-        for (label, label_pc) in self.unresolved_labels.clone() {
-            let inst_index = label_pc.pc();
+        for (label, circuit_pc) in self.unresolved_labels.clone() {
+            let inst_index = circuit_pc.pc();
 
-            if let Some(_sub_circuit) = label_pc.sub_circuit() {
+            if let Some(_sub_circuit) = circuit_pc.sub_circuit() {
                 todo!("TODO: handle label inside sub circuit")
             }
 
@@ -439,16 +439,16 @@ impl Circuit {
             let inst = &mut self.instructions[inst_index];
 
             match inst {
-                Instruction::Jump(jump_label_pc) => *jump_label_pc = resolved_pc,
+                Instruction::Jump(jump_circuit_pc) => *jump_circuit_pc = resolved_pc,
 
-                Instruction::JumpIf(_expr, jump_label_pc) => {
-                    *jump_label_pc = resolved_pc;
+                Instruction::JumpIf(_expr, jump_circuit_pc) => {
+                    *jump_circuit_pc = resolved_pc;
                 }
 
                 _ => continue,
             };
 
-            to_remove.push((label.clone(), label_pc));
+            to_remove.push((label.clone(), circuit_pc));
         }
 
         // 3. Remove resolved labels after patching
@@ -507,27 +507,27 @@ impl SubCircuit {
 #[derive(Debug, Clone)]
 pub struct SubCircuitPeriphs {
     registers: HashSet<String>,
-    labels: HashMap<String, LabelPc>,
-    unresolved_labels: Vec<(String, LabelPc)>,
+    labels: HashMap<String, CircuitPc>,
+    unresolved_labels: Vec<(String, CircuitPc)>,
     sub_circuits: HashMap<String, SubCircuit>,
-    unresolved_sub_circuits: Vec<(String, LabelPc)>
+    unresolved_sub_circuits: Vec<(String, CircuitPc)>
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LabelPc {
+pub struct CircuitPc {
     sub_circuit: Option<String>,
     pc: usize,
 }
-impl LabelPc {
+impl CircuitPc {
     pub fn at_main(pc: usize) -> Self {
-        LabelPc {
+        CircuitPc {
             sub_circuit: None,
             pc,
         }
     }
 
     pub fn at_sub_circuit(sub_circuit: String, pc: usize) -> Self {
-        LabelPc {
+        CircuitPc {
             sub_circuit: Some(sub_circuit),
             pc,
         }
@@ -536,11 +536,11 @@ impl LabelPc {
     /// Maps a None into Some(sub_circuit)
     pub fn map_sub_circuit(self, sub_circuit: String) -> Self {
         match self {
-            LabelPc {
+            CircuitPc {
                 sub_circuit: None,
                 pc,
             } => Self::at_sub_circuit(sub_circuit, pc),
-            label_pc => label_pc,
+            circuit_pc => circuit_pc,
         }
     }
 
@@ -552,7 +552,7 @@ impl LabelPc {
         self.pc
     }
 }
-impl Display for LabelPc {
+impl Display for CircuitPc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_char('[')?;
         if let Some(sc) = self.sub_circuit.as_ref() {
