@@ -1,4 +1,5 @@
 use crate::{
+    circuit::LabelPc,
     expr_dsl::Expr,
     gate::{Gate, QBits},
 };
@@ -7,7 +8,7 @@ use crate::{
 pub enum Instruction {
     Gate(Gate),
     Measurement(QBits, String),
-    Jump(usize),
-    JumpIf(Expr, usize),
+    Jump(LabelPc),
+    JumpIf(Expr, LabelPc),
     Assign(Expr, String),
 }
