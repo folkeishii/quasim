@@ -1,11 +1,5 @@
 use crate::{
-<<<<<<< HEAD
-    circuit::LabelPc,
-    expr_dsl::Expr,
-    gate::{Gate, QBits},
-=======
-    circuit::CircuitPc, expr_dsl::Expr, gate::{Gate, QBits}
->>>>>>> 97d1bf4 (CircuitLabel)
+    circuit::pc::CircuitPc, expr_dsl::Expr, gate::{Gate, QBits}
 };
 
 #[derive(Debug, Clone, PartialEq)]

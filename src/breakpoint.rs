@@ -1,5 +1,7 @@
 use std::ops::{Deref, Index, IndexMut};
 
+use crate::circuit::{pc::CircuitPc, label::CircuitLabel};
+
 #[derive(Debug, Clone, Default)]
 pub struct BreakpointList(Vec<Breakpoint>);
 impl BreakpointList {
@@ -113,7 +115,8 @@ impl Breakpoint {
 }
 
 pub enum BreakWhere {
-    Label()
+    Pc(CircuitPc),
+    Label(CircuitLabel),
 }
 
 #[derive(Debug, Clone)]

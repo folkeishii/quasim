@@ -4,7 +4,7 @@ use rand::distr::{Distribution, weighted::WeightedIndex};
 use crate::simulator::HybridSimulator;
 use crate::{
     cart,
-    circuit::{Circuit, CircuitPc},
+    circuit::{Circuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
     ext::get_gate_matrix,
     gate::{Gate, QBits},
