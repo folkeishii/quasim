@@ -9,7 +9,9 @@ use crate::{
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::{DebuggableSimulator, DoubleEndedSimulator, RunnableSimulator, StoredCircuitSimulator},
+    simulator::{
+        DebuggableSimulator, DoubleEndedSimulator, RunnableSimulator, StoredCircuitSimulator,
+    },
 };
 
 struct SVExecutor {
@@ -220,11 +222,16 @@ impl TryFrom<Circuit> for SVSimulator {
 
 impl RunnableSimulator for SVSimulator {
     fn run(&self) -> usize {
-        SVExecutor::new(self.circuit.clone()).step_all().get_collapsed_state()
+        SVExecutor::new(self.circuit.clone())
+            .step_all()
+            .get_collapsed_state()
     }
 
     fn final_state(&self) -> DVector<Complex<f64>> {
-        SVExecutor::new(self.circuit.clone()).step_all().state_vector().clone()
+        SVExecutor::new(self.circuit.clone())
+            .step_all()
+            .state_vector()
+            .clone()
     }
 }
 
@@ -238,7 +245,9 @@ impl TryFrom<Circuit> for SVSimulatorDebugger {
     type Error = SVError;
 
     fn try_from(value: Circuit) -> Result<Self, Self::Error> {
-        Ok(Self { executor: SVExecutor::new(value) })
+        Ok(Self {
+            executor: SVExecutor::new(value),
+        })
     }
 }
 
@@ -281,7 +290,7 @@ mod tests {
         circuit::Circuit,
         expr_dsl::expr_helpers::r,
         simulator::{BuildSimulator, RunnableSimulator},
-        sv_simulator::{SVSimulator},
+        sv_simulator::SVSimulator,
     };
 
     #[test]
