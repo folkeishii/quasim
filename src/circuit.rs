@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use crate::{
     expr_dsl::Expr,
@@ -11,6 +11,8 @@ pub struct Circuit {
     instructions: Vec<Instruction>,
     n_qubits: usize,
     registers: HashSet<String>,
+    labels: HashMap<String, usize>,
+    unresolved_labels: Vec<(String, usize)>,
 }
 
 impl Circuit {
@@ -19,6 +21,8 @@ impl Circuit {
             instructions: Vec::<Instruction>::default(),
             n_qubits: n_qubits,
             registers: HashSet::new(),
+            labels: HashMap::new(),
+            unresolved_labels: Vec::new(),
         }
     }
 
@@ -38,6 +42,12 @@ impl Circuit {
     pub fn registers(&self) -> &HashSet<String> {
         &self.registers
     }
+
+    pub fn has_unresolved_labels(&self) -> bool {
+        !self.unresolved_labels.is_empty()
+    }
+
+    // Gates
 
     pub fn x(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
@@ -109,6 +119,8 @@ impl Circuit {
         self
     }
 
+    // Classical instructions
+
     pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
         self.instructions.push(Instruction::Measurement(
             QBits::from_bitstring(1 << target),
@@ -117,14 +129,22 @@ impl Circuit {
         self
     }
 
-    // takes pc directly for now
-    pub fn jump(mut self, pc: usize) -> Self {
+    pub fn jump(mut self, label: &str) -> Self {
+        let pc = match self.try_to_resolve_label(label) {
+            Some(label_pc) => label_pc,
+            None => 0, // Placeholder pc
+        };
+
         self.instructions.push(Instruction::Jump(pc));
         self
     }
 
-    // takes pc directly for now
-    pub fn jump_if(mut self, expr: Expr, pc: usize) -> Self {
+    pub fn jump_if(mut self, expr: Expr, label: &str) -> Self {
+        let pc = match self.try_to_resolve_label(label) {
+            Some(label_pc) => label_pc,
+            None => 0, // Placeholder pc
+        };
+
         self.instructions.push(Instruction::JumpIf(expr, pc));
         self
     }
@@ -132,7 +152,7 @@ impl Circuit {
     /// Conditionally apply whichever instruction that comes after
     pub fn apply_if(mut self, expr: Expr) -> Self {
         self.instructions
-            .push(Instruction::JumpIf(!expr, self.instructions.len() + 1));
+            .push(Instruction::JumpIf(!expr, self.instructions.len() + 2));
         self
     }
 
@@ -173,5 +193,56 @@ impl Circuit {
         self = self.swap(targets[0], targets[n-1]);
 
         self
+    }
+
+    // Label
+    pub fn label(mut self, label: &str) -> Self {
+        let pc = self.instructions.len();
+
+        if let Some(idx) = self.labels.get(label) {
+            panic!("Label '{label}' was already defined on instruction row {idx}")
+        }
+
+        self.labels.insert(label.to_owned(), pc);
+
+        // After a new label has been added we try to resolve unresolved labels and patch instructions
+        self.try_to_patch_instructions();
+        self
+    }
+
+    fn try_to_resolve_label(&mut self, label: &str) -> Option<usize> {
+        if let Some(pc) = self.labels.get(label) {
+            return Some(*pc);
+        }
+
+        // 1. If label doesnt exist, add it to list of unresolved labels with accompanying instruction index
+        let pair = (label.to_owned(), self.instructions.len());
+        self.unresolved_labels.push(pair);
+        None
+    }
+
+    fn try_to_patch_instructions(&mut self) {
+        let mut to_remove = Vec::new();
+
+        // 2. Patch instructions
+        for (label, inst_index) in &self.unresolved_labels.clone() {
+            if let Some(resolved_pc) = self.try_to_resolve_label(label) {
+                let inst = &mut self.instructions[*inst_index];
+
+                *inst = match inst {
+                    Instruction::Jump(_) => Instruction::Jump(resolved_pc),
+
+                    Instruction::JumpIf(expr, _) => Instruction::JumpIf(expr.clone(), resolved_pc),
+
+                    _ => continue,
+                };
+
+                to_remove.push((label.clone(), *inst_index));
+            }
+        }
+
+        // 3. Remove resolved labels after patching
+        self.unresolved_labels
+            .retain(|(label, idx)| !to_remove.contains(&(label.clone(), *idx)));
     }
 }
