@@ -281,7 +281,7 @@ mod tests {
         circuit::Circuit,
         expr_dsl::expr_helpers::r,
         simulator::{BuildSimulator, RunnableSimulator},
-        sv_simulator::{SVSimulator, SVSimulatorDebugger},
+        sv_simulator::{SVSimulator},
     };
 
     #[test]
