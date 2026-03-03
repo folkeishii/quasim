@@ -32,25 +32,20 @@ pub fn count_qubits_from_syntax_tree(node: &SyntaxNode) -> Result<usize, QASMPar
     for child in node.children() {
         match child.kind() {
             EXPR_STMT => {
-                // Expression statements can contain gate calls!
                 let count = count_qubits_from_syntax_tree(&child)?;
-                if count > greatest_found {
-                    greatest_found = count;
-                }
+                greatest_found = greatest_found.max(count);
             }
             GATE_CALL_EXPR => {
                 let qubits = extract_qubits_from_gate_call(&child)?;
-                for qubit in qubits {
-                    if qubit > greatest_found {
-                        greatest_found = qubit;
-                    }
+                if let Some(&max_qubit) = qubits.iter().max() {
+                    greatest_found = greatest_found.max(max_qubit + 1);
                 }
             }
             _ => {}
         }
     }
 
-    return Ok(greatest_found + 1); // +1 because qubits are 0-indexed
+    Ok(greatest_found)
 }
 
 /// Extracts qubit indexes from a gate call node.
