@@ -320,3 +320,29 @@ impl ShowArgs {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub enum RegArgs {
+    All,
+    Reg(String),
+}
+impl RegArgs {
+    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
+        let mut tokens = tokens;
+        let arg = if let Some(token) = tokens.next() {
+            token
+        } else {
+            return Ok(RegArgs::All);
+        };
+
+        if let Some(token) = tokens.next() {
+            return Err(ParseError::UnexpectedArgument(token.into()));
+        }
+
+        if arg.is_empty() {
+            return Err(ParseError::ExpectedArgument("".into()));
+        }
+
+        Ok(RegArgs::Reg(arg.into()))
+    }
+}

@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::debug_terminal::{
     BreakArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs,
-    ShowArgs, StateArgs,
+    RegArgs, ShowArgs, StateArgs,
     parse::{ParseError, ParseResult, Token, TokenIterator},
 };
 
@@ -106,6 +106,13 @@ pub enum Command {
     /// show            # Short-hand for show circuit
     /// show circuit    # Draws the current circuit
     Show(ShowArgs),
+
+    /// Display the value of a register
+    ///
+    /// Usage: (reg can be substituted with `r`)
+    /// reg         # Display value of all registers
+    /// reg [r]     # Display value of register r
+    Reg(RegArgs),
 }
 impl Command {
     pub fn parse_tokens(tokens: TokenIterator<'_>) -> ParseResult<Self> {
@@ -124,6 +131,7 @@ impl Command {
             CommandIdent::State => Command::State(StateArgs::parse_arguments(tokens)?),
             CommandIdent::Collapse => Command::Collapse(CollapseArgs::parse_arguments(tokens)?),
             CommandIdent::Show => Command::Show(ShowArgs::parse_arguments(tokens)?),
+            CommandIdent::Reg => Command::Reg(RegArgs::parse_arguments(tokens)?),
             CommandIdent::Quit => {
                 if let Some(token) = tokens.next() {
                     return Err(ParseError::UnexpectedArgument(token.into()));
@@ -168,6 +176,8 @@ pub enum CommandIdent {
     Collapse,
     /// show
     Show,
+    /// reg or r
+    Reg,
 }
 impl CommandIdent {
     pub fn parse_command(tokens: &mut TokenIterator<'_>) -> ParseResult<Self> {
@@ -191,6 +201,7 @@ impl CommandIdent {
             CommandIdent::Disable => "disable".into(),
             CommandIdent::State => "state".into(),
             CommandIdent::Collapse => "collapse".into(),
+            CommandIdent::Reg => "reg".into(),
             CommandIdent::Show => "show".into(),
         }
     }
@@ -213,6 +224,7 @@ impl TryFrom<Token<'_>> for CommandIdent {
             "state" => Ok(Self::State),
             "collapse" | "cl" => Ok(Self::Collapse),
             "show" => Ok(Self::Show),
+            "reg" | "r" => Ok(Self::Reg),
             _ => Err(ParseError::ExpectedCommand(value.into())),
         }
     }

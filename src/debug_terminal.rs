@@ -89,6 +89,7 @@ where
                 Command::Collapse(collapse_args) => {
                     self.handle_collapse(&mut stdout, &collapse_args)?
                 }
+                Command::Reg(reg_args) => println!(stdout; "{:?}", reg_args)?,
                 Command::Show(show_args) => self.handle_show(&mut stdout, &show_args)?,
             }
         }
