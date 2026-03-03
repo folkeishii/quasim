@@ -16,5 +16,6 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
-      - run: cargo check
+      - run: cargo check --benches
       - run: cargo test
+      - run: ./.github/check.sh
