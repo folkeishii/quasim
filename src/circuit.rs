@@ -7,8 +7,8 @@ use crate::{
 };
 mod qasm_parse;
 
-use log::{info, warn};
-use oq3_syntax::{SourceFile, SyntaxNode, SyntaxText, ast::AstNode};
+use log::{trace, warn};
+use oq3_syntax::{SourceFile, ast::AstNode};
 use std::fs::read_to_string;
 
 pub use qasm_parse::*;
@@ -70,16 +70,18 @@ impl Circuit {
         let file_string = read_to_string(file_name)?;
         let parsed_source = SourceFile::parse(&file_string);
         let parse_tree: SourceFile = parsed_source.tree();
-        info!(
-            "Found {} statements",
+        trace!(
+            "Found {} QASM statements",
             parse_tree.statements().collect::<Vec<_>>().len()
         );
         let syntax_errors = parsed_source.errors();
-        warn!(
-            "Found {} parse errors:\n{:?}\n",
-            syntax_errors.len(),
-            syntax_errors
-        );
+        if syntax_errors.len() > 0 {
+            warn!(
+                "Found {} QASM parse errors:\n{:?}\n",
+                syntax_errors.len(),
+                syntax_errors
+            );
+        }
 
         // First pass: count the number of qubits
         let n_qubits = count_qubits_from_syntax_tree(parse_tree.syntax())?;

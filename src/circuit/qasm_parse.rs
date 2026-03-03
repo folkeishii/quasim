@@ -1,6 +1,6 @@
 use std::io;
 
-use log::{info, warn};
+use log::{trace, warn};
 use oq3_syntax::{SyntaxNode, SyntaxText};
 
 use crate::circuit::Circuit;
@@ -79,7 +79,7 @@ pub fn apply_gates_from_syntax_tree(
     for child in node.children() {
         match child.kind() {
             VERSION_STRING => {
-                info!("Found version string in QASM source: {}", child.text());
+                trace!("Found version string in QASM source: {}", child.text());
             }
             EXPR_STMT => {
                 // Expression statements can contain gate calls!
