@@ -1,5 +1,4 @@
 use quasim::{
-    self,
     circuit::Circuit,
     simulator::{BuildSimulator, RunnableSimulator},
     sv_simulator::SVSimulator,
