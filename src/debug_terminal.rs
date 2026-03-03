@@ -13,9 +13,8 @@ use crate::debug_terminal::show_circuit::show_circuit;
 use crate::ext::collapse;
 use crate::simulator::StoredCircuitSimulator;
 use crate::{
-    circuit::Circuit,
+    circuit::{Circuit, breakpoint::{BreakpointList, PEBreakpoint}},
     debug_simulator::DebugSimulator,
-    breakpoint::{BreakpointList, PEBreakpoint},
     debug_terminal::{
         parse::into_tokens,
     },

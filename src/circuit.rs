@@ -7,6 +7,7 @@ use std::{
 };
 pub mod label;
 pub mod pc;
+pub mod breakpoint;
 
 use crate::{
     circuit::{label::{CircuitLabel, CircuitLabelRef}, pc::CircuitPc}, expr_dsl::Expr, gate::{Gate, GateType, QBits}, instruction::Instruction
