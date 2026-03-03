@@ -1,79 +1,82 @@
 use std::ops::{Deref, Index, IndexMut};
 
-use crate::circuit::{pc::CircuitPc, label::CircuitLabel};
-
 #[derive(Debug, Clone, Default)]
 pub struct BreakpointList(Vec<Breakpoint>);
 impl BreakpointList {
-    /// Returns true if breakpoint was inserted
-    pub fn insert_or_enable(&mut self, gate_index: usize) -> PEBreakpoint {
-        match self.binary_search_by_key(&gate_index, |b| b.gate_index()) {
+    /// Returns PEBreakpoint::Inserted if breakpoint was inserted or PEBreakpoint::Enabled
+    /// if breakpoint was enabled
+    pub fn insert_or_enable(&mut self, gate_index: usize) -> IEBreakpoint {
+        match self.find_breakpoint(gate_index) {
             // Breakpoint already exists
             Ok(index) => {
                 self[index].enable();
-                PEBreakpoint::Enabled
+                IEBreakpoint::Enabled
             }
             // Breakpoint does not exist
             Err(index) => {
-                self.inner_mut().insert(index, Breakpoint::new(gate_index));
-                PEBreakpoint::Inserted
+                self.0.insert(index, Breakpoint::new(gate_index));
+                IEBreakpoint::Inserted
             }
         }
     }
 
     /// Returns true if breakpoint was enabled
-    pub fn enable(&mut self, gate_index: usize) -> Option<PEBreakpoint> {
-        match self.binary_search_by_key(&gate_index, |b| b.gate_index()) {
+    pub fn enable(&mut self, gate_index: usize) -> bool {
+        match self.find_breakpoint(gate_index) {
             // Breakpoint exists
             Ok(index) => {
                 self[index].enable();
-                Some(PEBreakpoint::Enabled)
+                true
             }
             // Breakpoint does not exist
-            Err(_) => None,
+            Err(_) => false,
         }
     }
 
-    /// Returns Ok if breakpoint was disabled
-    pub fn disable(&mut self, gate_index: usize) -> Option<PEBreakpoint> {
-        match self.binary_search_by_key(&gate_index, |b| b.gate_index()) {
+    /// Returns true if breakpoint was disabled
+    pub fn disable(&mut self, gate_index: usize) -> bool {
+        match self.find_breakpoint(gate_index) {
+            // Breakpoint exists
             Ok(index) => {
                 self[index].disable();
-                Some(PEBreakpoint::Disabled)
+                true
             }
-            Err(_) => None,
+            // Breakpoint does not exist
+            Err(_) => false,
         }
     }
 
-    /// Returns Ok if breakpoint was deleted
-    pub fn delete(&mut self, gate_index: usize) -> Option<PEBreakpoint> {
-        match self.binary_search_by_key(&gate_index, |b| b.gate_index()) {
+    /// Returns true if breakpoint was deleted
+    pub fn delete(&mut self, gate_index: usize) -> bool {
+        match self.find_breakpoint(gate_index) {
+            // Breakpoint exists
             Ok(index) => {
-                self.inner_mut().remove(index);
-                Some(PEBreakpoint::Deleted)
+                self.0.remove(index);
+                true
             }
-            Err(_) => None,
+            // Breakpoint does not exist
+            Err(_) => false,
         }
     }
 
-    fn inner(&self) -> &Vec<Breakpoint> {
-        &self.0
-    }
-
-    fn inner_mut(&mut self) -> &mut Vec<Breakpoint> {
-        &mut self.0
+    /// `Ok(index)` if breakpoint was found at self[index]
+    ///
+    /// `Err(index)` if breakpoint was not found but can be inserted
+    /// at `index`
+    fn find_breakpoint(&self, gate_index: usize) -> Result<usize, usize> {
+        self.binary_search_by_key(&gate_index, |b| b.gate_index())
     }
 }
 impl Index<usize> for BreakpointList {
     type Output = Breakpoint;
 
     fn index(&self, index: usize) -> &Self::Output {
-        &self.inner()[index]
+        &self.0[index]
     }
 }
 impl IndexMut<usize> for BreakpointList {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.inner_mut()[index]
+        &mut self.0[index]
     }
 }
 impl Deref for BreakpointList {
@@ -114,15 +117,8 @@ impl Breakpoint {
     }
 }
 
-pub enum BreakWhere {
-    Pc(CircuitPc),
-    Label(CircuitLabel),
-}
-
-#[derive(Debug, Clone)]
-pub enum PEBreakpoint {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum IEBreakpoint {
     Inserted,
     Enabled,
-    Disabled,
-    Deleted,
 }

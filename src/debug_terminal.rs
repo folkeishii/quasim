@@ -13,7 +13,7 @@ use crate::debug_terminal::show_circuit::show_circuit;
 use crate::ext::collapse;
 use crate::simulator::StoredCircuitSimulator;
 use crate::{
-    circuit::{Circuit, breakpoint::{BreakpointList, PEBreakpoint}},
+    circuit::{Circuit, breakpoint::{BreakpointList, IEBreakpoint}},
     debug_simulator::DebugSimulator,
     debug_terminal::{
         parse::into_tokens,
@@ -404,8 +404,8 @@ where
         for &gate_index in gate_indices {
             let status = if !enable_only {
                 self.breakpoints.insert_or_enable(gate_index)
-            } else if let Some(status) = self.breakpoints.enable(gate_index) {
-                status
+            } else if self.breakpoints.enable(gate_index) {
+                IEBreakpoint::Enabled
             } else {
                 errorln!(
                     stdout;
@@ -416,12 +416,11 @@ where
             };
 
             match status {
-                PEBreakpoint::Enabled => println!(stdout; "Enabled breakpoint at {}", gate_index)?,
-                PEBreakpoint::Inserted => println!(
+                IEBreakpoint::Enabled => println!(stdout; "Enabled breakpoint at {}", gate_index)?,
+                IEBreakpoint::Inserted => println!(
                     stdout;
                     "Inserted new breakpoint at {}", gate_index
                 )?,
-                _ => {}
             }
         }
 
@@ -446,7 +445,7 @@ where
 
         let mut disabled: Vec<String> = Vec::new();
         for &gate_index in disable_indexes {
-            if self.breakpoints.disable(gate_index).is_none() {
+            if !self.breakpoints.disable(gate_index) {
                 errorln!(
                     stdout;
                     "Could not disable breakpoint at {}, breakpoint does not exist", gate_index
@@ -484,7 +483,7 @@ where
 
         let mut deleted: Vec<String> = Vec::new();
         for &gate_index in delete_indexes {
-            if self.breakpoints.delete(gate_index).is_none() {
+            if !self.breakpoints.delete(gate_index) {
                 errorln!(
                     stdout;
                     "Could not delete breakpoint at {}, breakpoint does not exist", gate_index
