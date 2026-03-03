@@ -4,7 +4,7 @@ use rand::distr::{Distribution, weighted::WeightedIndex};
 use crate::simulator::HybridSimulator;
 use crate::{
     cart,
-    circuit::Circuit,
+    circuit::{Circuit, LabelPc},
     expr_dsl::{Expr, Value},
     ext::get_gate_matrix,
     gate::{Gate, QBits},
@@ -168,19 +168,18 @@ impl SVExecutor {
         self.pc += 1;
     }
 
-    fn jump(&mut self, pc: usize) {
-        self.pc = pc;
+    fn jump(&mut self, label_pc: &LabelPc) {
+        if let Some(_sub_circuit) = label_pc.sub_circuit() {
+            todo!("TODO: handle label inside sub circuit")
+        } else {
+            self.pc = label_pc.pc();
+        }
     }
 
-    fn jump_if(&mut self, expr: &Expr, pc: usize) {
+    fn jump_if(&mut self, expr: &Expr, label_pc: &LabelPc) {
         match expr.eval(&self.registers) {
-            Ok(Value::Bool(b)) => {
-                if b {
-                    self.pc = pc;
-                    return;
-                }
-                self.pc += 1;
-            }
+            Ok(Value::Bool(true)) => self.jump(label_pc),
+            Ok(Value::Bool(false)) => self.pc += 1,
             Err(err) => panic!("{}", err),
             _ => panic!(
                 "Expression was expected to evaluate to boolean type but got something else."
@@ -200,8 +199,8 @@ impl SVExecutor {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
             Instruction::Measurement(qbits, reg) => self.measure(*qbits, reg),
-            Instruction::Jump(pc) => self.jump(*pc),
-            Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
+            Instruction::Jump(label_pc) => self.jump(label_pc),
+            Instruction::JumpIf(expr, label_pc) => self.jump_if(expr, label_pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
         }
     }
