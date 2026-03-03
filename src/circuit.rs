@@ -205,7 +205,7 @@ impl Circuit {
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
-                self = self.crk(k, control as usize, targets[i]);
+                self = self.crk(k, targets[control as usize], targets[i]);
                 control -= 1;
             }
         }
