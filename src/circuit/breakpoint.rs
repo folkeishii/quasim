@@ -5,8 +5,8 @@ pub struct BreakpointList(Vec<Breakpoint>);
 impl BreakpointList {
     /// Returns PEBreakpoint::Inserted if breakpoint was inserted or PEBreakpoint::Enabled
     /// if breakpoint was enabled
-    pub fn insert_or_enable(&mut self, gate_index: usize) -> IEBreakpoint {
-        match self.find_breakpoint(gate_index) {
+    pub fn insert_or_enable(&mut self, pc: usize) -> IEBreakpoint {
+        match self.find_breakpoint(pc) {
             // Breakpoint already exists
             Ok(index) => {
                 self[index].enable();
@@ -14,15 +14,15 @@ impl BreakpointList {
             }
             // Breakpoint does not exist
             Err(index) => {
-                self.0.insert(index, Breakpoint::new(gate_index));
+                self.0.insert(index, Breakpoint::new(pc));
                 IEBreakpoint::Inserted
             }
         }
     }
 
     /// Returns true if breakpoint was enabled
-    pub fn enable(&mut self, gate_index: usize) -> bool {
-        match self.find_breakpoint(gate_index) {
+    pub fn enable(&mut self, pc: usize) -> bool {
+        match self.find_breakpoint(pc) {
             // Breakpoint exists
             Ok(index) => {
                 self[index].enable();
@@ -34,8 +34,8 @@ impl BreakpointList {
     }
 
     /// Returns true if breakpoint was disabled
-    pub fn disable(&mut self, gate_index: usize) -> bool {
-        match self.find_breakpoint(gate_index) {
+    pub fn disable(&mut self, pc: usize) -> bool {
+        match self.find_breakpoint(pc) {
             // Breakpoint exists
             Ok(index) => {
                 self[index].disable();
@@ -47,8 +47,8 @@ impl BreakpointList {
     }
 
     /// Returns true if breakpoint was deleted
-    pub fn delete(&mut self, gate_index: usize) -> bool {
-        match self.find_breakpoint(gate_index) {
+    pub fn delete(&mut self, pc: usize) -> bool {
+        match self.find_breakpoint(pc) {
             // Breakpoint exists
             Ok(index) => {
                 self.0.remove(index);
@@ -56,6 +56,16 @@ impl BreakpointList {
             }
             // Breakpoint does not exist
             Err(_) => false,
+        }
+    }
+
+    /// Returns the first breakpoint after `pc`
+    pub fn next_break(&self, pc: usize) -> Option<&Breakpoint> {
+        match self.find_breakpoint(pc) {
+            // Breakpoint exists
+            Ok(index) => self.get(index+1),
+            // Breakpoint does not exist
+            Err(index) => self.get(index)
         }
     }
 
@@ -87,15 +97,15 @@ impl Deref for BreakpointList {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Hash)]
 pub struct Breakpoint {
-    gate_index: usize,
+    pc: usize,
     enabled: bool,
 }
 impl Breakpoint {
     pub fn new(gate_index: usize) -> Self {
         Self {
-            gate_index,
+            pc: gate_index,
             enabled: true,
         }
     }
@@ -109,7 +119,7 @@ impl Breakpoint {
     }
 
     pub fn gate_index(&self) -> usize {
-        self.gate_index
+        self.pc
     }
 
     pub fn enabled(&self) -> bool {
