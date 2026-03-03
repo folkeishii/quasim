@@ -1,5 +1,6 @@
 pub mod label;
 pub mod pc;
+pub mod breakpoint;
 
 use std::
     collections::{HashMap, HashSet}

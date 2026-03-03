@@ -12,4 +12,3 @@ pub mod register_file;
 pub mod simple_simulator;
 pub mod simulator;
 pub mod sv_simulator;
-pub mod breakpoint;
