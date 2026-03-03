@@ -226,4 +226,16 @@ impl Circuit {
         self.unresolved_labels
             .retain(|(label, idx)| !to_remove.contains(&(label.clone(), *idx)));
     }
+
+    /// Inverts a non-hybrid circuit.
+    pub fn inverse(mut self) -> Self {
+        for i in 0..self.instructions.len() {
+            match &self.instructions[i] {
+                Instruction::Gate(gate) => self.instructions[i] = Instruction::Gate(gate.inverse()),
+                _ => panic!("Circuit is hybrid"),
+            }
+        }
+        self.instructions.reverse();
+        self
+    }
 }
