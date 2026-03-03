@@ -147,4 +147,31 @@ impl Circuit {
         self.instructions.push(Instruction::Assign(expr, reg));
         self
     }
+
+    pub fn qft(mut self, targets: &[usize]) -> Self {
+
+        fn cr(k: usize, control: usize, target: usize) -> Instruction {
+            let pow2_inv = 1.0 / (1 << (k - 1)) as f64;
+            Instruction::Gate(Gate::new(GateType::U(0.0,0.0, pow2_inv * std::f64::consts::PI), &[control], &[target]).unwrap())
+        }
+
+        let n = targets.len();
+
+        for i in 0..n {
+
+            self = self.hadamard(targets[i]);
+
+            let mut control = i + 1;
+
+            for k in 2..(n - i + 1) {
+                self.instructions.push(cr(k, control, targets[i]));
+                control += 1;
+            }
+
+        }
+
+        self = self.swap(targets[0], targets[n-1]);
+
+        self
+    }
 }
