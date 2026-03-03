@@ -1,5 +1,5 @@
 use crate::{
-    circuit::CircuitPc, expr_dsl::Expr, gate::{Gate, QBits}
+    circuit::pc::CircuitPc, expr_dsl::Expr, gate::{Gate, QBits}
 };
 
 #[derive(Debug, Clone, PartialEq)]
