@@ -67,6 +67,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
+            Instruction::SubCircuit(_, _) => todo!(),
         }
         self.current_step += 1;
         Some(&self.current_state)
@@ -100,6 +101,7 @@ impl DoubleEndedSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
+            Instruction::SubCircuit(_, _) => todo!(),
         }
         Some(&self.current_state)
     }

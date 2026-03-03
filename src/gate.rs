@@ -4,7 +4,7 @@ use nalgebra::Complex;
 
 use crate::cart;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct QBits(usize);
 
 impl QBits {
@@ -43,7 +43,7 @@ impl QBits {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum GateType {
     X,
     Y,
@@ -77,7 +77,7 @@ pub enum GateError {
     InvalidTargets,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Gate {
     ty: GateType,
     controls: QBits,
