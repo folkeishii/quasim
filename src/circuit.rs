@@ -156,6 +156,13 @@ impl Circuit {
         self
     }
 
+    pub fn reset(self, target: usize) -> Self {
+        self.new_reg("_reset")
+            .measure_bit(target, "_reset")
+            .apply_if(Expr::Reg("_reset".to_owned()).eq(1))
+            .x(target)
+    }
+
     // takes register nr directly for now
     pub fn assign(mut self, reg: String, expr: Expr) -> Self {
         if !self.registers.contains(&reg) {
