@@ -3,7 +3,7 @@ use crate::{
     circuit::Circuit,
     ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
-    simulator::{DebuggableSimulator, DoubleEndedSimulator, StoredCircuitSimulator},
+    simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
 use nalgebra::{Complex, DVector};
 
@@ -83,9 +83,7 @@ impl DebuggableSimulator for DebugSimulator {
     fn current_state(&self) -> &DVector<Complex<f64>> {
         &self.current_state
     }
-}
 
-impl DoubleEndedSimulator for DebugSimulator {
     fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
         if self.current_step <= 0 {
             return None;
@@ -105,7 +103,12 @@ impl DoubleEndedSimulator for DebugSimulator {
         }
         Some(&self.current_state)
     }
+
+    fn double_ended(&self) -> bool {
+        true
+    }
 }
+
 
 impl DebugSimulator {
     pub fn instruction_count(&self) -> usize {
@@ -133,7 +136,7 @@ mod tests {
         circuit::Circuit,
         debug_simulator::DebugSimulator,
         gate::{Gate, GateType},
-        simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
+        simulator::{BuildSimulator, DebuggableSimulator},
     };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f64::consts::FRAC_1_SQRT_2;

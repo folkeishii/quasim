@@ -40,6 +40,14 @@ pub trait RunnableSimulator {
 /// one gate at a time should implement this trait
 pub trait DebuggableSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>>;
+    /// Not guaranteed to be implemented for every simulator
+    ///
+    /// `prev` should be implemented if `fn double_ended(&self)`
+    /// returns true
+    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+        todo!()
+    }
+    fn double_ended(&self) -> bool;
     fn current_instruction(&self) -> Option<(usize, &Instruction)>;
     fn current_state(&self) -> &DVector<Complex<f64>>;
 
@@ -52,13 +60,6 @@ pub trait DebuggableSimulator {
         }
         self.current_state()
     }
-}
-
-/// # DebuggableSimulator
-/// Any simulator that can step back through a circuit
-/// one gate at a time should implement this trait
-pub trait DoubleEndedSimulator: DebuggableSimulator {
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>>;
 }
 
 /// # StoredCircuitSimulator

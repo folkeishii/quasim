@@ -11,7 +11,7 @@ use crate::{
     instruction::Instruction,
     register_file::RegisterFile,
     simulator::{
-        DebuggableSimulator, DoubleEndedSimulator, RunnableSimulator, StoredCircuitSimulator,
+        DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator,
     },
 };
 
@@ -268,17 +268,19 @@ impl DebuggableSimulator for SVSimulatorDebugger {
     fn current_state(&self) -> &DVector<Complex<f64>> {
         &self.executor.state_vector
     }
+
+    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+        None
+    }
+
+    fn double_ended(&self) -> bool {
+        true
+    }
 }
 
 impl StoredCircuitSimulator for SVSimulatorDebugger {
     fn circuit(&self) -> &Circuit {
         &self.executor.circuit
-    }
-}
-
-impl DoubleEndedSimulator for SVSimulatorDebugger {
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
-        todo!() // For the sake of being able to run debug terminal
     }
 }
 
