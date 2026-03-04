@@ -272,6 +272,8 @@ mod tests {
             .cnot(4, 1)
             .u(23.3, 34.5, 56.1, 0)
             .cu(1.0, 22.2, 0.1, 4, 2)
+            .swap(3, 4)
+            .fredkin(0, 1, 2)
             .inverse()
             .hadamard(0)
             .hadamard(1)
@@ -283,7 +285,9 @@ mod tests {
             .cnot(0, 1)
             .cnot(4, 1)
             .u(23.3, 34.5, 56.1, 0)
-            .cu(1.0, 22.2, 0.1, 4, 2);
+            .cu(1.0, 22.2, 0.1, 4, 2)
+            .swap(3, 4)
+            .fredkin(0, 1, 2);
         let dim = 1 << 5;
         let id = DMatrix::<Complex<f64>>::identity(dim, dim);
         let mut res: DMatrix<Complex<f64>> = id.clone();

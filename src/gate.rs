@@ -64,7 +64,7 @@ impl GateType {
 
     pub fn inverse(&self) -> Self {
         match self {
-            Self::X | Self::Y | Self::Z | Self::H | Self::SWAP => self.clone(),
+            Self::X | Self::Y | Self::Z | Self::H | Self::SWAP => *self,
             Self::S => Self::U(0.0, 0.0, -PI / 2.0),
             Self::U(theta, phi, lambda) => Self::U(-theta, -lambda, -phi),
         }
