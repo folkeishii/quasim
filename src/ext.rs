@@ -1,3 +1,4 @@
+use std::ops::{Index, IndexMut};
 use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
@@ -265,6 +266,47 @@ pub fn expand_matrix(
         sum += eval_tensor_product(term);
     }
     sum
+}
+
+pub struct Stack<T, const MIN: usize = 1>(Vec<T>);
+impl<T> Stack<T> {
+    pub fn new(value: T) -> Self {
+        Self(vec![value])
+    }
+
+    pub fn top(&self) -> &T {
+        &self[0]
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn push(&mut self, value: T) {
+        self.0.push(value);
+    }
+
+    pub fn pop(&mut self) -> bool {
+        if self.0.len() > 1 {
+            self.0.pop();
+            true
+        } else {
+            false
+        }
+    }
+}
+impl<T> Index<usize> for Stack<T> {
+    type Output = T;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[self.0.len() - index - 1]
+    }
+}
+impl<T> IndexMut<usize> for Stack<T> {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        let i = self.0.len() - index - 1;
+        &mut self.0[i]
+    }
 }
 
 #[cfg(test)]
