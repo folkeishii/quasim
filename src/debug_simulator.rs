@@ -1,7 +1,7 @@
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
-    ext::{expand_matrix_from_gate, measure},
+    ext::{Stack, expand_matrix_from_gate, measure},
     instruction::Instruction,
     simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
@@ -11,7 +11,7 @@ use nalgebra::{Complex, DVector};
 pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
     circuit: Circuit,
-    pc: CircuitPc,
+    pc_stack: Stack<CircuitPc>,
 }
 
 impl TryFrom<Circuit> for DebugSimulator {
@@ -22,17 +22,19 @@ impl TryFrom<Circuit> for DebugSimulator {
         let k = circuit.n_qubits();
 
         // Check for mid-cicuit measurement
-        let mut encountered = false;
-        for inst in circuit.instructions() {
-            let _ = inst; // avoid warning for now
-            let is_measurement = false; // matches!(inst, Instruction::Measurement(_));
-            if is_measurement {
-                encountered = true;
-            } else if encountered {
-                // There was a gate between measurements
-                return Err(DebugSimulatorError::MidCircuitMeasurement);
-            }
-        }
+        // Warning not used, checking for
+        // uncompatible circuits might be done with generics
+        // let mut encountered = false;
+        // for inst in circuit.instructions() {
+        //     let _ = inst; // avoid warning for now
+        //     let is_measurement = false; // matches!(inst, Instruction::Measurement(_));
+        //     if is_measurement {
+        //         encountered = true;
+        //     } else if encountered {
+        //         // There was a gate between measurements
+        //         return Err(DebugSimulatorError::MidCircuitMeasurement);
+        //     }
+        // }
 
         // Initial state assumed to be |000..>
         let mut init_state = vec![cart!(0.0); 1 << k];
@@ -41,7 +43,7 @@ impl TryFrom<Circuit> for DebugSimulator {
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),
             circuit: circuit,
-            pc: CircuitPc::at_main(0),
+            pc_stack: Default::default(),
         };
 
         Ok(sim)
@@ -50,10 +52,19 @@ impl TryFrom<Circuit> for DebugSimulator {
 
 impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.pc.pc() >= self.instruction_count() {
-            return None;
-        }
-        match &self.circuit.instructions()[self.pc.pc()] {
+        let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // End of (sub) circuit: step out
+            // If step out fails: end of circuit is reached
+            return if self.pc_stack.pop() {
+                Some(&self.current_state)
+            } else {
+                None
+            }
+        };
+        // if self.pc.pc() >= self.instruction_count() {
+        //     return None;
+        // }
+        match inst {
             Instruction::Gate(gate) => {
                 let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 self.current_state = mat * self.current_state.clone();
@@ -69,15 +80,16 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Assign(_, _) => todo!(),
             Instruction::SubCircuit(_, _) => todo!(),
         }
-        self.pc.increment();
+        self.pc_mut().increment();
         Some(&self.current_state)
     }
 
-    fn current_instruction(&self) -> Option<(CircuitPc, &Instruction)> {
-        self.circuit
-            .instructions()
-            .get(self.pc.pc())
-            .map(|inst| (self.pc.clone(), inst))
+    fn current_instruction(&self) -> (&CircuitPc, Option<&Instruction>) {
+        (self.pc(), self.circuit.instruction(self.pc()))
+        // self.circuit
+        //     .instructions()
+        //     .get(self.pc.pc())
+        //     .map(|inst| (self.pc.clone(), inst))
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
@@ -85,11 +97,28 @@ impl DebuggableSimulator for DebugSimulator {
     }
 
     fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.pc.pc() <= 0 {
-            return None;
+        if !self.pc_mut().decrement() {
+            // Beginning of (sub) circuit: step out
+            // If step out fails: beginning of circuit is reached
+            return if self.pc_stack.pop() {
+                Some(&self.current_state)
+            } else {
+                None
+            }
         }
-        self.pc.decrement();
-        match &self.circuit.instructions()[self.pc.pc()] {
+
+        let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // Should not happen
+            // Beginning of (sub) circuit: step out
+            // If step out fails: beginning of circuit is reached
+            return if self.pc_stack.pop() {
+                Some(&self.current_state)
+            } else {
+                None
+            }
+        };
+
+        match inst {
             Instruction::Gate(gate) => {
                 let mut mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 mat.try_inverse_mut();
@@ -109,10 +138,13 @@ impl DebuggableSimulator for DebugSimulator {
     }
 }
 
-
 impl DebugSimulator {
-    pub fn instruction_count(&self) -> usize {
-        self.circuit.instructions().len()
+    fn pc(&self) -> &CircuitPc {
+        self.pc_stack.top()
+    }
+
+    fn pc_mut(&mut self) -> &mut CircuitPc {
+        self.pc_stack.top_mut()
     }
 }
 

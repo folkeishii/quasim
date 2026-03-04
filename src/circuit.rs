@@ -4,10 +4,7 @@ pub mod pc;
 use std::collections::{HashMap, HashSet};
 
 use crate::{
-    circuit::{breakpoint::BreakpointList, pc::CircuitPc},
-    expr_dsl::Expr,
-    gate::{Gate, GateType, QBits},
-    instruction::Instruction,
+    circuit::{breakpoint::BreakpointList, pc::CircuitPc}, expr_dsl::Expr, ext::Stack, gate::{Gate, GateType, QBits}, instruction::Instruction
 };
 mod qasm_parse;
 
@@ -19,6 +16,7 @@ pub use qasm_parse::*;
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
+
     // Local to main
 
     instructions: Vec<Instruction>,
@@ -103,8 +101,35 @@ impl Circuit {
         self
     }
 
-    pub fn instructions(&self) -> &[Instruction] {
-        &self.instructions
+    pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<&Instruction> {
+        if let Some(sc) = circuit_pc.sub_circuit() {
+            self.sub_circuits.get(sc)?.instructions.get(circuit_pc.pc())
+        } else {
+            self.instructions.get(circuit_pc.pc())
+        }
+    }
+
+    pub fn instruction_or_step_out(&self, pc_stack: &mut Stack<CircuitPc>) -> Option<&Instruction> {
+        let mut inst = self.instruction(pc_stack.top());
+        while inst.is_none() {
+            if !pc_stack.pop() {
+                return None
+            }
+            inst = self.instruction(pc_stack.top())
+        }
+        inst
+    }
+
+    pub fn instructions(&self, sub_circuit: Option<&str>) -> &[Instruction] {
+        if let Some(sc) = sub_circuit {
+            if let Some(sub_circuit) = self.sub_circuits.get(sc) {
+                sub_circuit.instructions()
+            } else {
+                panic!("Cannot access instructions on an undefined sub circuit")
+            }
+        } else {
+            &self.instructions
+        }
     }
 
     pub fn n_qubits(&self) -> usize {

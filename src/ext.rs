@@ -270,6 +270,7 @@ pub fn expand_matrix(
     sum
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Stack<T, const MIN: usize = 1>(Vec<T>);
 impl<T> Stack<T> {
     pub fn new(value: T) -> Self {
@@ -278,6 +279,11 @@ impl<T> Stack<T> {
 
     pub fn top(&self) -> &T {
         &self[0]
+    }
+
+
+    pub fn top_mut(&mut self) -> &mut T {
+        &mut self[0]
     }
 
     pub fn len(&self) -> usize {
@@ -310,6 +316,21 @@ impl<T> IndexMut<usize> for Stack<T> {
         &mut self.0[i]
     }
 }
+impl<T: Default> Default for Stack<T> {
+    fn default() -> Self {
+        Self(vec![Default::default()])
+    }
+}
+impl<T> From<T> for Stack<T> {
+    fn from(value: T) -> Self {
+        Self(vec![value])
+    }
+}
+impl<T> From<Vec<T>> for Stack<T> {
+    fn from(value: Vec<T>) -> Self {
+        Self(value)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SortedVec<T, K = T>(Vec<T>, PhantomData<K>);
@@ -336,13 +357,24 @@ impl<T: OrdByKey<K>, K: Ord> SortedVec<T, K> {
     }
 
     pub fn get<Q: OrdByKey<K>>(&mut self, key: &Q) -> Option<&T> {
-        self.get_or_next(key).ok()
+        match self.index_of(key) {
+            Ok(index) => {
+                Some(&self.0[index])
+            }
+            Err(_) => {
+                None
+            }
+        }
     }
 
-    pub fn get_or_next<Q: OrdByKey<K>>(&self, key: &Q) -> Result<&T, &T> {
+    pub fn get_or_next<Q: OrdByKey<K>>(&self, key: &Q) -> Option<&T> {
         match self.index_of(key) {
-            Ok(index) => Ok(&self.0[index]),
-            Err(index) => Err(&self.0[index]),
+            Ok(index) => {
+                Some(&self.0[index])
+            }
+            Err(index) => {
+                self.0.get(index)
+            }
         }
     }
 

@@ -36,7 +36,13 @@ where
     cols[li].extend_east(&mut ncol);
     cols.push(ncol);
 
-    for instruction in circuit.instructions() {
+    for instruction in circuit.instructions(
+        simulator
+            .current_instruction()
+            .0
+            .sub_circuit()
+            .map(AsRef::as_ref),
+    ) {
         let mut ncol = Column::from_instruction(circuit.n_qubits(), instruction);
         let li = cols.len() - 1;
         cols[li].extend_east(&mut ncol);

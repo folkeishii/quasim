@@ -1,6 +1,6 @@
 use std::fmt::{Display, Write};
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CircuitPc {
     sub_circuit: Option<String>,
     pc: usize,
@@ -35,8 +35,10 @@ impl CircuitPc {
         self.pc += 1
     }
 
-    pub fn decrement(&mut self) {
+    pub fn decrement(&mut self) -> bool {
+        let old_pc = self.pc;
         self.pc = self.pc.saturating_sub(1);
+        old_pc != self.pc
     }
 
     pub fn jump(&mut self, pc: usize) {

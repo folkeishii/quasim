@@ -19,7 +19,7 @@ impl TryFrom<Circuit> for SimpleSimulator {
     fn try_from(value: Circuit) -> Result<Self, Self::Error> {
         // Lets check so that circuit only contains quantum gates, otherwise we cant precompute state vector
         let only_gates = value
-            .instructions()
+            .instructions(None)
             .iter()
             .all(|inst| matches!(inst, Instruction::Gate(_)));
         if !only_gates {

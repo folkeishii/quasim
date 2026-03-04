@@ -6,7 +6,7 @@ use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
-    ext::get_gate_matrix,
+    ext::{Stack, get_gate_matrix},
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
@@ -18,7 +18,7 @@ use crate::{
 struct SVExecutor {
     state_vector: DVector<Complex<f64>>,
     circuit: Circuit,
-    pc: usize,
+    pc_stack: Stack<CircuitPc>,
     registers: RegisterFile<Value>,
 }
 
@@ -32,19 +32,27 @@ impl SVExecutor {
         Self {
             state_vector: init_state_vector,
             circuit: circuit,
-            pc: 0,
+            pc_stack: Default::default(),
             registers: registers,
         }
     }
 
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.pc >= self.circuit.instructions().len() {
-            return None;
-        }
+        // if self.pc >= self.circuit.instructions().len() {
+        //     return None;
+        // }
 
-        let inst = self.circuit.instructions()[self.pc].clone();
-        self.apply_instruction(&inst);
+        let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // End of (sub) circuit: step out
+            // If step out fails: end of circuit is reached
+            return if self.pc_stack.pop() {
+                Some(&self.state_vector)
+            } else {
+                None
+            }
+        }; //&self.circuit.instructions()[self.pc];
+        self.apply_instruction(&inst.clone());
 
         Some(&self.state_vector)
     }
@@ -134,7 +142,7 @@ impl SVExecutor {
             }
         }
 
-        self.pc += 1;
+        self.pc_mut().increment();
     }
 
     fn measure(&mut self, targets: QBits, reg: &str) {
@@ -165,17 +173,17 @@ impl SVExecutor {
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
 
-        self.pc += 1;
+        self.pc_mut().increment();
     }
 
     fn jump(&mut self, label_pc: usize) {
-        self.pc = label_pc;
+        self.pc_mut().jump(label_pc);
     }
 
     fn jump_if(&mut self, expr: &Expr, label_pc: usize) {
         match expr.eval(&self.registers) {
             Ok(Value::Bool(true)) => self.jump(label_pc),
-            Ok(Value::Bool(false)) => self.pc += 1,
+            Ok(Value::Bool(false)) => self.pc_mut().increment(),
             Err(err) => panic!("{}", err),
             _ => panic!(
                 "Expression was expected to evaluate to boolean type but got something else."
@@ -188,7 +196,7 @@ impl SVExecutor {
             Ok(value) => self.registers[reg] = value,
             Err(err) => panic!("{}", err),
         }
-        self.pc += 1;
+        self.pc_mut().increment();
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
@@ -200,6 +208,14 @@ impl SVExecutor {
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
             Instruction::SubCircuit(_, _) => todo!(),
         }
+    }
+
+    fn pc(&self) -> &CircuitPc {
+        self.pc_stack.top()
+    }
+
+    fn pc_mut(&mut self) -> &mut CircuitPc {
+        self.pc_stack.top_mut()
     }
 }
 
@@ -253,15 +269,9 @@ impl DebuggableSimulator for SVSimulatorDebugger {
         self.executor.step()
     }
 
-    fn current_instruction(&self) -> Option<(CircuitPc, &Instruction)> {
-        let pc = self.executor.pc;
-        if pc >= self.executor.circuit.instructions().len() {
-            return None;
-        }
-        Some((
-            CircuitPc::at_main(pc),
-            &self.executor.circuit.instructions()[pc],
-        ))
+    fn current_instruction(&self) -> (&CircuitPc, Option<&Instruction>) {
+        let pc = self.executor.pc();
+        (pc, self.executor.circuit.instruction(pc))
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {

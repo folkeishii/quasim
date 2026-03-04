@@ -29,7 +29,7 @@ impl BreakpointList {
 
     /// Returns the first breakpoint after `pc`
     pub fn next_break(&self, pc: usize) -> Option<&Breakpoint> {
-        self.0.get_or_next(&pc).err()
+        self.0.get_or_next(&(pc+1))
     }
 }
 

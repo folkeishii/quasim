@@ -49,11 +49,13 @@ where
         let mut input_buffer = String::default();
 
         loop {
-            let current_step = match self.simulator.current_instruction() {
-                None => "end".to_string(),
-                Some((step, _)) => step.to_string(),
+            match self.simulator.current_instruction() {
+                (step, None) => match step.sub_circuit() {
+                    Some(sc) => print!(stdout; "[{}; end] qdb> ", sc)?,
+                    None => print!(stdout; "[end] qdb> ")?,
+                }
+                (step, Some(_)) => print!(stdout; "{} qdb> ", step)?,
             };
-            print!(stdout; "[{}] qdb> ", current_step)?;
             input_buffer.clear();
             stdin.read_line(&mut input_buffer)?;
             if input_buffer.ends_with('\n') {
@@ -101,8 +103,8 @@ where
     ) -> io::Result<()> {
         match continue_args {
             ContinueArgs::UntilBreak => {
-                let pc = self.simulator.current_instruction().as_ref().map(|(pc, _)| pc.pc()).unwrap_or(usize::MAX);
-                let mut next_break = self.breakpoints.next_break(pc);
+                let (pc, _) = self.simulator.current_instruction();
+                let mut next_break = self.breakpoints.next_break(pc.pc());
                 while let Some(br) = next_break && !br.enabled() {
                     next_break = self.breakpoints.next_break(br.pc());
                 }
@@ -120,7 +122,7 @@ where
                     };
 
                     //Check if the current index is the next break otherwise rerun the loop
-                    let Some((instruction_index, _instruction)) =
+                    let (instruction_index, Some(_instruction)) =
                         self.simulator.current_instruction()
                     else {
                         continue;
@@ -136,10 +138,11 @@ where
                 }
             }
             ContinueArgs::SkipBreaks(n) => {
-                let mut pc = self.simulator.current_instruction().as_ref().map(|(pc, _)| pc.pc()).unwrap_or(usize::MAX);
+                let (pc, _) = self.simulator.current_instruction();
+                let mut pc = pc.clone();
                 let mut breakpoints_skipped = 0;
                 loop {
-                    let next_break = self.breakpoints.next_break(pc);
+                    let next_break = self.breakpoints.next_break(pc.pc());
 
                     loop {
                         if self.simulator.next().is_none() {
@@ -163,12 +166,12 @@ where
                         };
 
                         //Check if the current index is the next break otherwise rerun the loop
-                        let Some((instruction_index, _instruction)) =
+                        let (instruction_index, Some(_instruction)) =
                             self.simulator.current_instruction()
                         else {
                             continue;
                         };
-                        pc = instruction_index.pc();
+                        pc = instruction_index.clone();
 
                         // If we have skipped the desired amount of breakpoints
                         if breakpoints_skipped == *n {
@@ -241,7 +244,7 @@ where
         };
 
         // Check that all indices are actual gates
-        let gate_range = 0..self.simulator.circuit().instructions().len();
+        let gate_range = 0..self.simulator.circuit().instructions(None).len();
         for gate_index in gate_indices {
             if !gate_range.contains(gate_index) {
                 errorln!(
@@ -285,7 +288,8 @@ where
             DisableArgs::GateIndices(indices) => indices,
         };
 
-        let gate_range = 0..self.simulator.instruction_count();
+        let (pc, _) = self.simulator.current_instruction();
+        let gate_range = 0..self.simulator.instruction_count(pc.sub_circuit().map(AsRef::as_ref));
         for gate_index in disable_indexes {
             if !gate_range.contains(gate_index) {
                 errorln!(
@@ -323,7 +327,8 @@ where
             DeleteArgs::GateIndices(i) => i,
         };
 
-        let gate_range = 0..self.simulator.instruction_count();
+        let (pc, _) = self.simulator.current_instruction();
+        let gate_range = 0..self.simulator.instruction_count(pc.sub_circuit().map(AsRef::as_ref));
         for gate_index in delete_indexes {
             if !gate_range.contains(gate_index) {
                 errorln!(
