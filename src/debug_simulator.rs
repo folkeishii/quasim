@@ -1,6 +1,6 @@
 use crate::{
     cart,
-    circuit::Circuit,
+    circuit::{Circuit, pc::CircuitPc},
     ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
     simulator::{DebuggableSimulator, StoredCircuitSimulator},
@@ -11,7 +11,7 @@ use nalgebra::{Complex, DVector};
 pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
     circuit: Circuit,
-    current_step: usize,
+    pc: CircuitPc,
 }
 
 impl TryFrom<Circuit> for DebugSimulator {
@@ -41,7 +41,7 @@ impl TryFrom<Circuit> for DebugSimulator {
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),
             circuit: circuit,
-            current_step: 0,
+            pc: CircuitPc::at_main(0),
         };
 
         Ok(sim)
@@ -50,10 +50,10 @@ impl TryFrom<Circuit> for DebugSimulator {
 
 impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.current_step >= self.instruction_count() {
+        if self.pc.pc() >= self.instruction_count() {
             return None;
         }
-        match &self.circuit.instructions()[self.current_step] {
+        match &self.circuit.instructions()[self.pc.pc()] {
             Instruction::Gate(gate) => {
                 let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 self.current_state = mat * self.current_state.clone();
@@ -69,15 +69,15 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Assign(_, _) => todo!(),
             Instruction::SubCircuit(_, _) => todo!(),
         }
-        self.current_step += 1;
+        self.pc.increment();
         Some(&self.current_state)
     }
 
-    fn current_instruction(&self) -> Option<(usize, &Instruction)> {
+    fn current_instruction(&self) -> Option<(CircuitPc, &Instruction)> {
         self.circuit
             .instructions()
-            .get(self.current_step)
-            .map(|inst| (self.current_step, inst))
+            .get(self.pc.pc())
+            .map(|inst| (self.pc.clone(), inst))
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
@@ -85,11 +85,11 @@ impl DebuggableSimulator for DebugSimulator {
     }
 
     fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.current_step <= 0 {
+        if self.pc.pc() <= 0 {
             return None;
         }
-        self.current_step -= 1;
-        match &self.circuit.instructions()[self.current_step] {
+        self.pc.decrement();
+        match &self.circuit.instructions()[self.pc.pc()] {
             Instruction::Gate(gate) => {
                 let mut mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 mat.try_inverse_mut();

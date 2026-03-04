@@ -91,21 +91,21 @@ impl Circuit {
         self.labels
             .extend(labels.into_iter().map(|(label, circuit_pc)| {
                 (
-                    label.map_sub_circuit(name.clone()),
-                    circuit_pc.map_sub_circuit(name.clone()),
+                    label.go_into(name.clone()),
+                    circuit_pc.go_into(name.clone()),
                 )
             }));
         self.unresolved_labels
             .extend(unresolved_labels.into_iter().map(|(label, circuit_pc)| {
                 (
-                    label.map_sub_circuit(name.clone()),
-                    circuit_pc.map_sub_circuit(name.clone()),
+                    label.go_into(name.clone()),
+                    circuit_pc.go_into(name.clone()),
                 )
             }));
         self.unresolved_sub_circuits.extend(
             unresolved_sub_circuits
                 .into_iter()
-                .map(|(label, circuit_pc)| (label, circuit_pc.map_sub_circuit(name.clone())))
+                .map(|(label, circuit_pc)| (label, circuit_pc.go_into(name.clone())))
                 .filter(|(label, _)| label != &name),
         );
         self.unresolved_sub_circuits

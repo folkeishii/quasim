@@ -14,8 +14,8 @@ impl CircuitLabel {
     }
 
     /// Maps a None into Some(sub_circuit)
-    pub fn map_sub_circuit(self, sub_circuit: String) -> Self {
-        Self(self.0.map_sub_circuit_static(sub_circuit))
+    pub fn go_into(self, sub_circuit: String) -> Self {
+        Self(self.0.go_into_static(sub_circuit))
     }
 }
 impl<'a> Borrow<CircuitLabelRef<'a>> for CircuitLabel {
@@ -84,7 +84,7 @@ impl CircuitLabelRef<'static> {
     }
 
     /// Maps a None into Some(sub_circuit)
-    fn map_sub_circuit_static(self, sub_circuit: String) -> Self {
+    fn go_into_static(self, sub_circuit: String) -> Self {
         match self {
             Self {
                 sub_circuit: None,

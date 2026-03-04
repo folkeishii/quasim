@@ -106,14 +106,14 @@ where
                     .iter()
                     .find(|b| {
                         b.enabled()
-                            && b.gate_index()
+                            && b.pc()
                                 > self
                                     .simulator
                                     .current_instruction()
-                                    .map(|(i, _)| i)
+                                    .map(|(i, _)| i.pc())
                                     .unwrap_or(usize::MAX)
                     })
-                    .map(|b| b.gate_index());
+                    .map(|b| b.pc());
 
                 loop {
                     if self.simulator.next().is_none() {
@@ -134,7 +134,7 @@ where
                         continue;
                     };
 
-                    if instruction_index == next_break {
+                    if instruction_index.pc() == next_break {
                         println!(
                             stdout;
                             "Continued until breakpoint at index {}", next_break
@@ -151,14 +151,14 @@ where
                         .iter()
                         .find(|b| {
                             b.enabled()
-                                && b.gate_index()
+                                && b.pc()
                                     > self
                                         .simulator
                                         .current_instruction()
-                                        .map(|(i, _)| i)
+                                        .map(|(i, _)| i.pc())
                                         .unwrap_or(usize::MAX)
                         })
-                        .map(|b| b.gate_index());
+                        .map(|b| b.pc());
 
                     loop {
                         if self.simulator.next().is_none() {
@@ -198,7 +198,7 @@ where
                             return Ok(());
                         }
 
-                        if instruction_index == next_break {
+                        if instruction_index.pc() == next_break {
                             breakpoints_skipped += 1;
                             break;
                         }
