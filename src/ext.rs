@@ -1,4 +1,6 @@
-use std::ops::{Index, IndexMut};
+use std::marker::PhantomData;
+use std::mem::replace;
+use std::ops::{Deref, Index, IndexMut};
 use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
@@ -306,6 +308,87 @@ impl<T> IndexMut<usize> for Stack<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         let i = self.0.len() - index - 1;
         &mut self.0[i]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SortedVec<T, K = T>(Vec<T>, PhantomData<K>);
+impl<T: OrdByKey<K>, K: Ord> SortedVec<T, K> {
+    pub fn new() -> Self {
+        Self(Default::default(), PhantomData)
+    }
+
+    pub fn insert(&mut self, value: T) -> Option<T> {
+        match self.index_of(&value) {
+            Ok(index) => Some(replace(&mut self.0[index], value)),
+            Err(index) => {
+                self.0.insert(index, value);
+                None
+            }
+        }
+    }
+
+    pub fn remove<Q: OrdByKey<K>>(&mut self, key: &Q) -> Option<T> {
+        match self.index_of(key) {
+            Ok(index) => Some(self.0.remove(index)),
+            Err(_) => None,
+        }
+    }
+
+    pub fn get<Q: OrdByKey<K>>(&mut self, key: &Q) -> Option<&T> {
+        self.get_or_next(key).ok()
+    }
+
+    pub fn get_or_next<Q: OrdByKey<K>>(&self, key: &Q) -> Result<&T, &T> {
+        match self.index_of(key) {
+            Ok(index) => Ok(&self.0[index]),
+            Err(index) => Err(&self.0[index]),
+        }
+    }
+
+    pub fn map<Q: OrdByKey<K>>(&mut self, key: &Q, f: &mut impl FnMut(&mut T)) -> bool
+    where
+        K: Clone,
+    {
+        match self.index_of(key) {
+            Ok(index) => {
+                let value = &mut self.0[index];
+                let old_key = value.key().clone();
+                f(value);
+                if value.key() != &old_key {
+                    let value = self.0.remove(index);
+                    self.insert(value);
+                }
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    fn index_of<Q: OrdByKey<K>>(&self, key: &Q) -> Result<usize, usize> {
+        let key = key.key();
+        self.0.binary_search_by(|t| t.key().cmp(key))
+    }
+}
+impl<T, K> Default for SortedVec<T, K> {
+    fn default() -> Self {
+        Self(Default::default(), Default::default())
+    }
+}
+impl<T> Deref for SortedVec<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub trait OrdByKey<K: PartialOrd> {
+    fn key(&self) -> &K;
+}
+impl<T: Ord> OrdByKey<T> for T {
+    fn key(&self) -> &T {
+        self
     }
 }
 
