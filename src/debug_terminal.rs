@@ -231,19 +231,11 @@ where
     ) -> io::Result<()> {
         match continue_args {
             ContinueArgs::UntilBreak => {
-                let next_break = self
-                    .breakpoints
-                    .iter()
-                    .find(|b| {
-                        b.enabled()
-                            && b.pc()
-                                > self
-                                    .simulator
-                                    .current_instruction()
-                                    .map(|(i, _)| i.pc())
-                                    .unwrap_or(usize::MAX)
-                    })
-                    .map(|b| b.pc());
+                let pc = self.simulator.current_instruction().as_ref().map(|(pc, _)| pc.pc()).unwrap_or(usize::MAX);
+                let mut next_break = self.breakpoints.next_break(pc);
+                while let Some(br) = next_break && !br.enabled() {
+                    next_break = self.breakpoints.next_break(br.pc());
+                }
 
                 loop {
                     if self.simulator.next().is_none() {
@@ -264,31 +256,20 @@ where
                         continue;
                     };
 
-                    if instruction_index.pc() == next_break {
+                    if instruction_index.pc() == next_break.pc() {
                         println!(
                             stdout;
-                            "Continued until breakpoint at index {}", next_break
+                            "Continued until breakpoint at index {}", next_break.pc()
                         )?;
                         return Ok(());
                     }
                 }
             }
             ContinueArgs::SkipBreaks(n) => {
+                let mut pc = self.simulator.current_instruction().as_ref().map(|(pc, _)| pc.pc()).unwrap_or(usize::MAX);
                 let mut breakpoints_skipped = 0;
                 loop {
-                    let next_break = self
-                        .breakpoints
-                        .iter()
-                        .find(|b| {
-                            b.enabled()
-                                && b.pc()
-                                    > self
-                                        .simulator
-                                        .current_instruction()
-                                        .map(|(i, _)| i.pc())
-                                        .unwrap_or(usize::MAX)
-                        })
-                        .map(|b| b.pc());
+                    let next_break = self.breakpoints.next_break(pc);
 
                     loop {
                         if self.simulator.next().is_none() {
@@ -317,6 +298,7 @@ where
                         else {
                             continue;
                         };
+                        pc = instruction_index.pc();
 
                         // If we have skipped the desired amount of breakpoints
                         if breakpoints_skipped == *n {
@@ -328,7 +310,7 @@ where
                             return Ok(());
                         }
 
-                        if instruction_index.pc() == next_break {
+                        if next_break.enabled() && instruction_index.pc() == next_break.pc() {
                             breakpoints_skipped += 1;
                             break;
                         }
