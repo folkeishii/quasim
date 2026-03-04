@@ -31,6 +31,11 @@ impl Clone for CircuitLabel {
         })
     }
 }
+impl From<String> for CircuitLabel {
+    fn from(value: String) -> Self {
+        Self::at_main(value)
+    }
+}
 impl Deref for CircuitLabel {
     type Target = CircuitLabelRef<'static>;
 
@@ -124,6 +129,11 @@ impl<'a> ToOwned for CircuitLabelRef<'a> {
         } else {
             CircuitLabel::at_main(self.label().to_owned())
         }
+    }
+}
+impl<'a> From<&'a str> for CircuitLabelRef<'a> {
+    fn from(value: &'a str) -> Self {
+        Self::at_main(value)
     }
 }
 impl<'a> Display for CircuitLabelRef<'a> {

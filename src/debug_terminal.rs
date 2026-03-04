@@ -9,19 +9,20 @@ mod state;
 pub use arguments::*;
 pub use command::*;
 
-use crate::debug_terminal::show_circuit::show_circuit;
-use crate::ext::collapse;
-use crate::simulator::StoredCircuitSimulator;
 use crate::{
-    circuit::{Circuit, breakpoint::{BreakpointList, IEBreakpoint}},
-    debug_simulator::DebugSimulator,
-    debug_terminal::{
-        parse::into_tokens,
+    circuit::{
+        Circuit,
+        breakpoint::{BreakpointList, IEBreakpoint},
     },
-    simulator::{BuildSimulator, DoubleEndedSimulator},
+    debug_simulator::DebugSimulator,
+    debug_terminal::{parse::into_tokens, show_circuit::show_circuit},
+    ext::collapse,
+    simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
 };
-use std::io::{self, Write};
-use std::ops::Div;
+use std::{
+    io::{self, Write},
+    ops::Div,
+};
 
 pub struct DebugTerminal<S = DebugSimulator> {
     simulator: S,
@@ -33,7 +34,7 @@ pub struct DebugTerminal<S = DebugSimulator> {
 
 impl<S> DebugTerminal<S>
 where
-    S: BuildSimulator + DoubleEndedSimulator + StoredCircuitSimulator,
+    S: BuildSimulator + DebuggableSimulator + StoredCircuitSimulator,
 {
     pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E> {
         Ok(Self {
