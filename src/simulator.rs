@@ -49,13 +49,13 @@ pub trait DebuggableSimulator {
         todo!()
     }
     fn double_ended(&self) -> bool;
-    fn current_instruction(&self) -> Option<(CircuitPc, &Instruction)>;
+    fn current_instruction(&self) -> (&CircuitPc, Option<&Instruction>);
     fn current_state(&self) -> &DVector<Complex<f64>>;
 
     fn continue_until(&mut self, breakpoint: Option<CircuitPc>) -> &DVector<Complex<f64>> {
         let breakpoint = breakpoint.map(Into::into);
-        while let Some(index) = self.current_instruction().map(|(i, _)| i) {
-            if Some(index) == breakpoint {
+        while let (pc, Some(_)) = self.current_instruction() {
+            if Some(pc) == breakpoint.as_ref() {
                 break;
             }
             self.next();
@@ -69,11 +69,11 @@ pub trait DebuggableSimulator {
 /// internally should implment this trait
 pub trait StoredCircuitSimulator {
     fn circuit(&self) -> &Circuit;
-    fn instructions(&self) -> &[Instruction] {
-        self.circuit().instructions()
+    fn instructions(&self, sub_circuit: Option<&str>) -> &[Instruction] {
+        self.circuit().instructions(sub_circuit)
     }
-    fn instruction_count(&self) -> usize {
-        self.circuit().instructions().len()
+    fn instruction_count(&self, sub_circuit: Option<&str>) -> usize {
+        self.circuit().instructions(sub_circuit).len()
     }
 }
 
