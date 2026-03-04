@@ -1,13 +1,14 @@
 use crate::{
-    circuit::pc::CircuitPc, expr_dsl::Expr, gate::{Gate, QBits}
+    expr_dsl::Expr,
+    gate::{Gate, QBits},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Gate(Gate),
     Measurement(QBits, String),
-    Jump(CircuitPc),
-    JumpIf(Expr, CircuitPc),
+    Jump(usize),         // Cannot jump into another sub-circuit
+    JumpIf(Expr, usize), // Cannot jump into another sub-circuit
     Assign(Expr, String),
-    SubCircuit(String, usize) // Sub circuit name, first qubit
+    SubCircuit(String, usize), // Sub circuit name, first qubit
 }

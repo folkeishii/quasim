@@ -5,12 +5,14 @@ use std::{
     fmt::{Display, Write},
     ops::{Deref, DerefMut},
 };
-pub mod label;
-pub mod pc;
 pub mod breakpoint;
+pub mod pc;
 
 use crate::{
-    circuit::{breakpoint::{BreakpointList}, label::{CircuitLabel, CircuitLabelRef}, pc::CircuitPc}, expr_dsl::Expr, gate::{Gate, GateType, QBits}, instruction::Instruction
+    circuit::{breakpoint::BreakpointList, pc::CircuitPc},
+    expr_dsl::Expr,
+    gate::{Gate, GateType, QBits},
+    instruction::Instruction,
 };
 mod qasm_parse;
 
@@ -22,14 +24,19 @@ pub use qasm_parse::*;
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
+    // Local to main
+
     instructions: Vec<Instruction>,
     n_qubits: usize,
+    labels: HashMap<String, usize>,
+    unresolved_labels: Vec<(String, usize)>,
+    breakpoints: BreakpointList,
+
+    // Global for all sub circuits
+
     registers: HashSet<String>,
-    labels: HashMap<CircuitLabel, CircuitPc>,
-    unresolved_labels: Vec<(CircuitLabel, CircuitPc)>,
     sub_circuits: HashMap<String, SubCircuit>,
     unresolved_sub_circuits: Vec<(String, CircuitPc)>,
-    breakpoints: BreakpointList,
 }
 
 impl Circuit {
@@ -42,7 +49,7 @@ impl Circuit {
             unresolved_labels: Vec::new(),
             sub_circuits: HashMap::new(),
             unresolved_sub_circuits: Vec::new(),
-            breakpoints: Default::default()
+            breakpoints: Default::default(),
         }
     }
 
@@ -58,8 +65,6 @@ impl Circuit {
             sub_circuit,
             SubCircuitPeriphs {
                 registers,
-                labels,
-                unresolved_labels,
                 sub_circuits,
                 unresolved_sub_circuits,
             },
@@ -91,20 +96,6 @@ impl Circuit {
         }
 
         self.registers.extend(registers);
-        self.labels
-            .extend(labels.into_iter().map(|(label, circuit_pc)| {
-                (
-                    label.go_into(name.clone()),
-                    circuit_pc.go_into(name.clone()),
-                )
-            }));
-        self.unresolved_labels
-            .extend(unresolved_labels.into_iter().map(|(label, circuit_pc)| {
-                (
-                    label.go_into(name.clone()),
-                    circuit_pc.go_into(name.clone()),
-                )
-            }));
         self.unresolved_sub_circuits.extend(
             unresolved_sub_circuits
                 .into_iter()
@@ -334,20 +325,20 @@ impl Circuit {
         self
     }
 
-    pub fn jump(mut self, label: &str) -> Self {
+    pub fn jump(mut self, label: String) -> Self {
         let circuit_pc = match self.try_to_resolve_label(label) {
             Some(circuit_pc) => circuit_pc.clone(),
-            None => CircuitPc::at_main(0), // Placeholder pc
+            None => 0, // Placeholder pc
         };
 
         self.instructions.push(Instruction::Jump(circuit_pc));
         self
     }
 
-    pub fn jump_if(mut self, expr: Expr, label: &str) -> Self {
+    pub fn jump_if(mut self, expr: Expr, label: String) -> Self {
         let circuit_pc = match self.try_to_resolve_label(label) {
             Some(circuit_pc) => circuit_pc.clone(),
-            None => CircuitPc::at_main(0), // Placeholder pc
+            None => 0, // Placeholder pc
         };
 
         self.instructions
@@ -359,7 +350,7 @@ impl Circuit {
     pub fn apply_if(mut self, expr: Expr) -> Self {
         self.instructions.push(Instruction::JumpIf(
             !expr,
-            CircuitPc::at_main(self.instructions.len() + 2),
+            self.instructions.len() + 2,
         ));
         self
     }
@@ -413,32 +404,27 @@ impl Circuit {
     }
 
     // Label
-    pub fn label(mut self, label: &str) -> Self {
-        let circuit_label = CircuitLabelRef::at_main(label);
+    pub fn label(mut self, label: String) -> Self {
         let pc = self.instructions.len();
 
-        if let Some(idx) = self.labels.get(&circuit_label) {
-            panic!("Label '{circuit_label}' was already defined on instruction row {idx}")
+        if let Some(idx) = self.labels.get(&label) {
+            panic!("Label '{label}' was already defined on instruction row {idx}")
         }
 
-        self.labels.insert(circuit_label.to_owned(), CircuitPc::at_main(pc));
+        self.labels.insert(label, pc);
 
         // After a new label has been added we try to resolve unresolved labels and patch instructions
         self.try_to_patch_instructions();
         self
     }
 
-    fn try_to_resolve_label(&mut self, label: &str) -> Option<&CircuitPc> {
-        let circuit_label = CircuitLabelRef::at_main(label);
-        if let Some(circuit_pc) = self.labels.get(&circuit_label) {
-            return Some(circuit_pc);
+    fn try_to_resolve_label(&mut self, label: String) -> Option<usize> {
+        if let Some(&pc) = self.labels.get(&label) {
+            return Some(pc);
         }
 
         // 1. If label doesnt exist, add it to list of unresolved labels with accompanying instruction index
-        let pair = (
-            circuit_label.to_owned(),
-            CircuitPc::at_main(self.instructions.len()),
-        );
+        let pair = (label, self.instructions.len());
         self.unresolved_labels.push(pair);
         None
     }
@@ -447,35 +433,25 @@ impl Circuit {
         let mut to_remove = Vec::new();
 
         // 2. Patch instructions
-        for (label, circuit_pc) in self.unresolved_labels.clone() {
-            let inst_index = circuit_pc.pc();
-
-            if let Some(_sub_circuit) = circuit_pc.sub_circuit() {
-                todo!("TODO: handle label inside sub circuit")
-            }
-
-            let Some(resolved_pc) = self.try_to_resolve_label(label.label()).cloned() else {
+        for (label, pc) in self.unresolved_labels.clone() {
+            let Some(resolved_pc) = self.try_to_resolve_label(label.clone()) else {
                 continue;
             };
 
-            let inst = &mut self.instructions[inst_index];
+            let inst = &mut self.instructions[pc];
 
             match inst {
-                Instruction::Jump(jump_circuit_pc) => *jump_circuit_pc = resolved_pc,
-
-                Instruction::JumpIf(_expr, jump_circuit_pc) => {
-                    *jump_circuit_pc = resolved_pc;
-                }
-
+                Instruction::Jump(jump_pc) => *jump_pc = resolved_pc,
+                Instruction::JumpIf(_expr, jump_pc) => *jump_pc = resolved_pc,
                 _ => continue,
             };
 
-            to_remove.push((label.clone(), circuit_pc));
+            to_remove.push((label.clone(), pc));
         }
 
         // 3. Remove resolved labels after patching
         self.unresolved_labels
-            .retain(|(label, idx)| !to_remove.contains(&(label.clone(), idx.clone())));
+            .retain(|(label, idx)| !to_remove.contains(&(label.clone(), *idx)));
     }
 
     /// Inverts a non-hybrid circuit.
@@ -498,7 +474,8 @@ impl Circuit {
 pub struct SubCircuit {
     instructions: Vec<Instruction>,
     n_qubits: usize,
-    breakpoints: BreakpointList
+    labels: HashMap<String, usize>,
+    breakpoints: BreakpointList,
 }
 impl SubCircuit {
     pub fn from_circuit(circuit: Circuit) -> (Self, SubCircuitPeriphs) {
@@ -510,18 +487,20 @@ impl SubCircuit {
             unresolved_labels,
             sub_circuits,
             unresolved_sub_circuits,
-            breakpoints
+            breakpoints,
         } = circuit;
+        if !unresolved_labels.is_empty() {
+            panic!("Tried to create a sub circuit from a circuit with unresolved labels");
+        }
         (
             Self {
                 instructions,
                 n_qubits,
-                breakpoints
+                labels,
+                breakpoints,
             },
             SubCircuitPeriphs {
                 registers,
-                labels,
-                unresolved_labels,
                 sub_circuits,
                 unresolved_sub_circuits,
             },
@@ -544,8 +523,6 @@ impl SubCircuit {
 #[derive(Debug, Clone)]
 pub struct SubCircuitPeriphs {
     registers: HashSet<String>,
-    labels: HashMap<CircuitLabel, CircuitPc>,
-    unresolved_labels: Vec<(CircuitLabel, CircuitPc)>,
     sub_circuits: HashMap<String, SubCircuit>,
     unresolved_sub_circuits: Vec<(String, CircuitPc)>,
 }
