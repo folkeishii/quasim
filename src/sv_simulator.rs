@@ -168,15 +168,11 @@ impl SVExecutor {
         self.pc += 1;
     }
 
-    fn jump(&mut self, label_pc: &CircuitPc) {
-        if let Some(_sub_circuit) = label_pc.sub_circuit() {
-            todo!("TODO: handle label inside sub circuit")
-        } else {
-            self.pc = label_pc.pc();
-        }
+    fn jump(&mut self, label_pc: usize) {
+        self.pc = label_pc;
     }
 
-    fn jump_if(&mut self, expr: &Expr, label_pc: &CircuitPc) {
+    fn jump_if(&mut self, expr: &Expr, label_pc: usize) {
         match expr.eval(&self.registers) {
             Ok(Value::Bool(true)) => self.jump(label_pc),
             Ok(Value::Bool(false)) => self.pc += 1,
@@ -199,8 +195,8 @@ impl SVExecutor {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
             Instruction::Measurement(qbits, reg) => self.measure(*qbits, reg),
-            Instruction::Jump(label_pc) => self.jump(label_pc),
-            Instruction::JumpIf(expr, label_pc) => self.jump_if(expr, label_pc),
+            Instruction::Jump(label_pc) => self.jump(*label_pc),
+            Instruction::JumpIf(expr, label_pc) => self.jump_if(expr, *label_pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
             Instruction::SubCircuit(_, _) => todo!(),
         }
@@ -262,7 +258,10 @@ impl DebuggableSimulator for SVSimulatorDebugger {
         if pc >= self.executor.circuit.instructions().len() {
             return None;
         }
-        Some((CircuitPc::at_main(pc), &self.executor.circuit.instructions()[pc]))
+        Some((
+            CircuitPc::at_main(pc),
+            &self.executor.circuit.instructions()[pc],
+        ))
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
