@@ -239,3 +239,60 @@ impl Circuit {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::ext::expand_matrix_from_gate;
+    use crate::{circuit::Circuit, instruction::Instruction};
+    use nalgebra::{Complex, DMatrix};
+
+    fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
+        m1.iter()
+            .zip(m2.iter())
+            .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
+    }
+
+    macro_rules! assert_is_matrix_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_matrix_equal_to($m1, $m2))
+        };
+    }
+
+    #[test]
+    fn inverse_test() {
+        let circ = Circuit::new(5)
+            .hadamard(0)
+            .hadamard(1)
+            .hadamard(3)
+            .x(0)
+            .y(1)
+            .z(2)
+            .s(4)
+            .cnot(0, 1)
+            .cnot(4, 1)
+            .u(23.3, 34.5, 56.1, 0)
+            .cu(1.0, 22.2, 0.1, 4, 2)
+            .inverse()
+            .hadamard(0)
+            .hadamard(1)
+            .hadamard(3)
+            .x(0)
+            .y(1)
+            .z(2)
+            .s(4)
+            .cnot(0, 1)
+            .cnot(4, 1)
+            .u(23.3, 34.5, 56.1, 0)
+            .cu(1.0, 22.2, 0.1, 4, 2);
+        let dim = 1 << 5;
+        let id = DMatrix::<Complex<f64>>::identity(dim, dim);
+        let mut res: DMatrix<Complex<f64>> = id.clone();
+        for instruction in circ.instructions() {
+            match instruction {
+                Instruction::Gate(gate) => res = expand_matrix_from_gate(gate, 5) * res,
+                _ => panic!("circ should be non-hybrid"),
+            }
+        }
+        assert_is_matrix_equal!(id, res);
+    }
+}
