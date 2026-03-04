@@ -257,12 +257,12 @@ impl DebuggableSimulator for SVSimulatorDebugger {
         self.executor.step()
     }
 
-    fn current_instruction(&self) -> Option<(usize, &Instruction)> {
+    fn current_instruction(&self) -> Option<(CircuitPc, &Instruction)> {
         let pc = self.executor.pc;
         if pc >= self.executor.circuit.instructions().len() {
             return None;
         }
-        Some((pc, &self.executor.circuit.instructions()[pc]))
+        Some((CircuitPc::at_main(pc), &self.executor.circuit.instructions()[pc]))
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {

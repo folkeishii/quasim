@@ -1,3 +1,4 @@
+use crate::circuit::pc::CircuitPc;
 use crate::register_file::RegisterFile;
 use crate::{circuit::Circuit, instruction::Instruction};
 use nalgebra::{Complex, DVector};
@@ -48,10 +49,11 @@ pub trait DebuggableSimulator {
         todo!()
     }
     fn double_ended(&self) -> bool;
-    fn current_instruction(&self) -> Option<(usize, &Instruction)>;
+    fn current_instruction(&self) -> Option<(CircuitPc, &Instruction)>;
     fn current_state(&self) -> &DVector<Complex<f64>>;
 
-    fn continue_until(&mut self, breakpoint: Option<usize>) -> &DVector<Complex<f64>> {
+    fn continue_until(&mut self, breakpoint: Option<CircuitPc>) -> &DVector<Complex<f64>> {
+        let breakpoint = breakpoint.map(Into::into);
         while let Some(index) = self.current_instruction().map(|(i, _)| i) {
             if Some(index) == breakpoint {
                 break;

@@ -1,6 +1,5 @@
 use std::fmt::{Display, Write};
 
-
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CircuitPc {
     sub_circuit: Option<String>,
@@ -22,7 +21,7 @@ impl CircuitPc {
     }
 
     /// Maps a None into Some(sub_circuit)
-    pub fn map_sub_circuit(self, sub_circuit: String) -> Self {
+    pub fn go_into(self, sub_circuit: String) -> Self {
         match self {
             CircuitPc {
                 sub_circuit: None,
@@ -30,6 +29,18 @@ impl CircuitPc {
             } => Self::at_sub_circuit(sub_circuit, pc),
             circuit_pc => circuit_pc,
         }
+    }
+
+    pub fn increment(&mut self) {
+        self.pc += 1
+    }
+
+    pub fn decrement(&mut self) {
+        self.pc = self.pc.saturating_sub(1);
+    }
+
+    pub fn jump(&mut self, pc: usize) {
+        self.pc = pc
     }
 
     pub fn sub_circuit(&self) -> Option<&String> {

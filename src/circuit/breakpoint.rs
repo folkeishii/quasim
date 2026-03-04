@@ -74,7 +74,7 @@ impl BreakpointList {
     /// `Err(index)` if breakpoint was not found but can be inserted
     /// at `index`
     fn find_breakpoint(&self, gate_index: usize) -> Result<usize, usize> {
-        self.binary_search_by_key(&gate_index, |b| b.gate_index())
+        self.binary_search_by_key(&gate_index, |b| b.pc())
     }
 }
 impl Index<usize> for BreakpointList {
@@ -103,9 +103,9 @@ pub struct Breakpoint {
     enabled: bool,
 }
 impl Breakpoint {
-    pub fn new(gate_index: usize) -> Self {
+    pub fn new(pc: usize) -> Self {
         Self {
-            pc: gate_index,
+            pc,
             enabled: true,
         }
     }
@@ -118,7 +118,7 @@ impl Breakpoint {
         self.enabled = false;
     }
 
-    pub fn gate_index(&self) -> usize {
+    pub fn pc(&self) -> usize {
         self.pc
     }
 
