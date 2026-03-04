@@ -9,7 +9,11 @@ pub mod breakpoint;
 pub mod pc;
 
 use crate::{
-    circuit::{breakpoint::BreakpointList, pc::CircuitPc}, expr_dsl::Expr, ext::Stack, gate::{Gate, GateType, QBits}, instruction::Instruction
+    circuit::{breakpoint::BreakpointList, pc::CircuitPc},
+    expr_dsl::Expr,
+    ext::Stack,
+    gate::{Gate, GateType, QBits},
+    instruction::Instruction,
 };
 mod qasm_parse;
 
@@ -21,9 +25,7 @@ pub use qasm_parse::*;
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
-
     // Local to main
-
     instructions: Vec<Instruction>,
     n_qubits: usize,
     labels: HashMap<String, usize>,
@@ -31,10 +33,8 @@ pub struct Circuit {
     breakpoints: BreakpointList,
 
     // Global for all sub circuits
-
     registers: HashSet<String>,
     sub_circuits: HashMap<String, SubCircuit>,
-    unresolved_sub_circuits: Vec<(String, CircuitPc)>,
 }
 
 impl Circuit {
@@ -46,7 +46,6 @@ impl Circuit {
             labels: HashMap::new(),
             unresolved_labels: Vec::new(),
             sub_circuits: HashMap::new(),
-            unresolved_sub_circuits: Vec::new(),
             breakpoints: Default::default(),
         }
     }
@@ -64,7 +63,6 @@ impl Circuit {
             SubCircuitPeriphs {
                 registers,
                 sub_circuits,
-                unresolved_sub_circuits,
             },
         ) = SubCircuit::from_circuit(circuit);
 
@@ -72,7 +70,7 @@ impl Circuit {
             && sub_circuit.eq(existing)
         {
             panic!(
-                "Cannot add {}: A different sub circuit with the same name already exists",
+                "Cannot add {}: A different sub circuit with the same name is already defined",
                 name
             )
         }
@@ -82,26 +80,18 @@ impl Circuit {
                 && !imported_sub_circuit.eq(existing)
             {
                 panic!(
-                    "Cannot add {}: Duplicate definition of sub circuit {}",
+                    "Cannot add {}: A different sub circuit with the name \"{}\" is already defined",
                     name, imported_name
                 )
             } else if name.eq(imported_name) && !sub_circuit.eq(imported_sub_circuit) {
                 panic!(
-                    "Cannot add {}: Duplicate definition of sub circuit {}",
+                    "Cannot add {}: A different sub circuit with the name \"{}\" is already defined",
                     name, imported_name
                 )
             }
         }
 
         self.registers.extend(registers);
-        self.unresolved_sub_circuits.extend(
-            unresolved_sub_circuits
-                .into_iter()
-                .map(|(label, circuit_pc)| (label, circuit_pc.go_into(name.clone())))
-                .filter(|(label, _)| label != &name),
-        );
-        self.unresolved_sub_circuits
-            .retain_mut(|(unresolved_name, _)| unresolved_name != &name);
         self.sub_circuits.insert(name, sub_circuit);
         self
     }
@@ -118,7 +108,7 @@ impl Circuit {
         let mut inst = self.instruction(pc_stack.top());
         while inst.is_none() {
             if !pc_stack.pop() {
-                return None
+                return None;
             }
             inst = self.instruction(pc_stack.top())
         }
@@ -373,10 +363,8 @@ impl Circuit {
 
     /// Conditionally apply whichever instruction that comes after
     pub fn apply_if(mut self, expr: Expr) -> Self {
-        self.instructions.push(Instruction::JumpIf(
-            !expr,
-            self.instructions.len() + 2,
-        ));
+        self.instructions
+            .push(Instruction::JumpIf(!expr, self.instructions.len() + 2));
         self
     }
 
@@ -495,7 +483,7 @@ impl Circuit {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct SubCircuit {
     instructions: Vec<Instruction>,
     n_qubits: usize,
@@ -511,7 +499,6 @@ impl SubCircuit {
             labels,
             unresolved_labels,
             sub_circuits,
-            unresolved_sub_circuits,
             breakpoints,
         } = circuit;
         if !unresolved_labels.is_empty() {
@@ -527,7 +514,6 @@ impl SubCircuit {
             SubCircuitPeriphs {
                 registers,
                 sub_circuits,
-                unresolved_sub_circuits,
             },
         )
     }
@@ -544,10 +530,14 @@ impl SubCircuit {
         self.n_qubits
     }
 }
+impl PartialEq for SubCircuit {
+    fn eq(&self, other: &Self) -> bool {
+        self.instructions == other.instructions
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct SubCircuitPeriphs {
     registers: HashSet<String>,
     sub_circuits: HashMap<String, SubCircuit>,
-    unresolved_sub_circuits: Vec<(String, CircuitPc)>,
 }
