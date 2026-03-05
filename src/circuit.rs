@@ -54,18 +54,6 @@ impl Circuit {
         !self.unresolved_labels.is_empty()
     }
 
-    fn print_tree(file: SourceFile) {
-        for item in file.syntax().descendants() {
-            println!("{:?}", item);
-        }
-    }
-
-    fn print_children(file: SourceFile) {
-        for item in file.syntax().children() {
-            println!("{:?}", item);
-        }
-    }
-
     pub fn from_qasm_file(file_name: &str) -> Result<Self, QASMParseError> {
         let file_string = read_to_string(file_name)?;
         let parsed_source = SourceFile::parse(&file_string);
@@ -92,7 +80,7 @@ impl Circuit {
         return Ok(circuit);
     }
 
-    // Builder methods under here
+    // Builder methods
 
     pub fn x(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
