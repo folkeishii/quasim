@@ -263,7 +263,8 @@ mod tests {
 
     fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
         let mut circuit_tot = Circuit::new(std::cmp::max(circuit1.n_qubits(), circuit2.n_qubits()));
-        circuit_tot.instructions = [circuit1.instructions.clone(), circuit2.instructions.clone()].concat();
+        circuit_tot.instructions =
+            [circuit1.instructions.clone(), circuit2.instructions.clone()].concat();
         circuit_tot
     }
 
