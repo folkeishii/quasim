@@ -206,7 +206,7 @@ impl SVExecutor {
             Instruction::Jump(label_pc) => self.jump(*label_pc),
             Instruction::JumpIf(expr, label_pc) => self.jump_if(expr, *label_pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
-            Instruction::SubCircuit(_, _) => todo!(),
+            Instruction::Call(_, _) => todo!(),
         }
     }
 

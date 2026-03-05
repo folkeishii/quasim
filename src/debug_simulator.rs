@@ -78,7 +78,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::SubCircuit(_, _) => todo!(),
+            Instruction::Call(_, _) => todo!(),
         }
         self.pc_mut().increment();
         Some(&self.current_state)
@@ -128,7 +128,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::SubCircuit(_, _) => todo!(),
+            Instruction::Call(_, _) => todo!(),
         }
         Some(&self.current_state)
     }

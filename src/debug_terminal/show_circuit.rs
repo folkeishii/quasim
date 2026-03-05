@@ -626,7 +626,7 @@ impl Column {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::SubCircuit(_, _) => todo!(),
+            Instruction::Call(_, _) => todo!(),
         }
     }
 
