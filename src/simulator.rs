@@ -74,13 +74,15 @@ pub trait StoredCircuitSimulator {
     }
 }
 
-/// # StoredRegisterSimulator
-/// Any simulator that stores registers
-/// should implement this trait
-pub trait StoredRegisterSimulator<T> {
+/// # HybridSimulator
+/// Any simulator that implements classical operations
+/// and stores registers should implement this trait
+pub trait HybridSimulator<T: Copy> {
     fn registers(&self) -> &RegisterFile<T>;
 
-    fn get_register(&self, register: &str) -> T;
+    fn register(&self, register: &str) -> T {
+        self.registers()[register]
+    }
 }
 
 #[cfg(test)]
