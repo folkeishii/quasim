@@ -15,7 +15,7 @@ use crate::{
     },
 };
 
-struct SVExecutor {
+pub struct SVExecutor {
     state_vector: DVector<Complex<f64>>,
     circuit: Circuit,
     pc_stack: Stack<CircuitPc>,
@@ -224,6 +224,16 @@ impl SVExecutor {
     }
 }
 
+impl StoredCircuitSimulator for SVExecutor {
+    fn circuit(&self) -> &Circuit {
+        &self.circuit
+    }
+
+    fn circuit_mut(&mut self) -> &mut Circuit {
+        &mut self.circuit
+    }
+}
+
 // SVSimulator
 
 pub struct SVSimulator {
@@ -269,6 +279,27 @@ impl TryFrom<Circuit> for SVSimulatorDebugger {
     }
 }
 
+impl SVSimulator {
+    pub fn get_executor(&self) -> SVExecutor {
+        let size = 1 << self.circuit.n_qubits();
+        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
+        init_state_vector[0] = cart![1.0];
+
+        SVExecutor {
+            state_vector: init_state_vector,
+            circuit: self.circuit.clone(),
+            pc_stack: Default::default(),
+            registers: RegisterFile::from(self.circuit.registers()),
+        }
+    }
+
+    pub fn attach_debugger(&self) -> SVSimulatorDebugger {
+        SVSimulatorDebugger {
+            executor: self.get_executor(),
+        }
+    }
+}
+
 impl DebuggableSimulator for SVSimulatorDebugger {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         self.executor.step()
@@ -295,6 +326,10 @@ impl DebuggableSimulator for SVSimulatorDebugger {
 impl StoredCircuitSimulator for SVSimulatorDebugger {
     fn circuit(&self) -> &Circuit {
         &self.executor.circuit
+    }
+
+    fn circuit_mut(&mut self) -> &mut Circuit {
+        &mut self.executor.circuit
     }
 }
 

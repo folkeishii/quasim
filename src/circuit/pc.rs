@@ -12,7 +12,7 @@ impl CircuitPc {
         CircuitPc {
             sub_circuit: None,
             pc,
-            lsq: 0
+            lsq: 0,
         }
     }
 
@@ -25,12 +25,12 @@ impl CircuitPc {
     }
 
     /// Maps a None into Some(sub_circuit)
-    pub fn go_into(self, sub_circuit: String, lsq: usize,) -> Self {
+    pub fn go_into(self, sub_circuit: String, lsq: usize) -> Self {
         match self {
             CircuitPc {
                 sub_circuit: None,
                 pc,
-                lsq: old_lsq
+                lsq: old_lsq,
             } => Self::at_sub_circuit(sub_circuit, old_lsq + lsq, pc),
             circuit_pc => circuit_pc,
         }
@@ -52,6 +52,14 @@ impl CircuitPc {
 
     pub fn sub_circuit(&self) -> Option<&String> {
         self.sub_circuit.as_ref()
+    }
+
+    pub fn with_pc(&self, pc: usize) -> Self {
+        Self {
+            sub_circuit: self.sub_circuit.clone(),
+            pc,
+            lsq: self.lsq,
+        }
     }
 
     pub fn pc(&self) -> usize {

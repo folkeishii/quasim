@@ -49,6 +49,10 @@ pub trait DebuggableSimulator {
         todo!()
     }
     fn double_ended(&self) -> bool;
+    /// Returns current pc and instruction
+    ///
+    /// If returned value is (pc, None)
+    /// then we have reached the end of (sub) circuit
     fn current_instruction(&self) -> (&CircuitPc, Option<&Instruction>);
     fn current_state(&self) -> &DVector<Complex<f64>>;
 
@@ -69,6 +73,7 @@ pub trait DebuggableSimulator {
 /// internally should implment this trait
 pub trait StoredCircuitSimulator {
     fn circuit(&self) -> &Circuit;
+    fn circuit_mut(&mut self) -> &mut Circuit;
     fn instructions(&self, sub_circuit: Option<&str>) -> &[Instruction] {
         self.circuit().instructions(sub_circuit)
     }
