@@ -50,7 +50,7 @@ impl SVExecutor {
                 Some(&self.state_vector)
             } else {
                 None
-            }
+            };
         }; //&self.circuit.instructions()[self.pc];
         self.apply_instruction(&inst.clone());
 
@@ -110,8 +110,9 @@ impl SVExecutor {
     }
 
     fn gate(&mut self, gate: &Gate) {
-        let controls = gate.get_control_bits();
-        let targets = gate.get_target_bits();
+        let lsq = self.pc().lsq();
+        let controls = gate.get_control_bits() << lsq;
+        let targets = gate.get_target_bits() << lsq;
         let u: DMatrix<Complex<f64>> = get_gate_matrix(gate);
         let target_indices = targets.get_indices();
 
@@ -206,7 +207,11 @@ impl SVExecutor {
             Instruction::Jump(label_pc) => self.jump(*label_pc),
             Instruction::JumpIf(expr, label_pc) => self.jump_if(expr, *label_pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
-            Instruction::Call(_, _) => todo!(),
+            Instruction::Call(sub_circuit, lsq) => {
+                self.pc_mut().increment();
+                self.pc_stack
+                    .push(CircuitPc::at_sub_circuit(sub_circuit.clone(), *lsq, 0));
+            }
         }
     }
 

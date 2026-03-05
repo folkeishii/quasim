@@ -34,13 +34,20 @@ pub struct DebugTerminal<S = DebugSimulator> {
 
 impl<S> DebugTerminal<S>
 where
-    S: BuildSimulator + DebuggableSimulator + StoredCircuitSimulator,
+    S: DebuggableSimulator + StoredCircuitSimulator,
 {
-    pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E> {
+    pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E> where S: BuildSimulator{
         Ok(Self {
             simulator: S::build(circuit)?,
             breakpoints: Default::default(),
         })
+    }
+
+    pub fn from_simulator(simulator: S) -> Self {
+        Self {
+            simulator: simulator,
+            breakpoints: Default::default(),
+        }
     }
 
     pub fn run(&mut self) -> io::Result<()> {
