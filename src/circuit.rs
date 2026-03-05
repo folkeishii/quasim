@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    f64::consts::PI,
+};
 
 use crate::{
     expr_dsl::Expr,
@@ -115,6 +118,27 @@ impl Circuit {
     pub fn s(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::S, &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn rx(mut self, theta: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn ry(mut self, theta: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, 0.0, 0.0), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn rz(mut self, theta: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(0.0, 0.0, theta), &[], &[target]).unwrap(),
         ));
         self
     }
