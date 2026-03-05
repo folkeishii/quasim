@@ -122,25 +122,16 @@ impl Circuit {
         self
     }
 
-    pub fn rx(mut self, theta: f64, target: usize) -> Self {
-        self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), &[], &[target]).unwrap(),
-        ));
-        self
+    pub fn rx(self, theta: f64, target: usize) -> Self {
+        self.u(theta, -PI / 2.0, PI / 2.0, target)
     }
 
-    pub fn ry(mut self, theta: f64, target: usize) -> Self {
-        self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::U(theta, 0.0, 0.0), &[], &[target]).unwrap(),
-        ));
-        self
+    pub fn ry(self, theta: f64, target: usize) -> Self {
+        self.u(theta, 0.0, 0.0, target)
     }
 
-    pub fn rz(mut self, theta: f64, target: usize) -> Self {
-        self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::U(0.0, 0.0, theta), &[], &[target]).unwrap(),
-        ));
-        self
+    pub fn rz(self, theta: f64, target: usize) -> Self {
+        self.u(0.0, 0.0, theta, target)
     }
 
     // Classical instructions
