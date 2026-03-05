@@ -92,8 +92,7 @@ impl DoubleEndedSimulator for DebugSimulator {
         self.current_step -= 1;
         match &self.circuit.instructions()[self.current_step] {
             Instruction::Gate(gate) => {
-                let mut mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
-                mat.try_inverse_mut();
+                let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits()).adjoint(); // All matricies are unitary --> inverse <=> adjoint
                 self.current_state = mat * self.current_state.clone();
             }
             Instruction::Measurement(_, _) => todo!(),
