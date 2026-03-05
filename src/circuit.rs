@@ -26,16 +26,6 @@ impl Circuit {
         }
     }
 
-    pub fn from_instructions(instructions: Vec<Instruction>, n_qubits: usize) -> Self {
-        Self {
-            instructions,
-            n_qubits,
-            registers: HashSet::new(),
-            labels: HashMap::new(),
-            unresolved_labels: Vec::new(),
-        }
-    }
-
     pub fn new_reg(mut self, name: &str) -> Self {
         self.registers.insert(name.to_owned());
         self
@@ -134,6 +124,14 @@ impl Circuit {
     pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
         self.instructions.push(Instruction::Measurement(
             QBits::from_bitstring(1 << target),
+            reg.to_owned(),
+        ));
+        self
+    }
+
+    pub fn measure_bit_indexes(mut self, targets: &[usize], reg: &str) -> Self {
+        self.instructions.push(Instruction::Measurement(
+            QBits::from_indices(targets),
             reg.to_owned(),
         ));
         self
