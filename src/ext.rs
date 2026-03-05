@@ -291,7 +291,7 @@ mod tests {
             assert!(is_matrix_equal_to($m1, $m2))
         };
     }
-    
+
     #[test]
     fn swap_test() {
         assert_is_matrix_equal!(
