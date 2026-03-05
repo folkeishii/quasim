@@ -319,9 +319,15 @@ impl Circuit {
 
 #[cfg(test)]
 mod tests {
-    use crate::ext::expand_matrix_from_gate;
-    use crate::{circuit::Circuit, instruction::Instruction};
-    use nalgebra::{Complex, DMatrix};
+    use crate::{
+        cart,
+        circuit::Circuit,
+        ext::expand_matrix_from_gate,
+        instruction::Instruction,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
+    };
+    use nalgebra::{Complex, DMatrix, DVector, dvector};
 
     fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
         m1.iter()
@@ -332,6 +338,19 @@ mod tests {
     macro_rules! assert_is_matrix_equal {
         ($m1: expr, $m2: expr) => {
             assert!(is_matrix_equal_to($m1, $m2))
+        };
+    }
+
+    fn is_vector_equal_to(v1: DVector<Complex<f64>>, v2: DVector<Complex<f64>>) -> bool {
+        let l = v1.len();
+        let m1 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v1.as_slice());
+        let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
+        l == v2.len() && is_matrix_equal_to(m1, m2)
+    }
+
+    macro_rules! assert_is_vector_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_vector_equal_to($m1, $m2))
         };
     }
 
@@ -369,37 +388,6 @@ mod tests {
             }
         }
         assert_is_matrix_equal!(id, res);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use nalgebra::{Complex, DMatrix, DVector, dvector};
-
-    use crate::{
-        cart,
-        circuit::Circuit,
-        simulator::{BuildSimulator, RunnableSimulator},
-        sv_simulator::SVSimulator,
-    };
-
-    fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
-        m1.iter()
-            .zip(m2.iter())
-            .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
-    }
-
-    fn is_vector_equal_to(v1: DVector<Complex<f64>>, v2: DVector<Complex<f64>>) -> bool {
-        let l = v1.len();
-        let m1 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v1.as_slice());
-        let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
-        l == v2.len() && is_matrix_equal_to(m1, m2)
-    }
-
-    macro_rules! assert_is_vector_equal {
-        ($m1: expr, $m2: expr) => {
-            assert!(is_vector_equal_to($m1, $m2))
-        };
     }
 
     #[test]
