@@ -228,15 +228,18 @@ impl Circuit {
     }
 
     /// Inverts a non-hybrid circuit.
-    pub fn inverse(mut self) -> Self {
-        for instruction in &mut self.instructions {
+    pub fn inverse(&self) -> Self {
+        let mut inverted_circuit = Circuit::new(self.n_qubits());
+        for instruction in &self.instructions {
             match instruction {
-                Instruction::Gate(gate) => *instruction = Instruction::Gate(gate.inverse()),
+                Instruction::Gate(gate) => inverted_circuit
+                    .instructions
+                    .push(Instruction::Gate(gate.inverse())),
                 _ => panic!("Circuit is hybrid"),
             }
         }
-        self.instructions.reverse();
-        self
+        inverted_circuit.instructions.reverse();
+        inverted_circuit
     }
 }
 
@@ -258,6 +261,12 @@ mod tests {
         };
     }
 
+    fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
+        let mut circuit_tot = Circuit::new(std::cmp::max(circuit1.n_qubits(), circuit2.n_qubits()));
+        circuit_tot.instructions = [circuit1.instructions.clone(), circuit2.instructions.clone()].concat();
+        circuit_tot
+    }
+
     #[test]
     fn inverse_test() {
         let circ = Circuit::new(5)
@@ -273,25 +282,12 @@ mod tests {
             .u(23.3, 34.5, 56.1, 0)
             .cu(1.0, 22.2, 0.1, 4, 2)
             .swap(3, 4)
-            .fredkin(0, 1, 2)
-            .inverse()
-            .hadamard(0)
-            .hadamard(1)
-            .hadamard(3)
-            .x(0)
-            .y(1)
-            .z(2)
-            .s(4)
-            .cnot(0, 1)
-            .cnot(4, 1)
-            .u(23.3, 34.5, 56.1, 0)
-            .cu(1.0, 22.2, 0.1, 4, 2)
-            .swap(3, 4)
             .fredkin(0, 1, 2);
+        let circ_and_inv = concat_circuits(&circ, &circ.inverse());
         let dim = 1 << 5;
         let id = DMatrix::<Complex<f64>>::identity(dim, dim);
         let mut res: DMatrix<Complex<f64>> = id.clone();
-        for instruction in circ.instructions() {
+        for instruction in circ_and_inv.instructions() {
             match instruction {
                 Instruction::Gate(gate) => res = expand_matrix_from_gate(gate, 5) * res,
                 _ => panic!("circ should be non-hybrid"),
