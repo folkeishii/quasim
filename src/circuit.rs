@@ -34,7 +34,7 @@ pub struct Circuit {
     // Global for all sub circuits
     registers: HashSet<String>,
     sub_circuits: HashMap<String, SubCircuit>,
-    unresolved_sub_circuits: HashSet<String>
+    unresolved_sub_circuits: HashSet<String>,
 }
 
 impl Circuit {
@@ -447,65 +447,78 @@ impl Circuit {
         // Check if sub circuit with same name but different definition already exists
         if let Some(existing) = self.sub_circuits.get(&name)
             && sub_circuit.eq(existing)
+            // Is existing a placeholder
+            && !self.unresolved_sub_circuits.contains(&name)
         {
             panic!(
                 "Cannot add {}: A different sub circuit with the same name is already defined",
                 name
             )
         }
+        self.unresolved_sub_circuits.remove(&name);
 
-        // Filter out and check the sub circuits that are imported
         let importing_sub_circuits = sub_circuits
             .into_iter()
-             // Don't try to import unresolved circuits from sub circuit
-            .filter(|(imp_sc, _)| !unresolved_sub_circuits.contains(imp_sc))
-             // Make sure that imported sub circuits don't have the same
-             // name as `name` but different definitions
-            .filter(|(imp_sc, imp_val)| {
-                // Does a sub circuit with the same name exist
-                let Some(exist_val) = self.sub_circuits.get(imp_sc) else {
-                    return true
-                };
+            // Don't try to import unresolved circuits from sub circuit
+            .filter(|(imp_sc, _)| !unresolved_sub_circuits.contains(imp_sc));
 
-                // If it does exist they must have the same definition
-                if !imp_val.eq(exist_val) {
-                    panic!(
-                        "Cannot add {}: A different sub circuit with the name \"{}\" is already defined",
-                        name, imp_sc
-                    )
-                }
+        for (imp_name, imp_val) in importing_sub_circuits {
+            // Does a sub circuit with the same name exist
+            let Some(exist_val) = self.sub_circuits.get(&imp_name) else {
+                self.sub_circuits.insert(imp_name, imp_val);
+                continue;
+            };
 
-                true
-            })
+            // It exist but is a placeholder
+            if self.unresolved_sub_circuits.contains(&imp_name) {
+                self.unresolved_sub_circuits.remove(&imp_name);
+                self.sub_circuits.insert(imp_name, imp_val);
+                continue;
+            }
+
+            // If it does exist they must have the same definition
+            if !imp_val.eq(exist_val) {
+                panic!(
+                    "Cannot add {}: A different sub circuit with the name \"{}\" is already defined",
+                    name, imp_name
+                )
+            }
+
             // Make sure that if sub circuit calls "itself"
             // they must have the same definition
-            .filter(|(imp_sc, imp_val)| {
-                if name.eq(imp_sc) && !sub_circuit.eq(imp_val) {
-                    panic!(
-                        "Cannot add {}: A different sub circuit with the name \"{}\" is already defined",
-                        name, imp_sc
-                    )
-                }
-
-                true
-            });
-        self.sub_circuits.extend(importing_sub_circuits);
+            if name.eq(&imp_name) && !sub_circuit.eq(&imp_val) {
+                panic!(
+                    "Cannot add {}: A different sub circuit with the name \"{}\" is already defined",
+                    name, imp_name
+                )
+            }
+        }
 
         // Filter out unresolved sub circuits that are defined
-        let importing_unresolved = unresolved_sub_circuits.into_iter().filter(|sc| !self.sub_circuits.contains_key(sc));
-
+        for imp_name in unresolved_sub_circuits {
+            // Insert placeholder for unresolved circuits
+            if !self.sub_circuits.contains_key(&imp_name) {
+                self.sub_circuits.insert(imp_name, SubCircuit::identity());
+            }
+        }
 
         // Extend
-        self.registers.extend(registers);
         self.sub_circuits.insert(name, sub_circuit);
+        self.registers.extend(registers);
 
         // Return
         self
     }
 
     pub fn sub_circuit<I: Into<String>>(mut self, name: I, lsq: usize) -> Self {
+        let name = name.into();
+        if !self.sub_circuits.contains_key(&name) {
+            self.sub_circuits
+                .insert(name.clone(), SubCircuit::identity());
+            self.unresolved_sub_circuits.insert(name.clone());
+        }
         self.instructions
-            .push(Instruction::SubCircuit(name.into(), lsq));
+            .push(Instruction::SubCircuit(name, lsq));
         self
     }
 }
@@ -518,6 +531,15 @@ pub struct SubCircuit {
     breakpoints: BreakpointList,
 }
 impl SubCircuit {
+    pub fn identity() -> Self {
+        Self {
+            instructions: Vec::with_capacity(0),
+            n_qubits: 1,
+            labels: HashMap::with_capacity(0),
+            breakpoints: BreakpointList::default(),
+        }
+    }
+
     pub fn from_circuit(circuit: Circuit) -> (Self, SubCircuitPeriphs) {
         let Circuit {
             instructions,
@@ -542,7 +564,7 @@ impl SubCircuit {
             SubCircuitPeriphs {
                 registers,
                 sub_circuits,
-                unresolved_sub_circuits
+                unresolved_sub_circuits,
             },
         )
     }
@@ -569,5 +591,5 @@ impl PartialEq for SubCircuit {
 pub struct SubCircuitPeriphs {
     registers: HashSet<String>,
     sub_circuits: HashMap<String, SubCircuit>,
-    unresolved_sub_circuits: HashSet<String>
+    unresolved_sub_circuits: HashSet<String>,
 }
