@@ -18,3 +18,7 @@ harness = false
 [[bench]]
 name = "debug-simulator"
 harness = false
+
+[[bench]]
+name = "simulator-comparison"
+harness = false
