@@ -356,7 +356,7 @@ impl<T: OrdByKey<K>, K: Ord> SortedVec<T, K> {
         }
     }
 
-    pub fn get<Q: OrdByKey<K>>(&mut self, key: &Q) -> Option<&T> {
+    pub fn get<Q: OrdByKey<K>>(&self, key: &Q) -> Option<&T> {
         match self.index_of(key) {
             Ok(index) => {
                 Some(&self.0[index])

@@ -31,6 +31,10 @@ impl BreakpointList {
     pub fn next_break(&self, pc: usize) -> Option<&Breakpoint> {
         self.0.get_or_next(&(pc+1))
     }
+
+    pub fn get(&self, pc: usize) -> Option<&Breakpoint> {
+        self.0.get(&pc)
+    }
 }
 
 #[derive(Debug, Clone, Copy, Hash)]

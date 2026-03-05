@@ -8,10 +8,9 @@ mod state;
 
 pub use arguments::*;
 pub use command::*;
-use nalgebra::{Complex, DVector};
 
 use crate::{
-    circuit::{Circuit, breakpoint::IEBreakpoint, pc::CircuitPc},
+    circuit::{Circuit, breakpoint::IEBreakpoint},
     debug_simulator::DebugSimulator,
     debug_terminal::{parse::into_tokens, show_circuit::show_circuit},
     ext::collapse,
@@ -24,7 +23,6 @@ use std::{
 
 pub struct DebugTerminal<S = DebugSimulator> {
     simulator: S,
-    break_at: Option<CircuitPc>,
 }
 
 impl<S> DebugTerminal<S>
@@ -36,24 +34,12 @@ where
         S: BuildSimulator,
     {
         let simulator = S::build(circuit)?;
-        let break_at = simulator
-            .circuit()
-            .next_enabled_break(&CircuitPc::at_main(0))
-            .map(|pc| CircuitPc::at_main(pc));
-        Ok(Self {
-            simulator,
-            break_at,
-        })
+        Ok(Self { simulator })
     }
 
     pub fn from_simulator(simulator: S) -> Self {
-        let break_at = simulator
-            .circuit()
-            .next_enabled_break(&CircuitPc::at_main(0))
-            .map(|pc| CircuitPc::at_main(pc));
         Self {
             simulator: simulator,
-            break_at,
         }
     }
 
@@ -248,7 +234,7 @@ where
         match continue_args {
             ContinueArgs::UntilBreak => {
                 loop {
-                    if self.step().is_none() {
+                    if self.simulator.next().is_none() {
                         println!(
                             stdout;
                             "End of Circuit reached"
@@ -256,16 +242,8 @@ where
                         return Ok(());
                     }
 
-                    //Check if a breakpoint exists otherwise continue until end
-                    let Some(next_break) = self.break_at.as_ref() else {
-                        continue;
-                    };
-
-                    //Check if the current index is the next break otherwise rerun the loop
-                    let (pc, Some(_instruction)) = self.simulator.current_instruction() else {
-                        continue;
-                    };
-                    if pc != next_break {
+                    let (pc, _) = self.simulator.current_instruction();
+                    if !self.simulator.circuit().enabled_breakpoint_at(pc) {
                         continue;
                     }
 
@@ -281,7 +259,7 @@ where
             ContinueArgs::SkipBreaks(n) => {
                 let mut breakpoints_skipped = 0;
                 loop {
-                    if self.step().is_none() {
+                    if self.simulator.next().is_none() {
                         println!(
                             stdout;
                             "End of Circuit reached, skipped {} breakpoints",
@@ -290,16 +268,8 @@ where
                         return Ok(());
                     }
 
-                    //Check if a breakpoint exists otherwise continue until end
-                    let Some(next_break) = self.break_at.as_ref() else {
-                        continue;
-                    };
-
-                    //Check if the current index is the next break otherwise rerun the loop
-                    let (pc, Some(_instruction)) = self.simulator.current_instruction() else {
-                        continue;
-                    };
-                    if pc != next_break {
+                    let (pc, _) = self.simulator.current_instruction();
+                    if !self.simulator.circuit().enabled_breakpoint_at(pc) {
                         continue;
                     }
 
@@ -317,7 +287,7 @@ where
                 }
             }
             ContinueArgs::IgnoreBreak => loop {
-                if self.step().is_none() {
+                if self.simulator.next().is_none() {
                     println!(stdout; &"End of Circuit reached, continued until end")?;
                     return Ok(());
                 }
@@ -342,7 +312,6 @@ where
         }
         println!(stdout; "Stepped forward {} time(s)", step_count)?;
 
-        self.update_break_at();
         Ok(())
     }
 
@@ -359,7 +328,6 @@ where
             }
         }
 
-        self.update_break_at();
         Ok(())
     }
 
@@ -409,7 +377,6 @@ where
             }
         }
 
-        self.update_break_at();
         Ok(())
     }
 
@@ -451,7 +418,6 @@ where
             )?;
         }
 
-        self.update_break_at();
         Ok(())
     }
 
@@ -493,7 +459,6 @@ where
             )?;
         }
 
-        self.update_break_at();
         Ok(())
     }
 
@@ -589,30 +554,5 @@ where
         match show_args {
             ShowArgs::Circuit => show_circuit(stdout, &self.simulator),
         }
-    }
-
-    // Steps and updates `break_at`
-    fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
-        let is_none: bool = self.simulator.next().is_none(); // A bit round about, borrow checker complaining
-        let (pc, _) = self.simulator.current_instruction();
-        self.break_at = self
-            .simulator
-            .circuit()
-            .next_break(&pc)
-            .map(|b| pc.with_pc(b.pc()));
-        if is_none {
-            None
-        } else {
-            Some(self.simulator.current_state())
-        }
-    }
-
-    fn update_break_at(&mut self) {
-        let (pc, _) = self.simulator.current_instruction();
-        self.break_at = self
-            .simulator
-            .circuit()
-            .next_break(&pc)
-            .map(|b| pc.with_pc(b.pc()));
     }
 }
