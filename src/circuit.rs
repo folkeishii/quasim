@@ -229,9 +229,9 @@ impl Circuit {
 
     /// Inverts a non-hybrid circuit.
     pub fn inverse(mut self) -> Self {
-        for i in 0..self.instructions.len() {
-            match &self.instructions[i] {
-                Instruction::Gate(gate) => self.instructions[i] = Instruction::Gate(gate.inverse()),
+        for instruction in &mut self.instructions {
+            match instruction {
+                Instruction::Gate(gate) => *instruction = Instruction::Gate(gate.inverse()),
                 _ => panic!("Circuit is hybrid"),
             }
         }
