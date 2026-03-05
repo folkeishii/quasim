@@ -76,7 +76,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
         circuit = circuit.hadamard(i);
     }
 
-    circuit = circuit.measure_bit_indexes(&[0, 1, 2, 3, 4, 5, 6, 7], "res");
+    circuit = circuit.measure(&[0, 1, 2, 3, 4, 5, 6, 7], "res");
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.continue_until(None);
 

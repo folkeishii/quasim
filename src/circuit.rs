@@ -129,7 +129,7 @@ impl Circuit {
         self
     }
 
-    pub fn measure_bit_indexes(mut self, targets: &[usize], reg: &str) -> Self {
+    pub fn measure(mut self, targets: &[usize], reg: &str) -> Self {
         self.instructions.push(Instruction::Measurement(
             QBits::from_indices(targets),
             reg.to_owned(),
