@@ -162,6 +162,14 @@ impl Circuit {
         self
     }
 
+    pub fn measure(mut self, targets: &[usize], reg: &str) -> Self {
+        self.instructions.push(Instruction::Measurement(
+            QBits::from_indices(targets),
+            reg.to_owned(),
+        ));
+        self
+    }
+
     pub fn jump(mut self, label: &str) -> Self {
         let pc = match self.try_to_resolve_label(label) {
             Some(label_pc) => label_pc,
