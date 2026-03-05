@@ -1,4 +1,4 @@
-use std::f64::consts::{FRAC_1_SQRT_2, PI};
+use std::{f64::consts::{FRAC_1_SQRT_2, PI}, ops::{Shl, Shr}};
 
 use nalgebra::Complex;
 
@@ -40,6 +40,20 @@ impl QBits {
         }
 
         vec
+    }
+}
+impl Shl<usize> for QBits{
+    type Output = QBits;
+
+    fn shl(self, rhs: usize) -> Self::Output {
+        Self(self.0 << rhs)
+    }
+}
+impl Shr<usize> for QBits{
+    type Output = QBits;
+
+    fn shr(self, rhs: usize) -> Self::Output {
+        Self(self.0 >> rhs)
     }
 }
 
