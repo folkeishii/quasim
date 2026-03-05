@@ -8,6 +8,13 @@ use crate::{
     gate::{Gate, GateType, QBits},
     instruction::Instruction,
 };
+mod qasm_parse;
+
+use log::{trace, warn};
+use oq3_syntax::{SourceFile, ast::AstNode};
+use std::fs::read_to_string;
+
+pub use qasm_parse::*;
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
@@ -50,7 +57,33 @@ impl Circuit {
         !self.unresolved_labels.is_empty()
     }
 
-    // Gates
+    pub fn from_qasm_file(file_name: &str) -> Result<Self, QASMParseError> {
+        let file_string = read_to_string(file_name)?;
+        let parsed_source = SourceFile::parse(&file_string);
+        let parse_tree: SourceFile = parsed_source.tree();
+        trace!(
+            "Found {} QASM statements",
+            parse_tree.statements().collect::<Vec<_>>().len()
+        );
+        let syntax_errors = parsed_source.errors();
+        if syntax_errors.len() > 0 {
+            warn!(
+                "Found {} QASM parse errors:\n{:?}\n",
+                syntax_errors.len(),
+                syntax_errors
+            );
+        }
+
+        // First pass: count the number of qubits
+        let n_qubits = count_qubits_from_syntax_tree(parse_tree.syntax())?;
+
+        // Second pass: build the circuit by applying gates
+        let circuit = apply_gates_from_syntax_tree(Circuit::new(n_qubits), parse_tree.syntax())?;
+
+        return Ok(circuit);
+    }
+
+    // Builder methods
 
     pub fn x(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
@@ -144,6 +177,14 @@ impl Circuit {
         self
     }
 
+    pub fn measure(mut self, targets: &[usize], reg: &str) -> Self {
+        self.instructions.push(Instruction::Measurement(
+            QBits::from_indices(targets),
+            reg.to_owned(),
+        ));
+        self
+    }
+
     pub fn jump(mut self, label: &str) -> Self {
         let pc = match self.try_to_resolve_label(label) {
             Some(label_pc) => label_pc,
@@ -190,8 +231,49 @@ impl Circuit {
         self
     }
 
-    // Label
+    /// Controlled R_k
+    pub fn crk(mut self, k: usize, control: usize, target: usize) -> Self {
+        let pow2_inv = 1.0 / (1 << (k - 1)) as f64;
+        self.instructions.push(Instruction::Gate(
+            Gate::new(
+                GateType::U(0.0, 0.0, pow2_inv * std::f64::consts::PI),
+                &[control],
+                &[target],
+            )
+            .unwrap(),
+        ));
+        self
+    }
 
+    /// Appends a circuit implementing the quantum Fourier transform.
+    /// Targets are normally specified in order of least significance,
+    /// for example [0,1,2,3,4].
+    pub fn qft(mut self, targets: &[usize]) -> Self {
+        /* This implementation is taken from Mike & Ike chapter 5.1.
+         * Note that, due to our chosen convention, the circuit will
+         * be the same as figure 5.1 but "upside down".
+         * */
+
+        let n = targets.len();
+
+        for i in (0..n).rev() {
+            self = self.hadamard(targets[i]);
+
+            let mut control: isize = i as isize - 1;
+            for k in 2..(i + 2) {
+                self = self.crk(k, targets[control as usize], targets[i]);
+                control -= 1;
+            }
+        }
+
+        // Reverse order of qubits. (not shown in figure 5.1)
+        for i in 0..(n >> 1) {
+            self = self.swap(targets[i], targets[n - 1 - i]);
+        }
+        self
+    }
+
+    // Label
     pub fn label(mut self, label: &str) -> Self {
         let pc = self.instructions.len();
 
@@ -240,5 +322,127 @@ impl Circuit {
         // 3. Remove resolved labels after patching
         self.unresolved_labels
             .retain(|(label, idx)| !to_remove.contains(&(label.clone(), *idx)));
+    }
+
+    /// Inverts a non-hybrid circuit.
+    pub fn inverse(&self) -> Self {
+        let mut inverted_circuit = Circuit::new(self.n_qubits());
+        for instruction in &self.instructions {
+            match instruction {
+                Instruction::Gate(gate) => inverted_circuit
+                    .instructions
+                    .push(Instruction::Gate(gate.inverse())),
+                _ => panic!("Circuit is hybrid"),
+            }
+        }
+        inverted_circuit.instructions.reverse();
+        inverted_circuit
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        cart,
+        circuit::Circuit,
+        ext::expand_matrix_from_gate,
+        instruction::Instruction,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
+    };
+    use nalgebra::{Complex, DMatrix, DVector, dvector};
+
+    fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
+        m1.iter()
+            .zip(m2.iter())
+            .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
+    }
+
+    macro_rules! assert_is_matrix_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_matrix_equal_to($m1, $m2))
+        };
+    }
+
+    fn is_vector_equal_to(v1: DVector<Complex<f64>>, v2: DVector<Complex<f64>>) -> bool {
+        let l = v1.len();
+        let m1 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v1.as_slice());
+        let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
+        l == v2.len() && is_matrix_equal_to(m1, m2)
+    }
+
+    macro_rules! assert_is_vector_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_vector_equal_to($m1, $m2))
+        };
+    }
+
+    fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
+        let mut circuit_tot = Circuit::new(std::cmp::max(circuit1.n_qubits(), circuit2.n_qubits()));
+        circuit_tot.instructions =
+            [circuit1.instructions.clone(), circuit2.instructions.clone()].concat();
+        circuit_tot
+    }
+
+    #[test]
+    fn inverse_test() {
+        let circ = Circuit::new(5)
+            .hadamard(0)
+            .hadamard(1)
+            .hadamard(3)
+            .x(0)
+            .y(1)
+            .z(2)
+            .s(4)
+            .cnot(0, 1)
+            .cnot(4, 1)
+            .u(23.3, 34.5, 56.1, 0)
+            .cu(1.0, 22.2, 0.1, 4, 2)
+            .swap(3, 4)
+            .fredkin(0, 1, 2);
+        let circ_and_inv = concat_circuits(&circ, &circ.inverse());
+        let dim = 1 << 5;
+        let id = DMatrix::<Complex<f64>>::identity(dim, dim);
+        let mut res: DMatrix<Complex<f64>> = id.clone();
+        for instruction in circ_and_inv.instructions() {
+            match instruction {
+                Instruction::Gate(gate) => res = expand_matrix_from_gate(gate, 5) * res,
+                _ => panic!("circ should be non-hybrid"),
+            }
+        }
+        assert_is_matrix_equal!(id, res);
+    }
+
+    #[test]
+    fn qft_test() {
+        let sim = SVSimulator::build(
+            Circuit::new(4)
+                .x(0)
+                .y(1)
+                .z(2)
+                .hadamard(3)
+                .qft(&[0, 1, 2, 3]),
+        )
+        .unwrap();
+
+        let expected_vec = dvector![
+            cart!(0.0, 0.35355),  // |0000>
+            cart!(0.0),           // |0001>
+            cart!(-0.25, -0.25),  // |0010>
+            cart!(0.0),           // |0011>
+            cart!(0.35355, 0.0),  // |0100>
+            cart!(0.0),           // |0101>
+            cart!(-0.25, 0.25),   // |0110>
+            cart!(0.0),           // |0111>
+            cart!(0.0, -0.35355), // |1000>
+            cart!(0.0),           // |1001>
+            cart!(0.25, 0.25),    // |1010>
+            cart!(0.0),           // |1011>
+            cart!(-0.35355, 0.0), // |1100>
+            cart!(0.0),           // |1101>
+            cart!(0.25, -0.25),   // |1110>
+            cart!(0.0),           // |1111>
+        ];
+        assert_is_vector_equal!(expected_vec, sim.final_state());
     }
 }

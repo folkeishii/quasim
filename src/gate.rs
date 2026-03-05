@@ -1,4 +1,4 @@
-use std::f64::consts::FRAC_1_SQRT_2;
+use std::f64::consts::{FRAC_1_SQRT_2, PI};
 
 use nalgebra::Complex;
 
@@ -59,6 +59,14 @@ impl GateType {
         match self {
             Self::X | Self::Y | Self::Z | Self::H | Self::U(_, _, _) | Self::S => 1,
             Self::SWAP => 2,
+        }
+    }
+
+    pub fn inverse(&self) -> Self {
+        match self {
+            Self::X | Self::Y | Self::Z | Self::H | Self::SWAP => *self,
+            Self::S => Self::U(0.0, 0.0, -PI / 2.0),
+            Self::U(theta, phi, lambda) => Self::U(-theta, -lambda, -phi),
         }
     }
 }
@@ -145,5 +153,14 @@ impl Gate {
 
     pub fn get_targets(&self) -> Vec<usize> {
         self.get_target_bits().get_indices()
+    }
+
+    pub fn inverse(&self) -> Self {
+        Self::new(
+            self.get_type().inverse(),
+            &self.controls.get_indices(),
+            &self.targets.get_indices(),
+        )
+        .unwrap()
     }
 }
