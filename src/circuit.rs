@@ -9,7 +9,10 @@ pub mod breakpoint;
 pub mod pc;
 
 use crate::{
-    circuit::{breakpoint::BreakpointList, pc::CircuitPc},
+    circuit::{
+        breakpoint::{Breakpoint, BreakpointList, IEBreakpoint},
+        pc::CircuitPc,
+    },
     expr_dsl::Expr,
     gate::{Gate, GateType, QBits},
     instruction::Instruction,
@@ -56,21 +59,17 @@ impl Circuit {
         self
     }
 
+    pub fn valid_pc(&self, circuit_pc: &CircuitPc) -> bool {
+        circuit_pc.pc() <= self.instructions(circuit_pc.sub_circuit().map(AsRef::as_ref)).len()
+    }
+
     pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<&Instruction> {
-        if let Some(sc) = circuit_pc.sub_circuit() {
-            self.sub_circuits.get(sc)?.instructions.get(circuit_pc.pc())
-        } else {
-            self.instructions.get(circuit_pc.pc())
-        }
+        self.instructions(circuit_pc.sub_circuit().map(AsRef::as_ref)).get(circuit_pc.pc())
     }
 
     pub fn instructions(&self, sub_circuit: Option<&str>) -> &[Instruction] {
         if let Some(sc) = sub_circuit {
-            if let Some(sub_circuit) = self.sub_circuits.get(sc) {
-                sub_circuit.instructions()
-            } else {
-                panic!("Cannot access instructions on an undefined sub circuit")
-            }
+            self.sub_circuit(sc).instructions()
         } else {
             &self.instructions
         }
@@ -517,9 +516,96 @@ impl Circuit {
                 .insert(name.clone(), SubCircuit::identity());
             self.unresolved_sub_circuits.insert(name.clone());
         }
-        self.instructions
-            .push(Instruction::Call(name, lsq));
+        self.instructions.push(Instruction::Call(name, lsq));
         self
+    }
+
+    // Breakpoint
+
+    pub fn breakpoint(mut self) -> Self {
+        self.breakpoints.insert_or_enable(self.instructions.len());
+        self
+    }
+
+    pub fn next_break(&self, pc: &CircuitPc) -> Option<&Breakpoint> {
+        if let Some(sc) = pc.sub_circuit() {
+            self.sub_circuits[sc].breakpoints.next_break(pc.pc())
+        } else {
+            self.breakpoints.next_break(pc.pc())
+        }
+    }
+
+    pub fn next_enabled_break(&self, pc: &CircuitPc) -> Option<usize> {
+        while let Some(b) = self.next_break(pc) {
+            if b.enabled() {
+                return Some(b.pc());
+            }
+        }
+        None
+    }
+
+    pub fn insert_breakpoint(&mut self, pc: &CircuitPc) -> IEBreakpoint {
+        if let Some(sc) = pc.sub_circuit() {
+            self.sub_circuits
+                .get_mut(sc)
+                .expect("pc does not point at a registered sub circuit")
+                .breakpoints
+                .insert_or_enable(pc.pc())
+        } else {
+            self.breakpoints.insert_or_enable(pc.pc())
+        }
+    }
+
+    pub fn enable_breakpoint(&mut self, pc: &CircuitPc) -> bool {
+        if let Some(sc) = pc.sub_circuit() {
+            self.sub_circuits
+                .get_mut(sc)
+                .expect("pc does not point at a registered sub circuit")
+                .breakpoints
+                .enable(pc.pc())
+        } else {
+            self.breakpoints.enable(pc.pc())
+        }
+    }
+
+    pub fn disable_breakpoint(&mut self, pc: &CircuitPc) -> bool {
+        if let Some(sc) = pc.sub_circuit() {
+            self.sub_circuits
+                .get_mut(sc)
+                .expect("pc does not point at a registered sub circuit")
+                .breakpoints
+                .disable(pc.pc())
+        } else {
+            self.breakpoints.disable(pc.pc())
+        }
+    }
+
+    pub fn delete_breakpoint(&mut self, pc: &CircuitPc) -> bool {
+        if let Some(sc) = pc.sub_circuit() {
+            self.sub_circuits
+                .get_mut(sc)
+                .expect("pc does not point at a registered sub circuit")
+                .breakpoints
+                .delete(pc.pc())
+        } else {
+            self.breakpoints.delete(pc.pc())
+        }
+    }
+
+    fn sub_circuit(&self, name: &str) -> &SubCircuit {
+        if let Some(sub_circuit) = self.sub_circuits.get(name) {
+            sub_circuit
+        } else {
+            panic!("Cannot access undefined sub circuit {}", name)
+        }
+    }
+
+    fn sub_circuit_mut(&mut self, name: &str) -> &mut SubCircuit {
+        if let Some(sub_circuit) = self.sub_circuits.get_mut(name) {
+            sub_circuit
+        } else {
+            panic!("Cannot access undefined sub circuit {}", name)
+        }
     }
 }
 

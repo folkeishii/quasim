@@ -8,12 +8,10 @@ mod state;
 
 pub use arguments::*;
 pub use command::*;
+use nalgebra::{Complex, DVector};
 
 use crate::{
-    circuit::{
-        Circuit,
-        breakpoint::{BreakpointList, IEBreakpoint},
-    },
+    circuit::{Circuit, breakpoint::IEBreakpoint, pc::CircuitPc},
     debug_simulator::DebugSimulator,
     debug_terminal::{parse::into_tokens, show_circuit::show_circuit},
     ext::collapse,
@@ -26,27 +24,36 @@ use std::{
 
 pub struct DebugTerminal<S = DebugSimulator> {
     simulator: S,
-    /// Sorted array of breakpoints
-    /// i.e. Breakpoints are in order
-    /// of gate index
-    breakpoints: BreakpointList,
+    break_at: Option<CircuitPc>,
 }
 
 impl<S> DebugTerminal<S>
 where
     S: DebuggableSimulator + StoredCircuitSimulator,
 {
-    pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E> where S: BuildSimulator{
+    pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E>
+    where
+        S: BuildSimulator,
+    {
+        let simulator = S::build(circuit)?;
+        let break_at = simulator
+            .circuit()
+            .next_enabled_break(&CircuitPc::at_main(0))
+            .map(|pc| CircuitPc::at_main(pc));
         Ok(Self {
-            simulator: S::build(circuit)?,
-            breakpoints: Default::default(),
+            simulator,
+            break_at,
         })
     }
 
     pub fn from_simulator(simulator: S) -> Self {
+        let break_at = simulator
+            .circuit()
+            .next_enabled_break(&CircuitPc::at_main(0))
+            .map(|pc| CircuitPc::at_main(pc));
         Self {
             simulator: simulator,
-            breakpoints: Default::default(),
+            break_at,
         }
     }
 
@@ -60,7 +67,7 @@ where
                 (step, None) => match step.sub_circuit() {
                     Some(sc) => print!(stdout; "[{}; end] qdb> ", sc)?,
                     None => print!(stdout; "[end] qdb> ")?,
-                }
+                },
                 (step, Some(_)) => print!(stdout; "{} qdb> ", step)?,
             };
             input_buffer.clear();
@@ -240,100 +247,80 @@ where
     ) -> io::Result<()> {
         match continue_args {
             ContinueArgs::UntilBreak => {
-                let (pc, _) = self.simulator.current_instruction();
-                let mut next_break = self.breakpoints.next_break(pc.pc());
-                while let Some(br) = next_break && !br.enabled() {
-                    next_break = self.breakpoints.next_break(br.pc());
-                }
-
                 loop {
-                    if self.simulator.next().is_none() {
-                        println!(stdout; &"End of Circuit reached, continued until end")?;
+                    if self.step().is_none() {
+                        println!(
+                            stdout;
+                            "End of Circuit reached"
+                        )?;
                         return Ok(());
                     }
 
                     //Check if a breakpoint exists otherwise continue until end
-                    let Some(next_break) = next_break else {
-                        self.simulator.next();
+                    let Some(next_break) = self.break_at.as_ref() else {
                         continue;
                     };
 
                     //Check if the current index is the next break otherwise rerun the loop
-                    let (instruction_index, Some(_instruction)) =
-                        self.simulator.current_instruction()
-                    else {
+                    let (pc, Some(_instruction)) = self.simulator.current_instruction() else {
                         continue;
                     };
-
-                    if instruction_index.pc() == next_break.pc() {
-                        println!(
-                            stdout;
-                            "Continued until breakpoint at index {}", next_break.pc()
-                        )?;
-                        return Ok(());
+                    if pc != next_break {
+                        continue;
                     }
+
+                    // If we have skipped the desired amount of breakpoints
+                    println!(
+                        stdout;
+                        "Continued until breakpoint at index {}",
+                        pc
+                    )?;
+                    return Ok(());
                 }
             }
             ContinueArgs::SkipBreaks(n) => {
-                let (pc, _) = self.simulator.current_instruction();
-                let mut pc = pc.clone();
                 let mut breakpoints_skipped = 0;
                 loop {
-                    let next_break = self.breakpoints.next_break(pc.pc());
-
-                    loop {
-                        if self.simulator.next().is_none() {
-                            println!(stdout; &"End of Circuit reached, continued until end")?;
-                            return Ok(());
-                        }
-
-                        // If there are no more breaks to skip, continue until end
-                        if next_break.is_none() {
-                            println!(
-                                stdout;
-                                "Skipped {} breakpoints, continuing until end",
-                                breakpoints_skipped
-                            )?;
-                        }
-
-                        //Check if a breakpoint exists otherwise continue until end
-                        let Some(next_break) = next_break else {
-                            self.simulator.next();
-                            continue;
-                        };
-
-                        //Check if the current index is the next break otherwise rerun the loop
-                        let (instruction_index, Some(_instruction)) =
-                            self.simulator.current_instruction()
-                        else {
-                            continue;
-                        };
-                        pc = instruction_index.clone();
-
-                        // If we have skipped the desired amount of breakpoints
-                        if breakpoints_skipped == *n {
-                            println!(
-                                stdout;
-                                "Skipped {} breakpoints, continued to index {}",
-                                breakpoints_skipped, instruction_index
-                            )?;
-                            return Ok(());
-                        }
-
-                        if next_break.enabled() && instruction_index.pc() == next_break.pc() {
-                            breakpoints_skipped += 1;
-                            break;
-                        }
+                    if self.step().is_none() {
+                        println!(
+                            stdout;
+                            "End of Circuit reached, skipped {} breakpoints",
+                            breakpoints_skipped
+                        )?;
+                        return Ok(());
                     }
-                    self.simulator.next();
+
+                    //Check if a breakpoint exists otherwise continue until end
+                    let Some(next_break) = self.break_at.as_ref() else {
+                        continue;
+                    };
+
+                    //Check if the current index is the next break otherwise rerun the loop
+                    let (pc, Some(_instruction)) = self.simulator.current_instruction() else {
+                        continue;
+                    };
+                    if pc != next_break {
+                        continue;
+                    }
+
+                    // If we have skipped the desired amount of breakpoints
+                    if breakpoints_skipped == *n {
+                        println!(
+                            stdout;
+                            "Skipped {} breakpoints, continued to index {}",
+                            breakpoints_skipped, pc
+                        )?;
+                        return Ok(());
+                    }
+
+                    breakpoints_skipped += 1;
                 }
             }
             ContinueArgs::IgnoreBreak => loop {
-                if self.simulator.next().is_none() {
+                if self.step().is_none() {
                     println!(stdout; &"End of Circuit reached, continued until end")?;
                     return Ok(());
                 }
-                self.simulator.next();
             },
         }
     }
@@ -355,6 +342,7 @@ where
         }
         println!(stdout; "Stepped forward {} time(s)", step_count)?;
 
+        self.update_break_at();
         Ok(())
     }
 
@@ -371,6 +359,7 @@ where
             }
         }
 
+        self.update_break_at();
         Ok(())
     }
 
@@ -381,9 +370,11 @@ where
         };
 
         // Check that all indices are actual gates
-        let gate_range = 0..self.simulator.circuit().instructions(None).len();
-        for gate_index in gate_indices {
-            if !gate_range.contains(gate_index) {
+        let circuit = self.simulator.circuit();
+        let (pc, _) = self.simulator.current_instruction();
+        let pc = pc.clone();
+        for &gate_index in gate_indices {
+            if !circuit.valid_pc(&pc.with_pc(gate_index)) {
                 errorln!(
                     stdout;
                     "Unable to set or enable breakpoint at index {}, no gate at index",
@@ -394,10 +385,11 @@ where
         }
 
         // Insert or enable breakpoints
+        let circuit = self.simulator.circuit_mut();
         for &gate_index in gate_indices {
             let status = if !enable_only {
-                self.breakpoints.insert_or_enable(gate_index)
-            } else if self.breakpoints.enable(gate_index) {
+                circuit.insert_breakpoint(&pc.with_pc(gate_index))
+            } else if circuit.enable_breakpoint(&pc.with_pc(gate_index)) {
                 IEBreakpoint::Enabled
             } else {
                 errorln!(
@@ -417,6 +409,7 @@ where
             }
         }
 
+        self.update_break_at();
         Ok(())
     }
 
@@ -425,10 +418,11 @@ where
             DisableArgs::GateIndices(indices) => indices,
         };
 
+        let circuit = self.simulator.circuit();
         let (pc, _) = self.simulator.current_instruction();
-        let gate_range = 0..self.simulator.instruction_count(pc.sub_circuit().map(AsRef::as_ref));
-        for gate_index in disable_indexes {
-            if !gate_range.contains(gate_index) {
+        let pc = pc.clone();
+        for &gate_index in disable_indexes {
+            if !circuit.valid_pc(&pc.with_pc(gate_index)) {
                 errorln!(
                     stdout;
                     "Unable to disable breakpoint at index {}, no gate at index", gate_index
@@ -437,9 +431,10 @@ where
             }
         }
 
+        let circuit = self.simulator.circuit_mut();
         let mut disabled: Vec<String> = Vec::new();
         for &gate_index in disable_indexes {
-            if !self.breakpoints.disable(gate_index) {
+            if !circuit.disable_breakpoint(&pc.with_pc(gate_index)) {
                 errorln!(
                     stdout;
                     "Could not disable breakpoint at {}, breakpoint does not exist", gate_index
@@ -456,6 +451,7 @@ where
             )?;
         }
 
+        self.update_break_at();
         Ok(())
     }
 
@@ -464,10 +460,11 @@ where
             DeleteArgs::GateIndices(i) => i,
         };
 
+        let circuit = self.simulator.circuit();
         let (pc, _) = self.simulator.current_instruction();
-        let gate_range = 0..self.simulator.instruction_count(pc.sub_circuit().map(AsRef::as_ref));
-        for gate_index in delete_indexes {
-            if !gate_range.contains(gate_index) {
+        let pc = pc.clone();
+        for &gate_index in delete_indexes {
+            if !circuit.valid_pc(&pc.with_pc(gate_index)) {
                 errorln!(
                     stdout;
                     "Unable to delete breakpoint at index {}, no gate at index", gate_index
@@ -476,9 +473,10 @@ where
             }
         }
 
+        let circuit = self.simulator.circuit_mut();
         let mut deleted: Vec<String> = Vec::new();
         for &gate_index in delete_indexes {
-            if !self.breakpoints.delete(gate_index) {
+            if !circuit.delete_breakpoint(&pc.with_pc(gate_index)) {
                 errorln!(
                     stdout;
                     "Could not delete breakpoint at {}, breakpoint does not exist", gate_index
@@ -495,6 +493,7 @@ where
             )?;
         }
 
+        self.update_break_at();
         Ok(())
     }
 
@@ -590,5 +589,30 @@ where
         match show_args {
             ShowArgs::Circuit => show_circuit(stdout, &self.simulator),
         }
+    }
+
+    // Steps and updates `break_at`
+    fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
+        let is_none: bool = self.simulator.next().is_none(); // A bit round about, borrow checker complaining
+        let (pc, _) = self.simulator.current_instruction();
+        self.break_at = self
+            .simulator
+            .circuit()
+            .next_break(&pc)
+            .map(|b| pc.with_pc(b.pc()));
+        if is_none {
+            None
+        } else {
+            Some(self.simulator.current_state())
+        }
+    }
+
+    fn update_break_at(&mut self) {
+        let (pc, _) = self.simulator.current_instruction();
+        self.break_at = self
+            .simulator
+            .circuit()
+            .next_break(&pc)
+            .map(|b| pc.with_pc(b.pc()));
     }
 }

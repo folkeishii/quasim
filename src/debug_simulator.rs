@@ -152,6 +152,10 @@ impl StoredCircuitSimulator for DebugSimulator {
     fn circuit(&self) -> &Circuit {
         &self.circuit
     }
+
+    fn circuit_mut(&mut self) -> &mut Circuit {
+        &mut self.circuit
+    }
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
