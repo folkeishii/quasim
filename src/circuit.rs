@@ -436,21 +436,35 @@ impl Circuit {
         self
     }
 
-    pub fn next_break(&self, pc: &CircuitPc) -> Option<&Breakpoint> {
+    pub fn next_break(&self, pc: &CircuitPc) -> Option<(CircuitPc, bool)> {
         if let Some(sc) = pc.sub_circuit() {
-            self.sub_circuits[sc].breakpoints.next_break(pc.pc())
+            let brk = self.sub_circuits[sc].breakpoints.next_break(pc.pc())?;
+            Some((pc.with_pc(brk.pc()), brk.enabled()))
         } else {
-            self.breakpoints.next_break(pc.pc())
+            let brk = self.breakpoints.next_break(pc.pc())?;
+            Some((pc.with_pc(brk.pc()), brk.enabled()))
         }
     }
 
-    pub fn next_enabled_break(&self, pc: &CircuitPc) -> Option<usize> {
-        while let Some(b) = self.next_break(pc) {
-            if b.enabled() {
-                return Some(b.pc());
+    pub fn next_enabled_break(&self, pc: &CircuitPc) -> Option<CircuitPc> {
+        while let Some((pc, enabled)) = self.next_break(pc) {
+            if enabled {
+                return Some(pc);
             }
         }
         None
+    }
+
+    pub fn breakpoint_at(&self, pc: &CircuitPc) -> Option<&Breakpoint> {
+        if let Some(sc) = pc.sub_circuit() {
+            self.sub_circuits[sc].breakpoints.get(pc.pc())
+        } else {
+            self.breakpoints.get(pc.pc())
+        }
+    }
+
+    pub fn enabled_breakpoint_at(&self, pc: &CircuitPc) -> bool {
+        self.breakpoint_at(pc).map(Breakpoint::enabled).unwrap_or(false)
     }
 
     pub fn insert_breakpoint(&mut self, pc: &CircuitPc) -> IEBreakpoint {

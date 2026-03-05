@@ -1,6 +1,6 @@
 use std::fmt::{Display, Write};
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Default, Hash)]
 pub struct CircuitPc {
     sub_circuit: Option<String>,
     pc: usize,
@@ -68,6 +68,11 @@ impl CircuitPc {
 
     pub fn lsq(&self) -> usize {
         self.lsq
+    }
+}
+impl PartialEq for CircuitPc {
+    fn eq(&self, other: &Self) -> bool {
+        self.sub_circuit == other.sub_circuit && self.pc == other.pc
     }
 }
 impl Display for CircuitPc {
