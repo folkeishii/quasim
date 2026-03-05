@@ -1,5 +1,6 @@
 use quasim::circuit::Circuit;
-use quasim::simulator::BuildSimulator;
+use quasim::expr_dsl::Value;
+use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
 const N: usize = 8;
@@ -53,7 +54,7 @@ fn check_classic(f: fn(u8) -> bool) -> FunctionType {
 ///
 /// Return true if constant, false if balanced
 fn check_quantum(function_type: FunctionType) -> bool {
-    let mut circuit = Circuit::new(N + 1);
+    let mut circuit = Circuit::new(N + 1).new_reg("res");
     circuit = circuit.x(N);
 
     for i in 0..=N {
@@ -76,17 +77,18 @@ fn check_quantum(function_type: FunctionType) -> bool {
     }
 
     circuit = circuit.measure_bit_indexes(&[0, 1, 2, 3, 4, 5, 6, 7], "res");
-    let sim = SVSimulatorDebugger::build(circuit).unwrap();
+    let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
+    sim.continue_until(None);
 
-    // TODO: How to read registers?
-    // match sim.registers()["res"] {
-    //     None => { panic!("Register res not found"); },
-    //     Some(s) => {
-    //         println!("S: {}", s);
-    //         true
-    //     }
-    // }
-    true
+    match sim.register("res") {
+        Value::Int(i) => i == 0,
+        Value::Float(_) => {
+            panic!("Unexpected float register")
+        }
+        Value::Bool(_) => {
+            panic!("Unexpected bool register")
+        }
+    }
 }
 
 fn main() {
