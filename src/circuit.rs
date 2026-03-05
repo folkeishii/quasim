@@ -5,6 +5,13 @@ use crate::{
     gate::{Gate, GateType, QBits},
     instruction::Instruction,
 };
+mod qasm_parse;
+
+use log::{trace, warn};
+use oq3_syntax::{SourceFile, ast::AstNode};
+use std::fs::read_to_string;
+
+pub use qasm_parse::*;
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
@@ -47,7 +54,33 @@ impl Circuit {
         !self.unresolved_labels.is_empty()
     }
 
-    // Gates
+    pub fn from_qasm_file(file_name: &str) -> Result<Self, QASMParseError> {
+        let file_string = read_to_string(file_name)?;
+        let parsed_source = SourceFile::parse(&file_string);
+        let parse_tree: SourceFile = parsed_source.tree();
+        trace!(
+            "Found {} QASM statements",
+            parse_tree.statements().collect::<Vec<_>>().len()
+        );
+        let syntax_errors = parsed_source.errors();
+        if syntax_errors.len() > 0 {
+            warn!(
+                "Found {} QASM parse errors:\n{:?}\n",
+                syntax_errors.len(),
+                syntax_errors
+            );
+        }
+
+        // First pass: count the number of qubits
+        let n_qubits = count_qubits_from_syntax_tree(parse_tree.syntax())?;
+
+        // Second pass: build the circuit by applying gates
+        let circuit = apply_gates_from_syntax_tree(Circuit::new(n_qubits), parse_tree.syntax())?;
+
+        return Ok(circuit);
+    }
+
+    // Builder methods
 
     pub fn x(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(

@@ -1,8 +1,9 @@
 [package]
-name = "hadamard-cnot-entanglement"
+name = "qasm-parse-basic"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+log = "0.4.29"
 pretty_env_logger = "0.5.0"
 quasim = {path="../.." }
