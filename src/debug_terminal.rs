@@ -95,6 +95,15 @@ where
         Ok(())
     }
 
+    fn multiline_whitespace_trim(s: String) -> String {
+        let better = s.replace("\n ", "\n").replace("\n\r ", "\n\r");
+        if better == s {
+            better
+        } else {
+            Self::multiline_whitespace_trim(better)
+        }
+    }
+
     fn handle_help<W: Write>(&mut self, stdout: &mut W, help_args: &HelpArgs) -> io::Result<()> {
         match help_args {
             HelpArgs::Command(command) => {
@@ -184,28 +193,31 @@ where
                     }
                     CommandIdent::Quit => "Exit the debugger.",
                 };
+                let command_help = Self::multiline_whitespace_trim(command_help.to_string());
                 println!(stdout; "{} - {}", command, command_help)?;
             }
             HelpArgs::All => {
-                println!(
-                    stdout;
-                    "\
+                let all_help = "\
                     continue (c) - Continue execution until a breakpoint is hit or end of circuit is reached.\
                      Optionally specify to skip a number of breakpoints or ignore breakpoints entirely.
                     next (n) - Step forward one instruction. Optionally specify a number of instructions to step forward.
                     prev (p) - Step back one instruction. Optionally specify a number of instructions to step back.
-                    break (b) - Insert a breakpoint at the specified gate index.\
+                    break - Insert a breakpoint at the specified gate index.\
                      Optionally specify to only enable an already existing breakpoint.
-                    delete (d) - Delete the breakpoint at the specified gate index.
+                    delete - Delete the breakpoint at the specified gate index.
                     disable - Disable the breakpoint at the specified gate index.
                     enable - Enable the breakpoint at the specified gate index. Only works for already existing breakpoints.
-                    state (s) - Show the current state. Optionally specify to show only a specific part of the state.
-                    collapse (col) - Collapse the current state into a single value and show the count of each value.\
+                    state - Show the current state. Optionally specify to show only a specific part of the state.
+                    collapse - Collapse the current state into a single value and show the count of each value.\
                      Optionally specify to collapse multiple times for a more even distribution of collapsed values.
-                    show (sh) - Show information about the circuit or current state. E.g. show the circuit diagram.
+                    show - Show information about the circuit or current state. E.g. show the circuit diagram.
                     help (h) - Show this help message. Optionally specify a command to get more specific help.
-                    quit (q) - Exit the debugger.
-                    "
+                    quit (q) - Exit the debugger.";
+
+                let all_help = Self::multiline_whitespace_trim(all_help.to_string());
+                println!(
+                    stdout;
+                    all_help
                 )?;
             }
         }
