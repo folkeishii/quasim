@@ -419,7 +419,7 @@ impl Circuit {
         self
     }
 
-    pub fn sub_circuit<I: Into<String>>(mut self, name: I, lsq: usize) -> Self {
+    pub fn call<I: Into<String>>(mut self, name: I, lsq: usize) -> Self {
         let name = name.into();
         if !self.sub_circuits.contains_key(&name) {
             self.sub_circuits
@@ -427,7 +427,7 @@ impl Circuit {
             self.unresolved_sub_circuits.insert(name.clone());
         }
         self.instructions
-            .push(Instruction::SubCircuit(name, lsq));
+            .push(Instruction::Call(name, lsq));
         self
     }
 }
