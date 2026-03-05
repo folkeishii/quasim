@@ -1,3 +1,4 @@
+use crate::register_file::RegisterFile;
 use crate::{circuit::Circuit, instruction::Instruction};
 use nalgebra::{Complex, DVector};
 
@@ -71,6 +72,15 @@ pub trait StoredCircuitSimulator {
     fn instruction_count(&self) -> usize {
         self.circuit().instructions().len()
     }
+}
+
+/// # StoredRegisterSimulator
+/// Any simulator that stores registers
+/// should implement this trait
+pub trait StoredRegisterSimulator<T> {
+    fn registers(&self) -> &RegisterFile<T>;
+
+    fn get_register(&self, register: &str) -> T;
 }
 
 #[cfg(test)]

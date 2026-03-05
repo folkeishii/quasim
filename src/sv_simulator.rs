@@ -1,6 +1,7 @@
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
+use crate::simulator::StoredRegisterSimulator;
 use crate::{
     cart,
     circuit::Circuit,
@@ -281,11 +282,24 @@ impl DoubleEndedSimulator for SVSimulatorDebugger {
     }
 }
 
+impl StoredRegisterSimulator<Value> for SVSimulatorDebugger {
+    fn registers(&self) -> &RegisterFile<Value> {
+        &self.executor.registers
+    }
+
+    fn get_register(&self, register: &str) -> Value {
+        self.executor.registers[register]
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SVError {}
 
 #[cfg(test)]
 mod tests {
+    use crate::expr_dsl::Value;
+    use crate::simulator::StoredRegisterSimulator;
+    use crate::sv_simulator::SVSimulatorDebugger;
     use crate::{
         circuit::Circuit,
         expr_dsl::expr_helpers::r,
@@ -321,5 +335,15 @@ mod tests {
         let sim = SVSimulator::build(circuit.clone()).unwrap();
 
         println!("{}", sim.final_state());
+    }
+
+    #[test]
+    fn test_register() {
+        let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, "r0");
+
+        let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
+        sim.executor.step_all();
+
+        assert_eq!(sim.get_register("r0"), Value::Int(1));
     }
 }
