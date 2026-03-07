@@ -1,5 +1,5 @@
 use nalgebra::{Complex, DMatrix};
-use quasim::{debug_simulator::DebugSimulator, ext::equal_to_matrix_c};
+use quasim::ext::equal_to_matrix_c;
 
 extern crate quasim;
 
@@ -16,7 +16,7 @@ fn controlled_id_all_control_but_one(n_qubits: usize) {
     let n_controls = n_qubits - 1;
 
     let id_2x2 = DMatrix::<Complex<f64>>::identity(2, 2);
-    let mat = DebugSimulator::expand_matrix(
+    let mat = quasim::ext::expand_matrix(
         id_2x2,
         &(0..n_controls).collect::<Vec<usize>>(),
         &[n_controls],

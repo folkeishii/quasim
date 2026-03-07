@@ -1,4 +1,4 @@
-use std::f64::consts::FRAC_1_SQRT_2;
+use std::f64::consts::{FRAC_1_SQRT_2, PI};
 
 use nalgebra::Complex;
 
@@ -32,14 +32,11 @@ impl QBits {
     pub fn get_indices(&self) -> Vec<usize> {
         let mut bits = self.0;
         let mut vec = Vec::new();
-        let mut index = 0;
 
         while bits != 0 {
-            if bits & 1 == 1 {
-                vec.push(index);
-            }
-            bits >>= 1;
-            index += 1;
+            let tz = bits.trailing_zeros() as usize;
+            vec.push(tz);
+            bits &= bits - 1; // clear lowest set bit
         }
 
         vec
@@ -54,18 +51,27 @@ pub enum GateType {
     H,
     SWAP,
     U(f64, f64, f64),
+    S,
 }
 
 impl GateType {
     pub fn arity(&self) -> usize {
         match self {
-            Self::X | Self::Y | Self::Z | Self::H | Self::U(_, _, _) => 1,
+            Self::X | Self::Y | Self::Z | Self::H | Self::U(_, _, _) | Self::S => 1,
             Self::SWAP => 2,
+        }
+    }
+
+    pub fn inverse(&self) -> Self {
+        match self {
+            Self::X | Self::Y | Self::Z | Self::H | Self::SWAP => *self,
+            Self::S => Self::U(0.0, 0.0, -PI / 2.0),
+            Self::U(theta, phi, lambda) => Self::U(-theta, -lambda, -phi),
         }
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Clone, thiserror::Error)]
 pub enum GateError {
     #[error("Invalid targete")]
     InvalidTargets,
@@ -111,6 +117,12 @@ impl Gate {
         cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0)
     ];
 
+    #[rustfmt::skip]
+    pub const PHASE_S_DATA: [Complex<f64>; 4] = [
+        cart!(1.0), cart!(0.0),
+        cart!(0.0), cart!(0.0, 1.0),
+    ];
+
     pub fn new(ty: GateType, controls: &[usize], targets: &[usize]) -> Result<Self, GateError> {
         if targets.len() != ty.arity() {
             return Err(GateError::InvalidTargets);
@@ -141,5 +153,14 @@ impl Gate {
 
     pub fn get_targets(&self) -> Vec<usize> {
         self.get_target_bits().get_indices()
+    }
+
+    pub fn inverse(&self) -> Self {
+        Self::new(
+            self.get_type().inverse(),
+            &self.controls.get_indices(),
+            &self.targets.get_indices(),
+        )
+        .unwrap()
     }
 }

@@ -1,32 +1,50 @@
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
+use crate::simulator::HybridSimulator;
 use crate::{
     cart,
     circuit::Circuit,
+    expr_dsl::{Expr, Value},
     ext::get_gate_matrix,
     gate::{Gate, QBits},
     instruction::Instruction,
-    simulator::{DebuggableSimulator, RunnableSimulator},
+    register_file::RegisterFile,
+    simulator::{
+        DebuggableSimulator, DoubleEndedSimulator, RunnableSimulator, StoredCircuitSimulator,
+    },
 };
 
-pub struct SVExecutor<'a> {
+struct SVExecutor {
     state_vector: DVector<Complex<f64>>,
-    circuit: &'a Circuit,
+    circuit: Circuit,
     pc: usize,
+    registers: RegisterFile<Value>,
 }
 
-impl<'a> SVExecutor<'a> {
+impl SVExecutor {
+    fn new(circuit: Circuit) -> Self {
+        let size = 1 << circuit.n_qubits();
+        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
+        init_state_vector[0] = cart![1.0];
+
+        let registers = RegisterFile::from(circuit.registers());
+        Self {
+            state_vector: init_state_vector,
+            circuit: circuit,
+            pc: 0,
+            registers: registers,
+        }
+    }
+
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
         if self.pc >= self.circuit.instructions().len() {
             return None;
         }
 
-        let inst = &self.circuit.instructions()[self.pc];
-        self.apply_instruction(inst);
-
-        self.pc += 1;
+        let inst = self.circuit.instructions()[self.pc].clone();
+        self.apply_instruction(&inst);
 
         Some(&self.state_vector)
     }
@@ -115,12 +133,21 @@ impl<'a> SVExecutor<'a> {
                 self.state_vector[idx] = v2[j];
             }
         }
+
+        self.pc += 1;
     }
 
-    fn measure(&mut self, targets: QBits) {
+    fn measure(&mut self, targets: QBits, reg: &str) {
         let measurement = self.get_collapsed_state();
         let mask = targets.get_bitstring();
         let collapsed_bitstring = measurement & mask;
+
+        let mut bits_compacted = 0;
+        for (i, bit) in targets.get_indices().into_iter().enumerate() {
+            let value = (collapsed_bitstring >> bit) & 1;
+            bits_compacted |= value << i;
+        }
+        self.registers[reg] = Value::Int(bits_compacted as i32);
 
         // Go through state vector and remove amplitude for all states that do not align with measurement
         for (i, amp) in self.state_vector.iter_mut().enumerate() {
@@ -137,15 +164,50 @@ impl<'a> SVExecutor<'a> {
             .sum::<f64>()
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
+
+        self.pc += 1;
+    }
+
+    fn jump(&mut self, pc: usize) {
+        self.pc = pc;
+    }
+
+    fn jump_if(&mut self, expr: &Expr, pc: usize) {
+        match expr.eval(&self.registers) {
+            Ok(Value::Bool(b)) => {
+                if b {
+                    self.pc = pc;
+                    return;
+                }
+                self.pc += 1;
+            }
+            Err(err) => panic!("{}", err),
+            _ => panic!(
+                "Expression was expected to evaluate to boolean type but got something else."
+            ),
+        }
+    }
+
+    fn assign(&mut self, expr: &Expr, reg: &str) {
+        match expr.eval(&self.registers) {
+            Ok(value) => self.registers[reg] = value,
+            Err(err) => panic!("{}", err),
+        }
+        self.pc += 1;
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
-            Instruction::Measurement(qbits) => self.measure(*qbits),
+            Instruction::Measurement(qbits, reg) => self.measure(*qbits, reg),
+            Instruction::Jump(pc) => self.jump(*pc),
+            Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
+            Instruction::Assign(expr, reg) => self.assign(expr, reg),
         }
     }
 }
+
+// SVSimulator
 
 pub struct SVSimulator {
     circuit: Circuit,
@@ -161,39 +223,36 @@ impl TryFrom<Circuit> for SVSimulator {
 
 impl RunnableSimulator for SVSimulator {
     fn run(&self) -> usize {
-        self.get_executor().step_all().get_collapsed_state()
+        SVExecutor::new(self.circuit.clone())
+            .step_all()
+            .get_collapsed_state()
     }
 
     fn final_state(&self) -> DVector<Complex<f64>> {
-        self.get_executor().step_all().state_vector().clone()
+        SVExecutor::new(self.circuit.clone())
+            .step_all()
+            .state_vector()
+            .clone()
     }
 }
 
-impl SVSimulator {
-    pub fn get_executor(&self) -> SVExecutor<'_> {
-        let size = 1 << self.circuit.n_qubits();
-        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
-        init_state_vector[0] = cart![1.0];
+// SVSimulatorDebugger
 
-        SVExecutor {
-            state_vector: init_state_vector,
-            circuit: &self.circuit,
-            pc: 0,
-        }
-    }
+pub struct SVSimulatorDebugger {
+    executor: SVExecutor,
+}
 
-    pub fn attach_debugger(&self) -> SVSimulatorDebugger<'_> {
-        SVSimulatorDebugger {
-            executor: self.get_executor(),
-        }
+impl TryFrom<Circuit> for SVSimulatorDebugger {
+    type Error = SVError;
+
+    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+        Ok(Self {
+            executor: SVExecutor::new(value),
+        })
     }
 }
 
-pub struct SVSimulatorDebugger<'a> {
-    executor: SVExecutor<'a>,
-}
-
-impl<'a> DebuggableSimulator for SVSimulatorDebugger<'a> {
+impl DebuggableSimulator for SVSimulatorDebugger {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         self.executor.step()
     }
@@ -211,5 +270,76 @@ impl<'a> DebuggableSimulator for SVSimulatorDebugger<'a> {
     }
 }
 
+impl StoredCircuitSimulator for SVSimulatorDebugger {
+    fn circuit(&self) -> &Circuit {
+        &self.executor.circuit
+    }
+}
+
+impl DoubleEndedSimulator for SVSimulatorDebugger {
+    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+        todo!() // For the sake of being able to run debug terminal
+    }
+}
+
+impl HybridSimulator<Value> for SVSimulatorDebugger {
+    fn registers(&self) -> &RegisterFile<Value> {
+        &self.executor.registers
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SVError {}
+
+#[cfg(test)]
+mod tests {
+    use crate::expr_dsl::Value;
+    use crate::simulator::HybridSimulator;
+    use crate::sv_simulator::SVSimulatorDebugger;
+    use crate::{
+        circuit::Circuit,
+        expr_dsl::expr_helpers::r,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
+    };
+
+    #[test]
+    fn test() {
+        let circuit = Circuit::new(4)
+            .new_reg("r0")
+            .new_reg("r1")
+            .new_reg("r2")
+            .new_reg("r3")
+            // Init random state
+            .hadamard(0)
+            .hadamard(1)
+            .hadamard(2)
+            .hadamard(3)
+            .measure_bit(0, "r0")
+            .measure_bit(1, "r1")
+            .measure_bit(2, "r2")
+            .measure_bit(3, "r3")
+            .apply_if(r("r0").eq(1))
+            .x(0)
+            .apply_if(r("r1").eq(1))
+            .x(1)
+            .apply_if(r("r2").eq(1))
+            .x(2)
+            .apply_if(r("r3").eq(1))
+            .x(3);
+
+        let sim = SVSimulator::build(circuit.clone()).unwrap();
+
+        println!("{}", sim.final_state());
+    }
+
+    #[test]
+    fn test_register() {
+        let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, "r0");
+
+        let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
+        sim.executor.step_all();
+
+        assert_eq!(sim.register("r0"), Value::Int(1));
+    }
+}

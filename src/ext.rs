@@ -85,7 +85,12 @@ fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
 
     let cos = theta_half.cos();
     let sin = theta_half.sin();
-    [cart!(cos), -polar!(sin, lambda), polar!(sin, phi), polar!(cos, lambda + phi)]
+    [
+        cart!(cos),
+        -polar!(sin, lambda),
+        polar!(sin, phi),
+        polar!(cos, lambda + phi),
+    ]
 }
 
 pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
@@ -96,6 +101,7 @@ pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
         GateType::H => &Gate::HADAMARD_DATA,
         GateType::SWAP => &Gate::SWAP_DATA,
         GateType::U(theta, phi, lambda) => &u(theta, phi, lambda),
+        GateType::S => &Gate::PHASE_S_DATA,
     };
 
     let dim = 1 << gate.get_type().arity();
@@ -162,12 +168,20 @@ pub fn measure(
 /// # expand_matrix_from_gate
 /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
 pub fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<f64>> {
-    expand_matrix(
-        get_gate_matrix(gate),
-        &gate.get_controls(),
-        &gate.get_targets(),
-        n_qubits,
-    )
+    match gate.get_type() {
+        GateType::SWAP => swap_matrix(
+            &gate.get_controls(),
+            gate.get_targets()[0],
+            gate.get_targets()[1],
+            n_qubits,
+        ),
+        _ => expand_matrix(
+            get_gate_matrix(gate),
+            &gate.get_controls(),
+            &gate.get_targets(),
+            n_qubits,
+        ),
+    }
 }
 
 /// # identity_tensor_factors
@@ -183,6 +197,34 @@ pub fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f64>>>) -> DMatri
         DMatrix::<Complex<f64>>::identity(1, 1),
         |product, factor| product.kronecker(factor),
     )
+}
+
+/// # swap_matrix
+/// Returns the 2^n by 2^n matrix describing a swap gate in a n-qubit system.
+pub fn swap_matrix(
+    controls: &[usize],
+    target1: usize,
+    target2: usize,
+    n_qubits: usize,
+) -> DMatrix<Complex<f64>> {
+    /* This swap gate is implemented by a series of CNOT gates,
+     *
+     * 1 --*--X--*--
+     * 2 --X--*--X--
+     * */
+    let mut controls_12: Vec<usize> = controls.to_vec();
+    controls_12.push(target1);
+    let mut controls_21: Vec<usize> = controls.to_vec();
+    controls_21.push(target2);
+    let cnot_12 = expand_matrix_from_gate(
+        &Gate::new(GateType::X, &controls_12, &[target2]).unwrap(),
+        n_qubits,
+    );
+    let cnot_21 = expand_matrix_from_gate(
+        &Gate::new(GateType::X, &controls_21, &[target1]).unwrap(),
+        n_qubits,
+    );
+    cnot_12.clone() * cnot_21 * cnot_12
 }
 
 /// # expand_matrix
@@ -223,4 +265,54 @@ pub fn expand_matrix(
         sum += eval_tensor_product(term);
     }
     sum
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ext::{get_gate_matrix, swap_matrix};
+    use crate::gate::{Gate, GateType};
+    use nalgebra::{Complex, DMatrix, DVector, dmatrix};
+
+    fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
+        m1.iter()
+            .zip(m2.iter())
+            .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
+    }
+
+    fn is_vector_equal_to(v1: DVector<Complex<f64>>, v2: DVector<Complex<f64>>) -> bool {
+        let l = v1.len();
+        let m1 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v1.as_slice());
+        let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
+        l == v2.len() && is_matrix_equal_to(m1, m2)
+    }
+
+    macro_rules! assert_is_matrix_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_matrix_equal_to($m1, $m2))
+        };
+    }
+
+    #[test]
+    fn swap_test() {
+        assert_is_matrix_equal!(
+            swap_matrix(&[], 0, 1, 2),
+            get_gate_matrix(&Gate::new(GateType::SWAP, &[], &[0, 1]).unwrap())
+        );
+    }
+    #[test]
+    fn fredkin_test() {
+        assert_is_matrix_equal!(
+            swap_matrix(&[2], 1, 0, 3),
+            dmatrix![
+                cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+                cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+                cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+                cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+                cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
+                cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
+                cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
+                cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
+            ]
+        );
+    }
 }

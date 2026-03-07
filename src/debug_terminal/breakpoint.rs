@@ -112,6 +112,7 @@ impl Breakpoint {
     }
 }
 
+#[derive(Debug, Clone)]
 pub enum PEBreakpoint {
     Inserted,
     Enabled,
