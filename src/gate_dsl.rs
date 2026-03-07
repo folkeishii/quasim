@@ -649,7 +649,7 @@ impl_const_qsystem!(15);
 mod tests {
     use std::f64::consts::FRAC_1_SQRT_2;
 
-    use nalgebra::{Complex, Const, DVector, Dyn, SVector};
+    use nalgebra::{Const, DVector, Dyn, SVector};
 
     use crate::{
         cart,

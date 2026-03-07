@@ -206,7 +206,7 @@ mod tests {
     fn measure_hadamard_all() {
         let circ = Circuit::new(3).h(0).h(1).h(2);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
-        let mut res = sim.continue_until(None).clone();
+        let mut res = sim.cont().clone();
         let plus_plus_plus: DVector<Complex<f64>> = dvector![
             cart!(0.5 * FRAC_1_SQRT_2), // |000>
             cart!(0.5 * FRAC_1_SQRT_2), // |001>
@@ -313,7 +313,7 @@ mod tests {
     fn measure_entanglement() {
         let circ = Circuit::new(3).h(0).cx(&[0], 1);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
-        let mut res = sim.continue_until(None).clone();
+        let mut res = sim.cont().clone();
         // Expected state vector before any measurments
         let bell: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
@@ -366,7 +366,7 @@ mod tests {
         let circ = Circuit::new(2).h(0).cx(&[0], 1);
 
         let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
-        let collapsed = collapse(sim.continue_until(None).as_ref());
+        let collapsed = collapse(sim.cont().as_ref());
 
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
         assert!(collapsed == 0b00 || collapsed == 0b11);
