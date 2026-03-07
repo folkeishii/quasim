@@ -53,7 +53,7 @@ pub trait DebuggableSimulator {
     ///
     /// If returned value is (pc, None)
     /// then we have reached the end of (sub) circuit
-    fn current_instruction(&self) -> (&CircuitPc, Option<&Instruction>);
+    fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>);
     fn current_state(&self) -> &DVector<Complex<f64>>;
 
     fn continue_until(&mut self, breakpoint: Option<CircuitPc>) -> &DVector<Complex<f64>> {

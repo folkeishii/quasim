@@ -25,15 +25,9 @@ impl CircuitPc {
     }
 
     /// Maps a None into Some(sub_circuit)
-    pub fn go_into(self, sub_circuit: String, lsq: usize) -> Self {
-        match self {
-            CircuitPc {
-                sub_circuit: None,
-                pc,
-                lsq: old_lsq,
-            } => Self::at_sub_circuit(sub_circuit, old_lsq + lsq, pc),
-            circuit_pc => circuit_pc,
-        }
+    pub fn step_into(&mut self, sub_circuit: String, lsq: usize) -> Self {
+        self.increment();
+        Self::at_sub_circuit(sub_circuit, self.lsq + lsq, 0)
     }
 
     pub fn increment(&mut self) {

@@ -55,11 +55,29 @@ impl Circuit {
     }
 
     pub fn valid_pc(&self, circuit_pc: &CircuitPc) -> bool {
-        circuit_pc.pc() <= self.instructions(circuit_pc.sub_circuit().map(AsRef::as_ref)).len()
+        circuit_pc.pc()
+            <= self
+                .instructions(circuit_pc.sub_circuit().map(AsRef::as_ref))
+                .len()
     }
 
-    pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<&Instruction> {
-        self.instructions(circuit_pc.sub_circuit().map(AsRef::as_ref)).get(circuit_pc.pc())
+    pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<Instruction> {
+        match self
+            .instructions(circuit_pc.sub_circuit().map(AsRef::as_ref))
+            .get(circuit_pc.pc())
+        {
+            Some(Instruction::Gate(gate)) => {
+                Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
+            }
+            Some(Instruction::Measurement(targets, register)) => Some(Instruction::Measurement(
+                *targets << circuit_pc.lsq(),
+                register.clone(),
+            )),
+            Some(Instruction::Call(sc, lsq)) => {
+                Some(Instruction::Call(sc.clone(), lsq + circuit_pc.lsq()))
+            }
+            rst => rst.cloned(),
+        }
     }
 
     pub fn instructions(&self, sub_circuit: Option<&str>) -> &[Instruction] {
@@ -464,7 +482,9 @@ impl Circuit {
     }
 
     pub fn enabled_breakpoint_at(&self, pc: &CircuitPc) -> bool {
-        self.breakpoint_at(pc).map(Breakpoint::enabled).unwrap_or(false)
+        self.breakpoint_at(pc)
+            .map(Breakpoint::enabled)
+            .unwrap_or(false)
     }
 
     pub fn insert_breakpoint(&mut self, pc: &CircuitPc) -> IEBreakpoint {

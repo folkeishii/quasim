@@ -178,3 +178,15 @@ impl Gate {
         .unwrap()
     }
 }
+
+impl Shl<usize> for Gate {
+    type Output = Gate;
+
+    fn shl(self, rhs: usize) -> Self::Output {
+        Gate {
+            ty: self.ty,
+            controls: self.controls << rhs,
+            targets: self.targets << rhs,
+        }
+    }
+}

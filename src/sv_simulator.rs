@@ -39,20 +39,12 @@ impl SVExecutor {
 
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
-        // if self.pc >= self.circuit.instructions().len() {
-        //     return None;
-        // }
-
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: step out
-            // If step out fails: end of circuit is reached
-            return if self.pc_stack.pop() {
-                Some(&self.state_vector)
-            } else {
-                None
-            };
-        }; //&self.circuit.instructions()[self.pc];
-        self.apply_instruction(&inst.clone());
+            return self.step_out();
+        };
+
+        self.apply_instruction(&inst);
 
         Some(&self.state_vector)
     }
@@ -110,9 +102,8 @@ impl SVExecutor {
     }
 
     fn gate(&mut self, gate: &Gate) {
-        let lsq = self.pc().lsq();
-        let controls = gate.get_control_bits() << lsq;
-        let targets = gate.get_target_bits() << lsq;
+        let controls = gate.get_control_bits();
+        let targets = gate.get_target_bits();
         let u: DMatrix<Complex<f64>> = get_gate_matrix(gate);
         let target_indices = targets.get_indices();
 
@@ -208,9 +199,8 @@ impl SVExecutor {
             Instruction::JumpIf(expr, label_pc) => self.jump_if(expr, *label_pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
             Instruction::Call(sub_circuit, lsq) => {
-                self.pc_mut().increment();
-                self.pc_stack
-                    .push(CircuitPc::at_sub_circuit(sub_circuit.clone(), *lsq, 0));
+                let new_pc = self.pc_mut().step_into(sub_circuit.clone(), *lsq);
+                self.pc_stack.push(new_pc);
             }
         }
     }
@@ -221,6 +211,14 @@ impl SVExecutor {
 
     fn pc_mut(&mut self) -> &mut CircuitPc {
         self.pc_stack.top_mut()
+    }
+
+    fn step_out(&mut self) -> Option<&DVector<Complex<f64>>> {
+        if self.pc_stack.pop() {
+            Some(&self.state_vector)
+        } else {
+            None
+        }
     }
 }
 
@@ -305,7 +303,7 @@ impl DebuggableSimulator for SVSimulatorDebugger {
         self.executor.step()
     }
 
-    fn current_instruction(&self) -> (&CircuitPc, Option<&Instruction>) {
+    fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
         let pc = self.executor.pc();
         (pc, self.executor.circuit.instruction(pc))
     }
