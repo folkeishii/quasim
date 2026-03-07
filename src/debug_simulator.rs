@@ -84,7 +84,7 @@ impl DebuggableSimulator for DebugSimulator {
         Some(&self.current_state)
     }
 
-    fn current_instruction(&self) -> (&CircuitPc, Option<&Instruction>) {
+    fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
         (self.pc(), self.circuit.instruction(self.pc()))
         // self.circuit
         //     .instructions()
