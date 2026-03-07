@@ -35,7 +35,10 @@ impl TryFrom<Circuit> for DebugSimulator {
                     }
                 }
             } else {
-                if insts.iter().any(|i| matches!(i, Instruction::Measurement(_, _))) {
+                if insts
+                    .iter()
+                    .any(|i| matches!(i, Instruction::Measurement(_, _)))
+                {
                     // There was a gate between measurements
                     return Err(DebugSimulatorError::MidCircuitMeasurement);
                 }

@@ -12,10 +12,16 @@ use crate::gate::{Gate, GateType};
 #[macro_export]
 macro_rules! cart {
     ($re:expr) => {
-        nalgebra::Complex { re: $re as f64, im: 0.0 }
+        nalgebra::Complex {
+            re: $re as f64,
+            im: 0.0,
+        }
     };
     ($re:expr, $im:expr) => {
-        nalgebra::Complex { re: $re as f64, im: $im as f64 }
+        nalgebra::Complex {
+            re: $re as f64,
+            im: $im as f64,
+        }
     };
 }
 

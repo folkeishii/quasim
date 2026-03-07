@@ -113,10 +113,6 @@ mod tests {
 
         sim1.next().unwrap();
         sim1.next().unwrap();
-        assert!(equal_to_matrix_c(
-            sim1.next().unwrap(),
-            sim2.cont(),
-            0.001
-        ))
+        assert!(equal_to_matrix_c(sim1.next().unwrap(), sim2.cont(), 0.001))
     }
 }
