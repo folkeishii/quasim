@@ -340,8 +340,14 @@ pub enum SVError {}
 
 #[cfg(test)]
 mod tests {
+    use std::f64::consts::FRAC_1_SQRT_2;
+
+    use nalgebra::dvector;
+
+    use crate::cart;
     use crate::expr_dsl::Value;
-    use crate::simulator::HybridSimulator;
+    use crate::ext::equal_to_matrix_c;
+    use crate::simulator::{DebuggableSimulator, HybridSimulator};
     use crate::sv_simulator::SVSimulatorDebugger;
     use crate::{
         circuit::Circuit,
@@ -377,7 +383,162 @@ mod tests {
 
         let sim = SVSimulator::build(circuit.clone()).unwrap();
 
-        println!("{}", sim.final_state());
+        assert!(equal_to_matrix_c(
+            &sim.final_state(),
+            &dvector![
+                cart!(1), // |0000>
+                cart!(0), // |0001>
+                cart!(0), // |0010>
+                cart!(0), // |0011>
+                cart!(0), // |0100>
+                cart!(0), // |0101>
+                cart!(0), // |0110>
+                cart!(0), // |0111>
+                cart!(0), // |1000>
+                cart!(0), // |1001>
+                cart!(0), // |1010>
+                cart!(0), // |1011>
+                cart!(0), // |1100>
+                cart!(0), // |1101>
+                cart!(0), // |1110>
+                cart!(0), // |1111>
+            ],
+            0.0001
+        ));
+    }
+
+    #[test]
+    fn test_sub() {
+        let sub = Circuit::new(1)
+            .new_reg("tmp")
+            .assign("tmp".into(), 0.into())
+            .hadamard(0)
+            .breakpoint()
+            .measure_bit(0, "tmp")
+            .apply_if(r("tmp").gt(0))
+            .x(0);
+        let circuit = Circuit::new(4)
+            .new_reg("tmp")
+            .new_sub_circuit("U", sub)
+            // Init random state
+            .call("U", 0)
+            .call("U", 1)
+            .call("U", 2)
+            .call("U", 3);
+
+        let sim = SVSimulator::build(circuit.clone()).unwrap();
+        let mut sim = sim.attach_debugger();
+
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(FRAC_1_SQRT_2), // |0000>
+                cart!(FRAC_1_SQRT_2), // |0001>
+                cart!(0), // |0010>
+                cart!(0), // |0011>
+                cart!(0), // |0100>
+                cart!(0), // |0101>
+                cart!(0), // |0110>
+                cart!(0), // |0111>
+                cart!(0), // |1000>
+                cart!(0), // |1001>
+                cart!(0), // |1010>
+                cart!(0), // |1011>
+                cart!(0), // |1100>
+                cart!(0), // |1101>
+                cart!(0), // |1110>
+                cart!(0), // |1111>
+            ],
+            0.0001
+        ));
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(FRAC_1_SQRT_2), // |0000>
+                cart!(0), // |0001>
+                cart!(FRAC_1_SQRT_2), // |0010>
+                cart!(0), // |0011>
+                cart!(0), // |0100>
+                cart!(0), // |0101>
+                cart!(0), // |0110>
+                cart!(0), // |0111>
+                cart!(0), // |1000>
+                cart!(0), // |1001>
+                cart!(0), // |1010>
+                cart!(0), // |1011>
+                cart!(0), // |1100>
+                cart!(0), // |1101>
+                cart!(0), // |1110>
+                cart!(0), // |1111>
+            ],
+            0.0001
+        ));
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(FRAC_1_SQRT_2), // |0000>
+                cart!(0), // |0001>
+                cart!(0), // |0010>
+                cart!(0), // |0011>
+                cart!(FRAC_1_SQRT_2), // |0100>
+                cart!(0), // |0101>
+                cart!(0), // |0110>
+                cart!(0), // |0111>
+                cart!(0), // |1000>
+                cart!(0), // |1001>
+                cart!(0), // |1010>
+                cart!(0), // |1011>
+                cart!(0), // |1100>
+                cart!(0), // |1101>
+                cart!(0), // |1110>
+                cart!(0), // |1111>
+            ],
+            0.0001
+        ));
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(FRAC_1_SQRT_2), // |0000>
+                cart!(0), // |0001>
+                cart!(0), // |0010>
+                cart!(0), // |0011>
+                cart!(0), // |0100>
+                cart!(0), // |0101>
+                cart!(0), // |0110>
+                cart!(0), // |0111>
+                cart!(FRAC_1_SQRT_2), // |1000>
+                cart!(0), // |1001>
+                cart!(0), // |1010>
+                cart!(0), // |1011>
+                cart!(0), // |1100>
+                cart!(0), // |1101>
+                cart!(0), // |1110>
+                cart!(0), // |1111>
+            ],
+            0.0001
+        ));
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(1), // |0000>
+                cart!(0), // |0001>
+                cart!(0), // |0010>
+                cart!(0), // |0011>
+                cart!(0), // |0100>
+                cart!(0), // |0101>
+                cart!(0), // |0110>
+                cart!(0), // |0111>
+                cart!(0), // |1000>
+                cart!(0), // |1001>
+                cart!(0), // |1010>
+                cart!(0), // |1011>
+                cart!(0), // |1100>
+                cart!(0), // |1101>
+                cart!(0), // |1110>
+                cart!(0), // |1111>
+            ],
+            0.0001
+        ));
     }
 
     #[test]

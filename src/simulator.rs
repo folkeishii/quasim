@@ -56,13 +56,15 @@ pub trait DebuggableSimulator {
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>);
     fn current_state(&self) -> &DVector<Complex<f64>>;
 
-    fn continue_until(&mut self, breakpoint: Option<CircuitPc>) -> &DVector<Complex<f64>> {
-        let breakpoint = breakpoint.map(Into::into);
-        while let (pc, Some(_)) = self.current_instruction() {
-            if Some(pc) == breakpoint.as_ref() {
+    fn cont(&mut self) -> &DVector<Complex<f64>>
+    where
+        Self: StoredCircuitSimulator,
+    {
+        while !self.next().is_none() {
+            let (pc, _) = self.current_instruction();
+            if self.circuit().enabled_breakpoint_at(pc) {
                 break;
             }
-            self.next();
         }
         self.current_state()
     }
@@ -113,7 +115,7 @@ mod tests {
         sim1.next().unwrap();
         assert!(equal_to_matrix_c(
             sim1.next().unwrap(),
-            sim2.continue_until(None),
+            sim2.cont(),
             0.001
         ))
     }

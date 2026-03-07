@@ -12,24 +12,24 @@ use crate::gate::{Gate, GateType};
 #[macro_export]
 macro_rules! cart {
     ($re:expr) => {
-        Complex { re: $re, im: 0.0 }
+        nalgebra::Complex { re: $re as f64, im: 0.0 }
     };
     ($re:expr, $im:expr) => {
-        Complex { re: $re, im: $im }
+        nalgebra::Complex { re: $re as f64, im: $im as f64 }
     };
 }
 
 #[macro_export]
 macro_rules! polar {
     ($r: expr, $theta: expr) => {
-        Complex::from_polar($r, $theta)
+        Complex::from_polar($r as f64, $theta as f64)
     };
 }
 
 #[macro_export]
 macro_rules! cexp {
     ($exp: expr) => {
-        Complex::exp($exp)
+        Complex::exp($exp as f64)
     };
 }
 
