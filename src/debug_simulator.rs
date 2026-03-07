@@ -1,7 +1,7 @@
 use crate::{
     cart,
     circuit::Circuit,
-    ext::{expand_matrix_from_gate, measure},
+    ext::{expand_matrix_from_gate, measure_and_observe_sv},
     instruction::Instruction,
     simulator::{DebuggableSimulator, DoubleEndedSimulator, StoredCircuitSimulator},
 };
@@ -61,7 +61,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Measurement(qbits, _) => {
                 for qbit in qbits.get_indices() {
                     self.current_state =
-                        measure(qbit, &self.current_state, self.circuit.n_qubits());
+                        measure_and_observe_sv(qbit, &self.current_state, self.circuit.n_qubits());
                 }
             }
             Instruction::Jump(_) => todo!(),
@@ -125,7 +125,7 @@ pub enum DebugSimulatorError {
 
 #[cfg(test)]
 mod tests {
-    use crate::ext::{collapse, expand_matrix, expand_matrix_from_gate, get_gate_matrix, measure};
+    use crate::ext::{collapse, expand_matrix, expand_matrix_from_gate, get_gate_matrix, measure_and_observe_sv};
     use crate::{
         cart,
         circuit::Circuit,
@@ -197,7 +197,7 @@ mod tests {
             cart!(0.0), // |110>
             cart!(0.5), // |111>
         ];
-        res = measure(0, &res, 3);
+        res = measure_and_observe_sv(0, &res, 3);
         assert!(
             is_vector_equal_to(res.clone(), plus_plus_measure0)
                 || is_vector_equal_to(res.clone(), plus_plus_measure1)
@@ -242,14 +242,14 @@ mod tests {
             cart!(0.0),           // |110>
             cart!(FRAC_1_SQRT_2), // |111>
         ];
-        res = measure(1, &res, 3);
+        res = measure_and_observe_sv(1, &res, 3);
         assert!(
             is_vector_equal_to(res.clone(), plus_measure0_measure0)
                 || is_vector_equal_to(res.clone(), plus_measure0_measure1)
                 || is_vector_equal_to(res.clone(), plus_measure1_measure0)
                 || is_vector_equal_to(res.clone(), plus_measure1_measure1)
         );
-        res = measure(2, &res, 3);
+        res = measure_and_observe_sv(2, &res, 3);
         // Now collapsed to any 3-bit-string.
         assert!(state_is_collapsed(res));
     }
@@ -306,14 +306,14 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
         ];
-        res = measure(0, &res, 3);
+        res = measure_and_observe_sv(0, &res, 3);
 
         assert!(
             is_vector_equal_to(res.clone(), colapse_00.clone())
                 || is_vector_equal_to(res.clone(), colapse_11.clone())
         );
 
-        res = measure(1, &res, 3);
+        res = measure_and_observe_sv(1, &res, 3);
         assert!(
             is_vector_equal_to(res.clone(), colapse_00.clone())
                 || is_vector_equal_to(res.clone(), colapse_11.clone())
