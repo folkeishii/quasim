@@ -1,7 +1,7 @@
 pub mod breakpoint;
 pub mod pc;
 
-use std::collections::{HashMap, HashSet};
+use std::{collections::{HashMap, HashSet}, iter::once};
 
 use crate::{
     circuit::{
@@ -86,6 +86,11 @@ impl Circuit {
         } else {
             &self.instructions
         }
+    }
+
+    pub fn all_instructions(&self) -> impl Iterator<Item = (Option<&String>, &[Instruction])> {
+        let its = self.sub_circuits.iter().map(|(sc, c)| (Some(sc), c.instructions()));
+        once((None as Option<&String>, self.instructions.as_slice())).chain(its)
     }
 
     pub fn n_qubits(&self) -> usize {

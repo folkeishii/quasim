@@ -22,19 +22,25 @@ impl TryFrom<Circuit> for DebugSimulator {
         let k = circuit.n_qubits();
 
         // Check for mid-cicuit measurement
-        // Warning not used, checking for
-        // uncompatible circuits might be done with generics
-        // let mut encountered = false;
-        // for inst in circuit.instructions() {
-        //     let _ = inst; // avoid warning for now
-        //     let is_measurement = false; // matches!(inst, Instruction::Measurement(_));
-        //     if is_measurement {
-        //         encountered = true;
-        //     } else if encountered {
-        //         // There was a gate between measurements
-        //         return Err(DebugSimulatorError::MidCircuitMeasurement);
-        //     }
-        // }
+        for (sc, insts) in circuit.all_instructions() {
+            if sc.is_none() {
+                let mut encountered = false;
+                for inst in insts {
+                    let is_measurement = matches!(inst, Instruction::Measurement(_, _));
+                    if is_measurement {
+                        encountered = true;
+                    } else if encountered {
+                        // There was a gate between measurements
+                        return Err(DebugSimulatorError::MidCircuitMeasurement);
+                    }
+                }
+            } else {
+                if insts.iter().any(|i| matches!(i, Instruction::Measurement(_, _))) {
+                    // There was a gate between measurements
+                    return Err(DebugSimulatorError::MidCircuitMeasurement);
+                }
+            }
+        }
 
         // Initial state assumed to be |000..>
         let mut init_state = vec![cart!(0.0); 1 << k];
@@ -54,16 +60,9 @@ impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: step out
-            // If step out fails: end of circuit is reached
-            return if self.pc_stack.pop() {
-                Some(&self.current_state)
-            } else {
-                None
-            };
+            return self.step_out();
         };
-        // if self.pc.pc() >= self.instruction_count() {
-        //     return None;
-        // }
+
         match inst {
             Instruction::Gate(gate) => {
                 let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
@@ -86,10 +85,6 @@ impl DebuggableSimulator for DebugSimulator {
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
         (self.pc(), self.circuit.instruction(self.pc()))
-        // self.circuit
-        //     .instructions()
-        //     .get(self.pc.pc())
-        //     .map(|inst| (self.pc.clone(), inst))
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
@@ -99,23 +94,16 @@ impl DebuggableSimulator for DebugSimulator {
     fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
         if !self.pc_mut().decrement() {
             // Beginning of (sub) circuit: step out
-            // If step out fails: beginning of circuit is reached
-            return if self.pc_stack.pop() {
-                Some(&self.current_state)
-            } else {
-                None
-            };
+            let state = self.step_out_prev();
+            return state;
         }
 
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // Should not happen
             // Beginning of (sub) circuit: step out
-            // If step out fails: beginning of circuit is reached
-            return if self.pc_stack.pop() {
-                Some(&self.current_state)
-            } else {
-                None
-            };
+            self.pc_stack[1].decrement(); // undo step in increment
+            let state = self.step_out_prev();
+            return state;
         };
 
         match inst {
@@ -145,6 +133,23 @@ impl DebugSimulator {
 
     fn pc_mut(&mut self) -> &mut CircuitPc {
         self.pc_stack.top_mut()
+    }
+
+    fn step_out(&mut self) -> Option<&DVector<Complex<f64>>> {
+        if self.pc_stack.pop() {
+            Some(&self.current_state)
+        } else {
+            None
+        }
+    }
+
+    fn step_out_prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+        if self.pc_stack.pop() {
+            self.pc_mut().decrement();
+            Some(&self.current_state)
+        } else {
+            None
+        }
     }
 }
 
