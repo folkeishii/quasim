@@ -8,6 +8,10 @@ use std::{
 pub mod breakpoint;
 pub mod pc;
 
+use std::{
+    iter::once,
+};
+
 use crate::{
     circuit::{
         breakpoint::{Breakpoint, BreakpointList, IEBreakpoint},
@@ -94,7 +98,10 @@ impl Circuit {
     }
 
     pub fn all_instructions(&self) -> impl Iterator<Item = (Option<&String>, &[Instruction])> {
-        let its = self.sub_circuits.iter().map(|(sc, c)| (Some(sc), c.instructions()));
+        let its = self
+            .sub_circuits
+            .iter()
+            .map(|(sc, c)| (Some(sc), c.instructions()));
         once((None as Option<&String>, self.instructions.as_slice())).chain(its)
     }
 
