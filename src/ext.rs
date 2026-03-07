@@ -281,7 +281,6 @@ impl<T> Stack<T> {
         &self[0]
     }
 
-
     pub fn top_mut(&mut self) -> &mut T {
         &mut self[0]
     }
@@ -358,23 +357,15 @@ impl<T: OrdByKey<K>, K: Ord> SortedVec<T, K> {
 
     pub fn get<Q: OrdByKey<K>>(&self, key: &Q) -> Option<&T> {
         match self.index_of(key) {
-            Ok(index) => {
-                Some(&self.0[index])
-            }
-            Err(_) => {
-                None
-            }
+            Ok(index) => Some(&self.0[index]),
+            Err(_) => None,
         }
     }
 
     pub fn get_or_next<Q: OrdByKey<K>>(&self, key: &Q) -> Option<&T> {
         match self.index_of(key) {
-            Ok(index) => {
-                Some(&self.0[index])
-            }
-            Err(index) => {
-                self.0.get(index)
-            }
+            Ok(index) => Some(&self.0[index]),
+            Err(index) => self.0.get(index),
         }
     }
 

@@ -59,7 +59,7 @@ impl DebuggableSimulator for DebugSimulator {
                 Some(&self.current_state)
             } else {
                 None
-            }
+            };
         };
         // if self.pc.pc() >= self.instruction_count() {
         //     return None;
@@ -104,7 +104,7 @@ impl DebuggableSimulator for DebugSimulator {
                 Some(&self.current_state)
             } else {
                 None
-            }
+            };
         }
 
         let Some(inst) = self.circuit.instruction(self.pc()) else {
@@ -115,7 +115,7 @@ impl DebuggableSimulator for DebugSimulator {
                 Some(&self.current_state)
             } else {
                 None
-            }
+            };
         };
 
         match inst {

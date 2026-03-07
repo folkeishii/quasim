@@ -29,7 +29,7 @@ impl BreakpointList {
 
     /// Returns the first breakpoint after `pc`
     pub fn next_break(&self, pc: usize) -> Option<&Breakpoint> {
-        self.0.get_or_next(&(pc+1))
+        self.0.get_or_next(&(pc + 1))
     }
 
     pub fn get(&self, pc: usize) -> Option<&Breakpoint> {
@@ -44,10 +44,7 @@ pub struct Breakpoint {
 }
 impl Breakpoint {
     pub fn new(pc: usize) -> Self {
-        Self {
-            pc,
-            enabled: true,
-        }
+        Self { pc, enabled: true }
     }
 
     pub fn enable(&mut self) {

@@ -7,8 +7,8 @@ use crate::{
 pub enum Instruction {
     Gate(Gate),
     Measurement(QBits, String), // Targets, Register, Register bit offset
-    Jump(usize),         // Cannot jump into another sub circuit
-    JumpIf(Expr, usize), // Cannot jump into another sub circuit
+    Jump(usize),                // Cannot jump into another sub circuit
+    JumpIf(Expr, usize),        // Cannot jump into another sub circuit
     Assign(Expr, String),
     Call(String, usize), // Sub circuit name, least significant qubit inside sub circuit
 }

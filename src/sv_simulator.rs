@@ -10,9 +10,7 @@ use crate::{
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::{
-        DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator,
-    },
+    simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
 };
 
 pub struct SVExecutor {
