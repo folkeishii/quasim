@@ -103,6 +103,10 @@ impl Circuit {
         self.n_qubits
     }
 
+    pub fn sub_circuit_n_qubits(&self, sub_circuit: &str) -> usize {
+        self.sub_circuit(sub_circuit).n_qubits
+    }
+
     pub fn registers(&self) -> &HashSet<String> {
         &self.registers
     }
