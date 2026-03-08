@@ -36,7 +36,10 @@ where
             repeat('0').take(simulator.n_qubits(None)),
         )];
     } else {
-        cols = vec![Column::only_tracks(simulator.n_qubits(sub_circuit), Some(TrackModifier::Continues))]
+        cols = vec![Column::only_tracks(
+            simulator.n_qubits(sub_circuit),
+            Some(TrackModifier::Continues),
+        )]
     }
     // Add seperator
     let mut ncol = Column::only_tracks(simulator.n_qubits(sub_circuit), None);
@@ -57,12 +60,15 @@ where
     }
     // Add seperator
     if sub_circuit.is_none() {
-        let mut ncol =Column::only_tracks(simulator.n_qubits(sub_circuit), None);
+        let mut ncol = Column::only_tracks(simulator.n_qubits(sub_circuit), None);
         let li = cols.len() - 1;
         cols[li].extend_east(&mut ncol);
         cols.push(ncol)
     } else {
-        let mut ncol =Column::only_tracks(simulator.n_qubits(sub_circuit), Some(TrackModifier::Continues));
+        let mut ncol = Column::only_tracks(
+            simulator.n_qubits(sub_circuit),
+            Some(TrackModifier::Continues),
+        );
         let li = cols.len() - 1;
         cols[li].extend_east(&mut ncol);
         cols.push(ncol)
@@ -265,9 +271,7 @@ impl Primitive {
             Some(TrackModifier::Ket(c)) => {
                 Self::track_char_3_mid(direction, TrackModifier::Ket(c), ix_3_mid, y)
             }
-            _ => {
-                Self::track_char_1_mid(direction, modifier, ix_1_mid, y)
-            }
+            _ => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
         }
     }
 
