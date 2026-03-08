@@ -82,6 +82,13 @@ pub trait StoredCircuitSimulator {
     fn instruction_count(&self, sub_circuit: Option<&str>) -> usize {
         self.circuit().instructions(sub_circuit).len()
     }
+    fn n_qubits(&self, sub_circuit: Option<&str>) -> usize {
+        if let Some(sc) = sub_circuit {
+            self.circuit().sub_circuit_n_qubits(sc)
+        } else {
+            self.circuit().n_qubits()
+        }
+    }
 }
 
 /// # HybridSimulator
