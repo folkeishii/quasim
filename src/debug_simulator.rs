@@ -70,19 +70,23 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Gate(gate) => {
                 let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 self.current_state = mat * self.current_state.clone();
+                self.pc_mut().increment();
             }
             Instruction::Measurement(qbits, _) => {
                 for qbit in qbits.get_indices() {
                     self.current_state =
                         measure(qbit, &self.current_state, self.circuit.n_qubits());
                 }
+                self.pc_mut().increment();
             }
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::Call(_, _) => todo!(),
+            Instruction::Call(sub_circuit, lsq) => {
+                let new_pc = self.pc_mut().step_into(sub_circuit.clone(), lsq);
+                self.pc_stack.push(new_pc);
+            }
         }
-        self.pc_mut().increment();
         Some(&self.current_state)
     }
 
@@ -119,7 +123,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::Call(_, _) => todo!(),
+            Instruction::Call(_, _) => (), // do nothing
         }
         Some(&self.current_state)
     }
@@ -174,6 +178,7 @@ pub enum DebugSimulatorError {
 
 #[cfg(test)]
 mod tests {
+    use crate::common_test;
     use crate::ext::{collapse, expand_matrix, expand_matrix_from_gate, get_gate_matrix, measure};
     use crate::{
         cart,
@@ -601,5 +606,10 @@ mod tests {
             Some(_) => panic!("Does not err correctly when stepping forwards."),
             None => println!("Errs correctly when stepping backwards"),
         }
+    }
+
+    #[test]
+    fn almost_grovers() {
+        common_test::almost_grovers::<DebugSimulator>();
     }
 }
