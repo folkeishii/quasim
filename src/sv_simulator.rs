@@ -189,6 +189,11 @@ impl SVExecutor {
         self.pc_mut().increment();
     }
 
+    fn call(&mut self, sub_circuit: String, lsq: usize) {
+        let new_pc = self.pc_mut().step_into(sub_circuit.clone(), lsq);
+        self.pc_stack.push(new_pc);
+    }
+
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
@@ -196,10 +201,7 @@ impl SVExecutor {
             Instruction::Jump(label_pc) => self.jump(*label_pc),
             Instruction::JumpIf(expr, label_pc) => self.jump_if(expr, *label_pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
-            Instruction::Call(sub_circuit, lsq) => {
-                let new_pc = self.pc_mut().step_into(sub_circuit.clone(), *lsq);
-                self.pc_stack.push(new_pc);
-            }
+            Instruction::Call(sub_circuit, lsq) => self.call(sub_circuit.clone(), *lsq),
         }
     }
 
@@ -344,11 +346,11 @@ mod tests {
 
     use nalgebra::dvector;
 
-    use crate::cart;
     use crate::expr_dsl::Value;
     use crate::ext::equal_to_matrix_c;
     use crate::simulator::{DebuggableSimulator, HybridSimulator};
     use crate::sv_simulator::SVSimulatorDebugger;
+    use crate::{cart, common_test};
     use crate::{
         circuit::Circuit,
         expr_dsl::expr_helpers::r,
@@ -549,5 +551,10 @@ mod tests {
         sim.executor.step_all();
 
         assert_eq!(sim.register("r0"), Value::Int(1));
+    }
+
+    #[test]
+    fn almost_grovers() {
+        common_test::almost_grovers::<SVSimulatorDebugger>();
     }
 }
