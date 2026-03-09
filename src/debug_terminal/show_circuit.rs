@@ -2278,7 +2278,7 @@ mod tests {
             .x(6)
             .y(2)
             .swap(3, 5)
-            .fredkin(2, 3, 4);
+            .cswap(&[2], 3, 4);
         let sim = DebugSimulator::build(circuit).unwrap();
         show_circuit(w, &sim).unwrap();
     }

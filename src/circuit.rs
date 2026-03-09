@@ -145,9 +145,9 @@ impl Circuit {
         self
     }
 
-    pub fn fredkin(mut self, control: usize, target1: usize, target2: usize) -> Self {
+    pub fn cswap(mut self, controls: &[usize], target1: usize, target2: usize) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::SWAP, &[control], &[target1, target2]).unwrap(),
+            Gate::new(GateType::SWAP, controls, &[target1, target2]).unwrap(),
         ));
         self
     }
@@ -164,11 +164,11 @@ impl Circuit {
         theta: f64,
         phi: f64,
         lambda: f64,
-        control: &[usize],
+        controls: &[usize],
         target: usize,
     ) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::U(theta, phi, lambda), control, &[target]).unwrap(),
+            Gate::new(GateType::U(theta, phi, lambda), controls, &[target]).unwrap(),
         ));
         self
     }
@@ -180,9 +180,9 @@ impl Circuit {
         self
     }
 
-    pub fn cs(mut self, control: &[usize], target: usize) -> Self {
+    pub fn cs(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::S, control, &[target]).unwrap(),
+            Gate::new(GateType::S, controls, &[target]).unwrap(),
         ));
         self
     }
@@ -252,12 +252,12 @@ impl Circuit {
     }
 
     /// Controlled R_k
-    pub fn crk(mut self, k: usize, control: usize, target: usize) -> Self {
+    pub fn crk(mut self, k: usize, controls: &[usize], target: usize) -> Self {
         let pow2_inv = 1.0 / (1 << (k - 1)) as f64;
         self.instructions.push(Instruction::Gate(
             Gate::new(
                 GateType::U(0.0, 0.0, pow2_inv * std::f64::consts::PI),
-                &[control],
+                controls,
                 &[target],
             )
             .unwrap(),
@@ -281,7 +281,7 @@ impl Circuit {
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
-                self = self.crk(k, targets[control as usize], targets[i]);
+                self = self.crk(k, &targets[control as usize..=control as usize], targets[i]);
                 control -= 1;
             }
         }
@@ -419,7 +419,7 @@ mod tests {
             .u(23.3, 34.5, 56.1, 0)
             .cu(1.0, 22.2, 0.1, &[4], 2)
             .swap(3, 4)
-            .fredkin(0, 1, 2);
+            .cswap(&[0], 1, 2);
         let circ_and_inv = concat_circuits(&circ, &circ.inverse());
         let dim = 1 << 5;
         let id = DMatrix::<Complex<f64>>::identity(dim, dim);
