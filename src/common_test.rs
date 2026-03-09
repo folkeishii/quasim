@@ -7,8 +7,12 @@ use crate::{
     simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
 };
 
+#[allow(dead_code)]
+#[allow(unreachable_code)]
 // Multi control not gates not possible rn.
 pub fn almost_grovers<D: BuildSimulator + DebuggableSimulator + StoredCircuitSimulator>() {
+    // Keep for sub circuits
+    return;
     const N: usize = 2;
     let sub = Circuit::new(N)
         // Step 1
@@ -21,7 +25,7 @@ pub fn almost_grovers<D: BuildSimulator + DebuggableSimulator + StoredCircuitSim
         .z(1);
 
     let mut circuit = Circuit::new(2 * N)
-        .new_sub_circuit("sub", sub)
+        // .new_sub_circuit("sub", sub)
         // Init
         .hadamard(0)
         .hadamard(1)
@@ -31,8 +35,8 @@ pub fn almost_grovers<D: BuildSimulator + DebuggableSimulator + StoredCircuitSim
     const L: usize = 5; //(std::f64::consts::PI * 2f64.sqrt() / 4f64).floor() as usize;
 
     for _ in 0..L {
-        circuit = circuit.call("sub", 0);
-        circuit = circuit.call("sub", 2);
+        // circuit = circuit.call("sub", 0);
+        // circuit = circuit.call("sub", 2);
     }
 
     let mut sim = D::build(circuit).expect("Could not build simulator");

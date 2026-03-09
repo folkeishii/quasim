@@ -10,7 +10,7 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::{
-    circuit::{Circuit, breakpoint::IEBreakpoint},
+    circuit::{Circuit, breakpoint::IEBreakpoint, pc::CircuitPc},
     debug_simulator::DebugSimulator,
     debug_terminal::{parse::into_tokens, show_circuit::show_circuit},
     ext::collapse,
@@ -50,10 +50,7 @@ where
 
         loop {
             match self.simulator.current_instruction() {
-                (step, None) => match step.sub_circuit() {
-                    Some(sc) => print!(stdout; "[{}; end] qdb> ", sc)?,
-                    None => print!(stdout; "[end] qdb> ")?,
-                },
+                (_, None) => print!(stdout; "[end] qdb> ")?,
                 (step, Some(_)) => print!(stdout; "{} qdb> ", step)?,
             };
             input_buffer.clear();
@@ -209,10 +206,8 @@ where
 
         // Check that all indices are actual gates
         let circuit = self.simulator.circuit();
-        let (pc, _) = self.simulator.current_instruction();
-        let pc = pc.clone();
         for &gate_index in gate_indices {
-            if !circuit.valid_pc(&pc.with_pc(gate_index)) {
+            if !circuit.valid_pc(&CircuitPc::new(gate_index)) {
                 errorln!(
                     stdout;
                     "Unable to set or enable breakpoint at index {}, no gate at index",
@@ -226,8 +221,8 @@ where
         let circuit = self.simulator.circuit_mut();
         for &gate_index in gate_indices {
             let status = if !enable_only {
-                circuit.insert_breakpoint(&pc.with_pc(gate_index))
-            } else if circuit.enable_breakpoint(&pc.with_pc(gate_index)) {
+                circuit.insert_breakpoint(&CircuitPc::new(gate_index))
+            } else if circuit.enable_breakpoint(&CircuitPc::new(gate_index)) {
                 IEBreakpoint::Enabled
             } else {
                 errorln!(
@@ -256,10 +251,8 @@ where
         };
 
         let circuit = self.simulator.circuit();
-        let (pc, _) = self.simulator.current_instruction();
-        let pc = pc.clone();
         for &gate_index in disable_indexes {
-            if !circuit.valid_pc(&pc.with_pc(gate_index)) {
+            if !circuit.valid_pc(&CircuitPc::new(gate_index)) {
                 errorln!(
                     stdout;
                     "Unable to disable breakpoint at index {}, no gate at index", gate_index
@@ -271,7 +264,7 @@ where
         let circuit = self.simulator.circuit_mut();
         let mut disabled: Vec<String> = Vec::new();
         for &gate_index in disable_indexes {
-            if !circuit.disable_breakpoint(&pc.with_pc(gate_index)) {
+            if !circuit.disable_breakpoint(&CircuitPc::new(gate_index)) {
                 errorln!(
                     stdout;
                     "Could not disable breakpoint at {}, breakpoint does not exist", gate_index
@@ -297,10 +290,8 @@ where
         };
 
         let circuit = self.simulator.circuit();
-        let (pc, _) = self.simulator.current_instruction();
-        let pc = pc.clone();
         for &gate_index in delete_indexes {
-            if !circuit.valid_pc(&pc.with_pc(gate_index)) {
+            if !circuit.valid_pc(&CircuitPc::new(gate_index)) {
                 errorln!(
                     stdout;
                     "Unable to delete breakpoint at index {}, no gate at index", gate_index
@@ -312,7 +303,7 @@ where
         let circuit = self.simulator.circuit_mut();
         let mut deleted: Vec<String> = Vec::new();
         for &gate_index in delete_indexes {
-            if !circuit.delete_breakpoint(&pc.with_pc(gate_index)) {
+            if !circuit.delete_breakpoint(&CircuitPc::new(gate_index)) {
                 errorln!(
                     stdout;
                     "Could not delete breakpoint at {}, breakpoint does not exist", gate_index

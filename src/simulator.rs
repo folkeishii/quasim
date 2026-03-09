@@ -76,18 +76,14 @@ pub trait DebuggableSimulator {
 pub trait StoredCircuitSimulator {
     fn circuit(&self) -> &Circuit;
     fn circuit_mut(&mut self) -> &mut Circuit;
-    fn instructions(&self, sub_circuit: Option<&str>) -> &[Instruction] {
-        self.circuit().instructions(sub_circuit)
+    fn instructions(&self) -> &[Instruction] {
+        self.circuit().instructions()
     }
-    fn instruction_count(&self, sub_circuit: Option<&str>) -> usize {
-        self.circuit().instructions(sub_circuit).len()
+    fn instruction_count(&self) -> usize {
+        self.circuit().instructions().len()
     }
-    fn n_qubits(&self, sub_circuit: Option<&str>) -> usize {
-        if let Some(sc) = sub_circuit {
-            self.circuit().sub_circuit_n_qubits(sc)
-        } else {
-            self.circuit().n_qubits()
-        }
+    fn n_qubits(&self) -> usize {
+        self.circuit().n_qubits()
     }
 }
 

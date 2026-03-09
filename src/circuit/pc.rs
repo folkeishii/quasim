@@ -1,33 +1,16 @@
-use std::fmt::{Display, Write};
+use std::fmt::{Display};
 
 #[derive(Debug, Clone, Default, Hash)]
 pub struct CircuitPc {
-    sub_circuit: Option<String>,
     pc: usize,
-    // Least Significant Qubit
     lsq: usize,
 }
 impl CircuitPc {
-    pub fn at_main(pc: usize) -> Self {
+    pub fn new(pc: usize) -> Self {
         CircuitPc {
-            sub_circuit: None,
             pc,
             lsq: 0,
         }
-    }
-
-    pub fn at_sub_circuit(sub_circuit: String, lsq: usize, pc: usize) -> Self {
-        CircuitPc {
-            sub_circuit: Some(sub_circuit),
-            pc,
-            lsq,
-        }
-    }
-
-    /// Maps a None into Some(sub_circuit)
-    pub fn step_into(&mut self, sub_circuit: String, lsq: usize) -> Self {
-        self.increment();
-        Self::at_sub_circuit(sub_circuit, self.lsq + lsq, 0)
     }
 
     pub fn increment(&mut self) {
@@ -44,18 +27,6 @@ impl CircuitPc {
         self.pc = pc
     }
 
-    pub fn sub_circuit(&self) -> Option<&String> {
-        self.sub_circuit.as_ref()
-    }
-
-    pub fn with_pc(&self, pc: usize) -> Self {
-        Self {
-            sub_circuit: self.sub_circuit.clone(),
-            pc,
-            lsq: self.lsq,
-        }
-    }
-
     pub fn pc(&self) -> usize {
         self.pc
     }
@@ -66,15 +37,11 @@ impl CircuitPc {
 }
 impl PartialEq for CircuitPc {
     fn eq(&self, other: &Self) -> bool {
-        self.sub_circuit == other.sub_circuit && self.pc == other.pc
+        self.pc == other.pc
     }
 }
 impl Display for CircuitPc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_char('[')?;
-        if let Some(sc) = self.sub_circuit.as_ref() {
-            write!(f, "{};", sc)?;
-        }
-        write!(f, "{}]", self.pc)
+        write!(f, "[{}]", self.pc)
     }
 }

@@ -3,7 +3,6 @@ pub mod pc;
 
 use std::{
     collections::{HashMap, HashSet},
-    iter::once,
 };
 
 use crate::{
@@ -25,17 +24,12 @@ pub use qasm_parse::*;
 
 #[derive(Debug, Clone)]
 pub struct Circuit {
-    // Local to main
     instructions: Vec<Instruction>,
     n_qubits: usize,
     labels: HashMap<String, usize>,
     unresolved_labels: Vec<(String, usize)>,
     breakpoints: BreakpointList,
-
-    // Global for all sub circuits
     registers: HashSet<String>,
-    sub_circuits: HashMap<String, SubCircuit>,
-    unresolved_sub_circuits: HashSet<String>,
 }
 
 impl Circuit {
@@ -46,8 +40,6 @@ impl Circuit {
             registers: HashSet::new(),
             labels: HashMap::new(),
             unresolved_labels: Vec::new(),
-            sub_circuits: HashMap::new(),
-            unresolved_sub_circuits: HashSet::new(),
             breakpoints: Default::default(),
         }
     }
@@ -58,17 +50,11 @@ impl Circuit {
     }
 
     pub fn valid_pc(&self, circuit_pc: &CircuitPc) -> bool {
-        circuit_pc.pc()
-            <= self
-                .instructions(circuit_pc.sub_circuit().map(AsRef::as_ref))
-                .len()
+        circuit_pc.pc() <= self.instructions().len()
     }
 
     pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<Instruction> {
-        match self
-            .instructions(circuit_pc.sub_circuit().map(AsRef::as_ref))
-            .get(circuit_pc.pc())
-        {
+        match self.instructions().get(circuit_pc.pc()) {
             Some(Instruction::Gate(gate)) => {
                 Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
             }
@@ -76,35 +62,16 @@ impl Circuit {
                 *targets << circuit_pc.lsq(),
                 register.clone(),
             )),
-            Some(Instruction::Call(sc, lsq)) => {
-                Some(Instruction::Call(sc.clone(), lsq + circuit_pc.lsq()))
-            }
             rst => rst.cloned(),
         }
     }
 
-    pub fn instructions(&self, sub_circuit: Option<&str>) -> &[Instruction] {
-        if let Some(sc) = sub_circuit {
-            self.sub_circuit(sc).instructions()
-        } else {
-            &self.instructions
-        }
-    }
-
-    pub fn all_instructions(&self) -> impl Iterator<Item = (Option<&String>, &[Instruction])> {
-        let its = self
-            .sub_circuits
-            .iter()
-            .map(|(sc, c)| (Some(sc), c.instructions()));
-        once((None as Option<&String>, self.instructions.as_slice())).chain(its)
+    pub fn instructions(&self) -> &[Instruction] {
+        &self.instructions
     }
 
     pub fn n_qubits(&self) -> usize {
         self.n_qubits
-    }
-
-    pub fn sub_circuit_n_qubits(&self, sub_circuit: &str) -> usize {
-        self.sub_circuit(sub_circuit).n_qubits
     }
 
     pub fn registers(&self) -> &HashSet<String> {
@@ -371,97 +338,6 @@ impl Circuit {
             .retain(|(label, idx)| !to_remove.contains(&(label.clone(), *idx)));
     }
 
-    // Sub circuit
-
-    pub fn new_sub_circuit<I: Into<String>>(mut self, name: I, circuit: Circuit) -> Self {
-        let name = name.into();
-
-        let (
-            sub_circuit,
-            SubCircuitPeriphs {
-                registers,
-                sub_circuits,
-                unresolved_sub_circuits,
-            },
-        ) = SubCircuit::from_circuit(circuit);
-
-        // Check if sub circuit with same name but different definition already exists
-        if let Some(existing) = self.sub_circuits.get(&name)
-            && sub_circuit.eq(existing)
-            // Is existing a placeholder
-            && !self.unresolved_sub_circuits.contains(&name)
-        {
-            panic!(
-                "Cannot add {}: A different sub circuit with the same name is already defined",
-                name
-            )
-        }
-        self.unresolved_sub_circuits.remove(&name);
-
-        let importing_sub_circuits = sub_circuits
-            .into_iter()
-            // Don't try to import unresolved circuits from sub circuit
-            .filter(|(imp_sc, _)| !unresolved_sub_circuits.contains(imp_sc));
-
-        for (imp_name, imp_val) in importing_sub_circuits {
-            // Does a sub circuit with the same name exist
-            let Some(exist_val) = self.sub_circuits.get(&imp_name) else {
-                self.sub_circuits.insert(imp_name, imp_val);
-                continue;
-            };
-
-            // It exist but is a placeholder
-            if self.unresolved_sub_circuits.contains(&imp_name) {
-                self.unresolved_sub_circuits.remove(&imp_name);
-                self.sub_circuits.insert(imp_name, imp_val);
-                continue;
-            }
-
-            // If it does exist they must have the same definition
-            if !imp_val.eq(exist_val) {
-                panic!(
-                    "Cannot add {}: A different sub circuit with the name \"{}\" is already defined",
-                    name, imp_name
-                )
-            }
-
-            // Make sure that if sub circuit calls "itself"
-            // they must have the same definition
-            if name.eq(&imp_name) && !sub_circuit.eq(&imp_val) {
-                panic!(
-                    "Cannot add {}: A different sub circuit with the name \"{}\" is already defined",
-                    name, imp_name
-                )
-            }
-        }
-
-        // Filter out unresolved sub circuits that are defined
-        for imp_name in unresolved_sub_circuits {
-            // Insert placeholder for unresolved circuits
-            if !self.sub_circuits.contains_key(&imp_name) {
-                self.sub_circuits.insert(imp_name, SubCircuit::identity());
-            }
-        }
-
-        // Extend
-        self.sub_circuits.insert(name, sub_circuit);
-        self.registers.extend(registers);
-
-        // Return
-        self
-    }
-
-    pub fn call<I: Into<String>>(mut self, name: I, lsq: usize) -> Self {
-        let name = name.into();
-        if !self.sub_circuits.contains_key(&name) {
-            self.sub_circuits
-                .insert(name.clone(), SubCircuit::identity());
-            self.unresolved_sub_circuits.insert(name.clone());
-        }
-        self.instructions.push(Instruction::Call(name, lsq));
-        self
-    }
-
     // Breakpoint
 
     pub fn breakpoint(mut self) -> Self {
@@ -470,13 +346,8 @@ impl Circuit {
     }
 
     pub fn next_break(&self, pc: &CircuitPc) -> Option<(CircuitPc, bool)> {
-        if let Some(sc) = pc.sub_circuit() {
-            let brk = self.sub_circuits[sc].breakpoints.next_break(pc.pc())?;
-            Some((pc.with_pc(brk.pc()), brk.enabled()))
-        } else {
-            let brk = self.breakpoints.next_break(pc.pc())?;
-            Some((pc.with_pc(brk.pc()), brk.enabled()))
-        }
+        let brk = self.breakpoints.next_break(pc.pc())?;
+        Some((CircuitPc::new(brk.pc()), brk.enabled()))
     }
 
     pub fn next_enabled_break(&self, pc: &CircuitPc) -> Option<CircuitPc> {
@@ -489,11 +360,7 @@ impl Circuit {
     }
 
     pub fn breakpoint_at(&self, pc: &CircuitPc) -> Option<&Breakpoint> {
-        if let Some(sc) = pc.sub_circuit() {
-            self.sub_circuits[sc].breakpoints.get(pc.pc())
-        } else {
-            self.breakpoints.get(pc.pc())
-        }
+        self.breakpoints.get(pc.pc())
     }
 
     pub fn enabled_breakpoint_at(&self, pc: &CircuitPc) -> bool {
@@ -503,137 +370,18 @@ impl Circuit {
     }
 
     pub fn insert_breakpoint(&mut self, pc: &CircuitPc) -> IEBreakpoint {
-        if let Some(sc) = pc.sub_circuit() {
-            self.sub_circuits
-                .get_mut(sc)
-                .expect("pc does not point at a registered sub circuit")
-                .breakpoints
-                .insert_or_enable(pc.pc())
-        } else {
-            self.breakpoints.insert_or_enable(pc.pc())
-        }
+        self.breakpoints.insert_or_enable(pc.pc())
     }
 
     pub fn enable_breakpoint(&mut self, pc: &CircuitPc) -> bool {
-        if let Some(sc) = pc.sub_circuit() {
-            self.sub_circuits
-                .get_mut(sc)
-                .expect("pc does not point at a registered sub circuit")
-                .breakpoints
-                .enable(pc.pc())
-        } else {
-            self.breakpoints.enable(pc.pc())
-        }
+        self.breakpoints.enable(pc.pc())
     }
 
     pub fn disable_breakpoint(&mut self, pc: &CircuitPc) -> bool {
-        if let Some(sc) = pc.sub_circuit() {
-            self.sub_circuits
-                .get_mut(sc)
-                .expect("pc does not point at a registered sub circuit")
-                .breakpoints
-                .disable(pc.pc())
-        } else {
-            self.breakpoints.disable(pc.pc())
-        }
+        self.breakpoints.disable(pc.pc())
     }
 
     pub fn delete_breakpoint(&mut self, pc: &CircuitPc) -> bool {
-        if let Some(sc) = pc.sub_circuit() {
-            self.sub_circuits
-                .get_mut(sc)
-                .expect("pc does not point at a registered sub circuit")
-                .breakpoints
-                .delete(pc.pc())
-        } else {
             self.breakpoints.delete(pc.pc())
-        }
     }
-
-    fn sub_circuit(&self, name: &str) -> &SubCircuit {
-        if let Some(sub_circuit) = self.sub_circuits.get(name) {
-            sub_circuit
-        } else {
-            panic!("Cannot access undefined sub circuit {}", name)
-        }
-    }
-
-    fn sub_circuit_mut(&mut self, name: &str) -> &mut SubCircuit {
-        if let Some(sub_circuit) = self.sub_circuits.get_mut(name) {
-            sub_circuit
-        } else {
-            panic!("Cannot access undefined sub circuit {}", name)
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SubCircuit {
-    instructions: Vec<Instruction>,
-    n_qubits: usize,
-    labels: HashMap<String, usize>,
-    breakpoints: BreakpointList,
-}
-impl SubCircuit {
-    pub fn identity() -> Self {
-        Self {
-            instructions: Vec::with_capacity(0),
-            n_qubits: 1,
-            labels: HashMap::with_capacity(0),
-            breakpoints: BreakpointList::default(),
-        }
-    }
-
-    pub fn from_circuit(circuit: Circuit) -> (Self, SubCircuitPeriphs) {
-        let Circuit {
-            instructions,
-            n_qubits,
-            registers,
-            labels,
-            unresolved_labels,
-            sub_circuits,
-            unresolved_sub_circuits,
-            breakpoints,
-        } = circuit;
-        if !unresolved_labels.is_empty() {
-            panic!("Tried to create a sub circuit from a circuit with unresolved labels");
-        }
-        (
-            Self {
-                instructions,
-                n_qubits,
-                labels,
-                breakpoints,
-            },
-            SubCircuitPeriphs {
-                registers,
-                sub_circuits,
-                unresolved_sub_circuits,
-            },
-        )
-    }
-
-    pub fn instructions(&self) -> &[Instruction] {
-        &self.instructions
-    }
-
-    pub fn instructions_mut(&mut self) -> &mut [Instruction] {
-        &mut self.instructions
-    }
-
-    pub fn n_qubits(&self) -> usize {
-        self.n_qubits
-    }
-}
-impl PartialEq for SubCircuit {
-    fn eq(&self, other: &Self) -> bool {
-        self.instructions == other.instructions
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct SubCircuitPeriphs {
-    registers: HashSet<String>,
-    sub_circuits: HashMap<String, SubCircuit>,
-    unresolved_sub_circuits: HashSet<String>,
 }
