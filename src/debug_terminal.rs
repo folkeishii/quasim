@@ -153,7 +153,7 @@ where
                         "Disable the breakpoint at the specified gate indices.
                     
                         EXAMPLES
-                        'disable 5' - Disable the breakpoint at gate index 5.'
+                        'disable 5' - Disable the breakpoint at gate index 5.
                         'disable 2 4 6' - Disable breakpoints at gate indices 2, 4 and 6."
                     }
                     CommandIdent::Enable => {
