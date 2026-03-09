@@ -96,9 +96,23 @@ impl Circuit {
         self
     }
 
+    pub fn cy(mut self, control: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::Y, control, &[target]).unwrap(),
+        ));
+        self
+    }
+
     pub fn z(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::Z, &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn cz(mut self, control: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::Z, control, &[target]).unwrap(),
         ));
         self
     }
@@ -110,9 +124,9 @@ impl Circuit {
         self
     }
 
-    pub fn cnot(mut self, control: usize, target: usize) -> Self {
+    pub fn cnot(mut self, control: &[usize], target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::X, &[control], &[target]).unwrap(),
+            Gate::new(GateType::X, control, &[target]).unwrap(),
         ));
         self
     }
@@ -138,9 +152,16 @@ impl Circuit {
         self
     }
 
-    pub fn cu(mut self, theta: f64, phi: f64, lambda: f64, control: usize, target: usize) -> Self {
+    pub fn cu(
+        mut self,
+        theta: f64,
+        phi: f64,
+        lambda: f64,
+        control: &[usize],
+        target: usize,
+    ) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::U(theta, phi, lambda), &[control], &[target]).unwrap(),
+            Gate::new(GateType::U(theta, phi, lambda), control, &[target]).unwrap(),
         ));
         self
     }
@@ -148,6 +169,13 @@ impl Circuit {
     pub fn s(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::S, &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn cs(mut self, control: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::S, control, &[target]).unwrap(),
         ));
         self
     }
@@ -379,10 +407,10 @@ mod tests {
             .y(1)
             .z(2)
             .s(4)
-            .cnot(0, 1)
-            .cnot(4, 1)
+            .cnot(&[0], 1)
+            .cnot(&[4], 1)
             .u(23.3, 34.5, 56.1, 0)
-            .cu(1.0, 22.2, 0.1, 4, 2)
+            .cu(1.0, 22.2, 0.1, &[4], 2)
             .swap(3, 4)
             .fredkin(0, 1, 2);
         let circ_and_inv = concat_circuits(&circ, &circ.inverse());
