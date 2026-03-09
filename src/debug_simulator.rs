@@ -58,10 +58,11 @@ impl DebuggableSimulator for DebugSimulator {
                 let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 self.current_state = mat * self.current_state.clone();
             }
-            Instruction::Measurement(qbit, _) => {
+            Instruction::MeasureBit(qbit, _) => {
                 self.current_state =
                     measure(*qbit, &self.current_state, self.circuit.n_qubits());
             }
+            Instruction::MeasureAll(_) => todo!(),
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
@@ -94,7 +95,8 @@ impl DoubleEndedSimulator for DebugSimulator {
                 mat.try_inverse_mut();
                 self.current_state = mat * self.current_state.clone();
             }
-            Instruction::Measurement(_, _) => todo!(),
+            Instruction::MeasureBit(_, _) => todo!(),
+            Instruction::MeasureAll(_) => todo!(),
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),

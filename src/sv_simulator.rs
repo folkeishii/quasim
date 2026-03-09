@@ -137,7 +137,7 @@ impl SVExecutor {
         self.pc += 1;
     }
 
-    fn measure(&mut self, target: usize, reg: &str, bit_pos: usize) {
+    fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
         let measurement = self.get_collapsed_state();
         let mask = 1 << target;
         let measured_bit = measurement & mask;
@@ -166,6 +166,18 @@ impl SVExecutor {
             .sum::<f64>()
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
+
+        self.pc += 1;
+    }
+
+    fn measure_all(&mut self, reg: &str) {
+        let measurement = self.get_collapsed_state();
+
+        self.registers[reg] = Value::Int(measurement as i32);
+
+        // Collapse whole state vector
+        self.state_vector.fill(cart!(0.0));
+        self.state_vector[measurement] = cart!(1.0);
 
         self.pc += 1;
     }
@@ -201,7 +213,8 @@ impl SVExecutor {
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
-            Instruction::Measurement(qbit, (reg, bit_pos)) => self.measure(*qbit, reg, *bit_pos),
+            Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(*qbit, reg, *bit_pos),
+            Instruction::MeasureAll(reg) => self.measure_all(reg),
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),

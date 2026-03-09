@@ -600,8 +600,8 @@ impl Column {
     pub fn from_instruction(nqubits: usize, instruction: &Instruction) -> Self {
         match instruction {
             Instruction::Gate(gate) => Self::from_gate(nqubits, gate),
-            Instruction::Measurement(qbits, _) => {
-                let mut qbits = qbits.get_bitstring();
+            Instruction::MeasureBit(qbit, _) => {
+                let mut qbits = 1 << qbit;
                 let mut column = if qbits & 1 == 1 {
                     Column::init_with_gate(String::from("╭─╱─╮"))
                 } else {
@@ -617,6 +617,7 @@ impl Column {
                 }
                 column
             }
+            Instruction::MeasureAll(_) => todo!(),
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
@@ -2199,7 +2200,7 @@ mod tests {
     fn measurement() {
         return;
         let w = &mut stdout();
-        let instruction = Instruction::Measurement(QBits::from_bitstring(0b101011010), "".into());
+        let instruction = Instruction::MeasureBit(0, ("".into(), 0));
         let mut track_col = Column::only_tracks(10);
         let mut measure_col = Column::from_instruction(10, &instruction);
         track_col.extend_east(&mut measure_col);
@@ -2230,7 +2231,7 @@ mod tests {
         let mut col5 = Column::only_tracks(7);
         let mut col6 = Column::from_instruction(
             7,
-            &Instruction::Measurement(QBits::from_bitstring(0xFFFF), "".into()),
+            &Instruction::MeasureAll("".into()),
         );
         let mut col7 = Column::only_tracks(7);
 
