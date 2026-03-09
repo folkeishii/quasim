@@ -124,7 +124,7 @@ fn apply_gate_call_expr(
             "x" => circuit = circuit.x(qubit_indexes[0]),
             "y" => circuit = circuit.y(qubit_indexes[0]),
             "z" => circuit = circuit.z(qubit_indexes[0]),
-            "h" => circuit = circuit.hadamard(qubit_indexes[0]),
+            "h" => circuit = circuit.h(qubit_indexes[0]),
             "cx" => {
                 if qubit_indexes.len() != 2 {
                     return Err(QASMParseError::WrongNumberOfQubits(

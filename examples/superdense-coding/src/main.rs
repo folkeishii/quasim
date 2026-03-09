@@ -19,8 +19,8 @@ fn send_int(i: u8) -> u8 {
         .new_reg("b")
 
         // Bell state is produced, alice gets q0 and bob q1
-        .hadamard(0)
-        .cnot(0, 1)
+        .h(0)
+        .cnot(&[0], 1)
 
         // Alice has two bits, c and d
         .assign("a0".to_string(), Expr::Val(Value::Int(c as i32)))
@@ -30,8 +30,8 @@ fn send_int(i: u8) -> u8 {
         .apply_if(r("a0").eq(1)).x(0)
 
         // Alice sends qubit to bob, bob then performs cnot and hadamard
-        .cnot(0, 1)
-        .hadamard(0)
+        .cnot(&[0], 1)
+        .h(0)
 
         // Bob measures his qubit + the received one to get c and d
         .measure(&[0, 1], "b");

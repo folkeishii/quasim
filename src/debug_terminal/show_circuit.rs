@@ -2272,7 +2272,7 @@ mod tests {
         let w = &mut stdout();
 
         let circuit = Circuit::new(7)
-            .hadamard(2)
+            .h(2)
             .z(5)
             .cnot(&[1], 3)
             .x(6)

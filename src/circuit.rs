@@ -96,9 +96,9 @@ impl Circuit {
         self
     }
 
-    pub fn cy(mut self, control: &[usize], target: usize) -> Self {
+    pub fn cy(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::Y, control, &[target]).unwrap(),
+            Gate::new(GateType::Y, controls, &[target]).unwrap(),
         ));
         self
     }
@@ -110,23 +110,30 @@ impl Circuit {
         self
     }
 
-    pub fn cz(mut self, control: &[usize], target: usize) -> Self {
+    pub fn cz(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::Z, control, &[target]).unwrap(),
+            Gate::new(GateType::Z, controls, &[target]).unwrap(),
         ));
         self
     }
 
-    pub fn hadamard(mut self, target: usize) -> Self {
+    pub fn h(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::H, &[], &[target]).unwrap(),
         ));
         self
     }
 
-    pub fn cnot(mut self, control: &[usize], target: usize) -> Self {
+    pub fn ch(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::X, control, &[target]).unwrap(),
+            Gate::new(GateType::H, controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn cnot(mut self, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::X, controls, &[target]).unwrap(),
         ));
         self
     }
@@ -270,7 +277,7 @@ impl Circuit {
         let n = targets.len();
 
         for i in (0..n).rev() {
-            self = self.hadamard(targets[i]);
+            self = self.h(targets[i]);
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
@@ -400,9 +407,9 @@ mod tests {
     #[test]
     fn inverse_test() {
         let circ = Circuit::new(5)
-            .hadamard(0)
-            .hadamard(1)
-            .hadamard(3)
+            .h(0)
+            .h(1)
+            .h(3)
             .x(0)
             .y(1)
             .z(2)
@@ -433,7 +440,7 @@ mod tests {
                 .x(0)
                 .y(1)
                 .z(2)
-                .hadamard(3)
+                .h(3)
                 .qft(&[0, 1, 2, 3]),
         )
         .unwrap();

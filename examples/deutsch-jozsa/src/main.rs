@@ -58,7 +58,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
     circuit = circuit.x(N);
 
     for i in 0..=N {
-        circuit = circuit.hadamard(i);
+        circuit = circuit.h(i);
     }
 
     // Simple oracle
@@ -68,12 +68,12 @@ fn check_quantum(function_type: FunctionType) -> bool {
             circuit = circuit.x(N);
         }
         FunctionType::Balanced => {
-            circuit = circuit.cnot(0, N);
+            circuit = circuit.cnot(&[0], N);
         }
     }
 
     for i in 0..N {
-        circuit = circuit.hadamard(i);
+        circuit = circuit.h(i);
     }
 
     circuit = circuit.measure(&[0, 1, 2, 3, 4, 5, 6, 7], "res");

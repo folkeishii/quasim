@@ -163,7 +163,7 @@ mod tests {
 
     #[test]
     fn measure_hadamard_all() {
-        let circ = Circuit::new(3).hadamard(0).hadamard(1).hadamard(2);
+        let circ = Circuit::new(3).h(0).h(1).h(2);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
         let mut res = sim.continue_until(None).clone();
         let plus_plus_plus: DVector<Complex<f64>> = dvector![
@@ -270,7 +270,7 @@ mod tests {
 
     #[test]
     fn measure_entanglement() {
-        let circ = Circuit::new(3).hadamard(0).cnot(&[0], 1);
+        let circ = Circuit::new(3).h(0).cnot(&[0], 1);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
         let mut res = sim.continue_until(None).clone();
         // Expected state vector before any measurments
@@ -322,7 +322,7 @@ mod tests {
 
     #[test]
     fn bell_state_test() {
-        let circ = Circuit::new(2).hadamard(0).cnot(&[0], 1);
+        let circ = Circuit::new(2).h(0).cnot(&[0], 1);
 
         let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
         let collapsed = collapse(sim.continue_until(None).as_ref());
@@ -483,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_hadamard_double_cnot_entanglement() {
-        let circ = Circuit::new(3).hadamard(0).cnot(&[0], 1).cnot(&[0], 2);
+        let circ = Circuit::new(3).h(0).cnot(&[0], 1).cnot(&[0], 2);
 
         let psi0: DVector<Complex<f64>> = dvector![
             cart!(1.0), // |000>
