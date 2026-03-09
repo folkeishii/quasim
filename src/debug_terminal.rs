@@ -119,6 +119,7 @@ where
                     }
                     CommandIdent::Run => {
                         // Run is just an alias for continue
+                        println!(stdout; "Run is just an alias for continue. Showing help for continue...")?;
                         return self.handle_help(stdout, &HelpArgs::Command(CommandIdent::Continue));
                     }
                     CommandIdent::Next => {
