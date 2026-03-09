@@ -296,20 +296,6 @@ impl Circuit {
         self
     }
 
-    /// Controlled R_k
-    pub fn crk(mut self, k: usize, controls: &[usize], target: usize) -> Self {
-        let pow2_inv = 1.0 / (1 << (k - 1)) as f64;
-        self.instructions.push(Instruction::Gate(
-            Gate::new(
-                GateType::U(0.0, 0.0, pow2_inv * std::f64::consts::PI),
-                controls,
-                &[target],
-            )
-            .unwrap(),
-        ));
-        self
-    }
-
     /// Appends a circuit implementing the quantum Fourier transform.
     /// Targets are normally specified in order of least significance,
     /// for example [0,1,2,3,4].
