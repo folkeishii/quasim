@@ -59,8 +59,7 @@ impl DebuggableSimulator for DebugSimulator {
                 self.current_state = mat * self.current_state.clone();
             }
             Instruction::MeasureBit(qbit, _) => {
-                self.current_state =
-                    measure(*qbit, &self.current_state, self.circuit.n_qubits());
+                self.current_state = measure(*qbit, &self.current_state, self.circuit.n_qubits());
             }
             Instruction::MeasureAll(_) => todo!(),
             Instruction::Jump(_) => todo!(),

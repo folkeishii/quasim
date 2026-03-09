@@ -146,8 +146,7 @@ impl SVExecutor {
         if let Value::Int(val) = self.registers[reg] {
             let val_cleared = (val as usize) & !shifted_measurement;
             self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
-        }
-        else {
+        } else {
             self.registers[reg] = Value::Int(shifted_measurement as i32)
         }
 

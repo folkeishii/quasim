@@ -155,15 +155,13 @@ impl Circuit {
     // Classical instructions
 
     pub fn measure_bit<T: Into<String>>(mut self, target: usize, reg: (T, usize)) -> Self {
-        self.instructions.push(Instruction::MeasureBit(
-            target,
-            (reg.0.into(), reg.1)
-        ));
+        self.instructions
+            .push(Instruction::MeasureBit(target, (reg.0.into(), reg.1)));
         self
     }
 
     /// Measure multiple bits into a register
-    /// 
+    ///
     /// Example:
     /// ```
     /// measure(&[2,1,3], "reg")

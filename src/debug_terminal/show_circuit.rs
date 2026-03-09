@@ -2229,10 +2229,7 @@ mod tests {
         let mut col3 = Column::from_instruction(7, &instruction3);
         let mut col4 = Column::from_instruction(7, &instruction4);
         let mut col5 = Column::only_tracks(7);
-        let mut col6 = Column::from_instruction(
-            7,
-            &Instruction::MeasureAll("".into()),
-        );
+        let mut col6 = Column::from_instruction(7, &Instruction::MeasureAll("".into()));
         let mut col7 = Column::only_tracks(7);
 
         col0.extend_east(&mut col1);
