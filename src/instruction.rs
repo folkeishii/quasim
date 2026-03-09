@@ -6,7 +6,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub enum Instruction {
     Gate(Gate),
-    Measurement(QBits, String),
+    Measurement(usize, (String, usize)), // Qbit, (Creg, bit)
     Jump(usize),
     JumpIf(Expr, usize),
     Assign(Expr, String),

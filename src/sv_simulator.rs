@@ -137,21 +137,23 @@ impl SVExecutor {
         self.pc += 1;
     }
 
-    fn measure(&mut self, targets: QBits, reg: &str) {
+    fn measure(&mut self, target: usize, reg: &str, bit_pos: usize) {
         let measurement = self.get_collapsed_state();
-        let mask = targets.get_bitstring();
-        let collapsed_bitstring = measurement & mask;
+        let mask = 1 << target;
+        let measured_bit = measurement & mask;
+        let shifted_measurement = ((measurement >> target) & 1) << bit_pos;
 
-        let mut bits_compacted = 0;
-        for (i, bit) in targets.get_indices().into_iter().enumerate() {
-            let value = (collapsed_bitstring >> bit) & 1;
-            bits_compacted |= value << i;
+        if let Value::Int(val) = self.registers[reg] {
+            let val_cleared = (val as usize) & !shifted_measurement;
+            self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
         }
-        self.registers[reg] = Value::Int(bits_compacted as i32);
+        else {
+            self.registers[reg] = Value::Int(shifted_measurement as i32)
+        }
 
         // Go through state vector and remove amplitude for all states that do not align with measurement
         for (i, amp) in self.state_vector.iter_mut().enumerate() {
-            if (i & mask) != collapsed_bitstring {
+            if (i & mask) != measured_bit {
                 *amp = Complex::ZERO;
             }
         }
@@ -199,7 +201,7 @@ impl SVExecutor {
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
-            Instruction::Measurement(qbits, reg) => self.measure(*qbits, reg),
+            Instruction::Measurement(qbit, (reg, bit_pos)) => self.measure(*qbit, reg, *bit_pos),
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
@@ -315,10 +317,10 @@ mod tests {
             .hadamard(1)
             .hadamard(2)
             .hadamard(3)
-            .measure_bit(0, "r0")
-            .measure_bit(1, "r1")
-            .measure_bit(2, "r2")
-            .measure_bit(3, "r3")
+            .measure_bit(0, ("r0", 0))
+            .measure_bit(1, ("r1", 0))
+            .measure_bit(2, ("r2", 0))
+            .measure_bit(3, ("r3", 0))
             .apply_if(r("r0").eq(1))
             .x(0)
             .apply_if(r("r1").eq(1))
@@ -335,7 +337,7 @@ mod tests {
 
     #[test]
     fn test_register() {
-        let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, "r0");
+        let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, ("r0", 0));
 
         let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
         sim.executor.step_all();

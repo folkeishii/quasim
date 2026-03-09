@@ -154,19 +154,28 @@ impl Circuit {
 
     // Classical instructions
 
-    pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
+    pub fn measure_bit<T: Into<String>>(mut self, target: usize, reg: (T, usize)) -> Self {
         self.instructions.push(Instruction::Measurement(
-            QBits::from_bitstring(1 << target),
-            reg.to_owned(),
+            target,
+            (reg.0.into(), reg.1)
         ));
         self
     }
 
+    /// Measure multiple bits into a register
+    /// 
+    /// Example:
+    /// ```
+    /// measure(&[2,1,3], "reg")
+    /// // Is equivalent to
+    /// measure_bit(2, ("reg", 0))
+    /// measure_bit(1, ("reg", 1))
+    /// measure_bit(3, ("reg", 2))
+    /// ```
     pub fn measure(mut self, targets: &[usize], reg: &str) -> Self {
-        self.instructions.push(Instruction::Measurement(
-            QBits::from_indices(targets),
-            reg.to_owned(),
-        ));
+        for (i, target) in targets.iter().enumerate() {
+            self = self.measure_bit(*target, (reg, i))
+        }
         self
     }
 
@@ -199,7 +208,7 @@ impl Circuit {
 
     pub fn reset(self, target: usize) -> Self {
         self.new_reg("_reset")
-            .measure_bit(target, "_reset")
+            .measure_bit(target, ("_reset", 0))
             .apply_if(Expr::Reg("_reset".to_owned()).eq(1))
             .x(target)
     }
