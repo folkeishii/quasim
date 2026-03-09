@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    f64::consts::PI,
+};
 
 use crate::{
     expr_dsl::Expr,
@@ -152,6 +155,48 @@ impl Circuit {
         self
     }
 
+    pub fn rx(mut self, theta: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn ry(mut self, theta: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, 0.0, 0.0), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn rz(mut self, theta: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(0.0, 0.0, theta), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn crx(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn cry(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, 0.0, 0.0), controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn crz(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(0.0, 0.0, theta), controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
     // Classical instructions
 
     pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
@@ -216,20 +261,6 @@ impl Circuit {
         self
     }
 
-    /// Controlled R_k
-    pub fn crk(mut self, k: usize, control: usize, target: usize) -> Self {
-        let pow2_inv = 1.0 / (1 << (k - 1)) as f64;
-        self.instructions.push(Instruction::Gate(
-            Gate::new(
-                GateType::U(0.0, 0.0, pow2_inv * std::f64::consts::PI),
-                &[control],
-                &[target],
-            )
-            .unwrap(),
-        ));
-        self
-    }
-
     /// Appends a circuit implementing the quantum Fourier transform.
     /// Targets are normally specified in order of least significance,
     /// for example [0,1,2,3,4].
@@ -243,10 +274,10 @@ impl Circuit {
 
         for i in (0..n).rev() {
             self = self.hadamard(targets[i]);
-
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
-                self = self.crk(k, targets[control as usize], targets[i]);
+                let theta = PI / (1 << (k - 1)) as f64;
+                self = self.crz(theta, &[targets[control as usize]], targets[i]);
                 control -= 1;
             }
         }
