@@ -74,7 +74,7 @@ where
 
             match command {
                 Command::Quit => break,
-                Command::Help(_help_args) => println!(&mut stdout; &"Help")?,
+                Command::Help(help_args) => self.handle_help(&mut stdout, &help_args)?,
                 Command::Continue(continue_args) => {
                     self.handle_continue(&mut stdout, &continue_args)?
                 }
@@ -90,6 +90,136 @@ where
                     self.handle_collapse(&mut stdout, &collapse_args)?
                 }
                 Command::Show(show_args) => self.handle_show(&mut stdout, &show_args)?,
+            }
+        }
+        Ok(())
+    }
+
+    fn multiline_whitespace_trim(s: String) -> String {
+        let better = s.replace("\n ", "\n").replace("\n\r ", "\n\r");
+        if better == s {
+            better
+        } else {
+            Self::multiline_whitespace_trim(better)
+        }
+    }
+
+    fn handle_help<W: Write>(&mut self, stdout: &mut W, help_args: &HelpArgs) -> io::Result<()> {
+        match help_args {
+            HelpArgs::Command(command) => {
+                let command_help = match command {
+                    CommandIdent::Continue => {
+                        "Continue execution until a breakpoint is hit or end of circuit is reached. \
+                        Optionally specify to skip a number of breakpoints or type ignore to skip breakpoints entirely.
+                        
+                        EXAMPLES
+                        'continue' - Continue until a breakpoint is hit or end of circuit is reached.
+                        'continue 2' - Skip the next 2 breakpoints and continue until the following breakpoint is hit or end of circuit is reached.
+                        'continue ignore' - Ignore all breakpoints and continue until end of circuit is reached."
+                    }
+                    CommandIdent::Run => {
+                        // Run is just an alias for continue
+                        println!(stdout; "Run is just an alias for continue. Showing help for continue...")?;
+                        return self.handle_help(stdout, &HelpArgs::Command(CommandIdent::Continue));
+                    }
+                    CommandIdent::Next => {
+                        "Step forward one instruction. Optionally specify a number of instructions to step forward.
+                        
+                        EXAMPLES
+                        'next' - Step forward one instruction.
+                        'next 5' - Step forward 5 instructions."
+                    }
+                    CommandIdent::Previous => {
+                        "Step back one instruction. Optionally specify a number of instructions to step back.
+                        
+                        EXAMPLES
+                        'prev' - Step back one instruction.
+                        'prev 3' - Step back 3 instructions."
+                    }
+                    CommandIdent::Break => {
+                        "Insert a breakpoint at the specified gate indices. Optionally specify to only enable an already existing breakpoint.
+
+                        EXAMPLES
+                        'break 5' - Insert a breakpoint at gate index 5.
+                        'break 2 4 6' - Insert breakpoints at gate indices 2, 4 and 6."
+                    }
+                    CommandIdent::Delete => {
+                        "Delete the breakpoint at the specified gate indices.
+                        
+                        EXAMPLES
+                        'delete 5' - Delete the breakpoint at gate index 5.
+                        'delete 2 4 6' - Delete breakpoints at gate indices 2, 4 and 6."
+                    }
+                    CommandIdent::Disable => {
+                        "Disable the breakpoint at the specified gate indices.
+                    
+                        EXAMPLES
+                        'disable 5' - Disable the breakpoint at gate index 5.
+                        'disable 2 4 6' - Disable breakpoints at gate indices 2, 4 and 6."
+                    }
+                    CommandIdent::Enable => {
+                        "Enable the breakpoint at the specified gate indices. Only works for already existing breakpoints.
+
+                        EXAMPLES
+                        'enable 5' - Enable the breakpoint at gate index 5.
+                        'enable 2 4 6' - Enable breakpoints at gate indices 2, 4 and 6."
+                    }
+                    CommandIdent::State => {
+                        "Show the current state. Optionally specify to show only a specific part of the state.
+                        
+                        EXAMPLES
+                        'state' - Show the entire current state.
+                        'state 5' - Show the part of the current state of bit string with value 5 (in binary, 101).
+                        'state 0 1 3' - Show the part of the current state of bit strings with values 0, 1 and 3 (in binary, 000, 001 and 011).
+                        'state 0..4' - Show the part of the current state of bit strings with values between 0 and 4 (in binary, 000, 001, 010, 011 and 100).
+                        "
+                    }
+                    CommandIdent::Collapse => {
+                        "Collapse the current state into a single value and show the count of each value. \
+                        Optionally specify to collapse multiple times to get a distribution.
+                        
+                        EXAMPLES
+                        'collapse' - Collapse the current state once and show the count of each value.
+                        'collapse 3' - Collapse the current state 3 times and show the count of each value."
+                    }
+                    CommandIdent::Show => {
+                        "Show information about the circuit or current state. E.g. show the circuit diagram."
+                    }
+                    CommandIdent::Help => {
+                        "Show this help message. Optionally specify a command to get more specific help.
+                        
+                        EXAMPLES
+                        'help' - Show a list of all commands with a short description.
+                        'help continue' - Show a detailed description of the continue command with examples."
+                    }
+                    CommandIdent::Quit => "Exit the debugger.",
+                };
+                let command_help = Self::multiline_whitespace_trim(command_help.to_string());
+                println!(stdout; "{} - {}", command, command_help)?;
+            }
+            HelpArgs::All => {
+                let all_help = "\
+                    continue (c|run) - Continue execution until a breakpoint is hit or end of circuit is reached. \
+                    Optionally specify to skip a number of breakpoints or ignore breakpoints entirely.
+                    next (n) - Step forward one instruction. Optionally specify a number of instructions to step forward.
+                    previous (p|prev) - Step back one instruction. Optionally specify a number of instructions to step back.
+                    break - Insert a breakpoint at the specified gate index. \
+                    Optionally specify to only enable an already existing breakpoint.
+                    delete - Delete the breakpoint at the specified gate index.
+                    disable - Disable the breakpoint at the specified gate index.
+                    enable - Enable the breakpoint at the specified gate index. Only works for already existing breakpoints.
+                    state - Show the current state. Optionally specify to show only a specific part of the state.
+                    collapse (cl) - Collapse the current state into a single value and show the count of each value. \
+                    Optionally specify to collapse multiple times for a more even distribution of collapsed values.
+                    show - Show information about the circuit or current state. E.g. show the circuit diagram.
+                    help (h) - Show this help message. Optionally specify a command to get more specific help.
+                    quit (q) - Exit the debugger.";
+
+                let all_help = Self::multiline_whitespace_trim(all_help.to_string());
+                println!(
+                    stdout;
+                    all_help
+                )?;
             }
         }
         Ok(())
