@@ -53,7 +53,7 @@ fn after_phase_kickback() -> Point {
     let circuit = Circuit::new(2)
         .h(0)
         .x(1)
-        .cu(0.0, 0.0, PI / 2.0, 0, 1)
+        .cu(0.0, 0.0, PI / 2.0, &[0], 1)
         .h(0);
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
@@ -66,7 +66,7 @@ fn main() {
     let circuit = Circuit::new(2)
         .h(0)
         .x(1)
-        .cu(0.0, 0.0, PI / 2.0, 0, 1)
+        .cu(0.0, 0.0, PI / 2.0, &[0], 1)
         .h(0);
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
