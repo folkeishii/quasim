@@ -1,16 +1,9 @@
 use std::{
-    borrow::{Borrow, Cow},
     collections::{HashMap, HashSet},
     f64::consts::PI,
-    fmt::{Display, Write},
-    ops::{Deref, DerefMut},
 };
 pub mod breakpoint;
 pub mod pc;
-
-use std::{
-    iter::once,
-};
 
 use crate::{
     circuit::{
@@ -468,6 +461,6 @@ impl Circuit {
     }
 
     pub fn delete_breakpoint(&mut self, pc: &CircuitPc) -> bool {
-            self.breakpoints.delete(pc.pc())
+        self.breakpoints.delete(pc.pc())
     }
 }

@@ -1,4 +1,4 @@
-use std::fmt::{Display};
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Default, Hash)]
 pub struct CircuitPc {
@@ -7,10 +7,7 @@ pub struct CircuitPc {
 }
 impl CircuitPc {
     pub fn new(pc: usize) -> Self {
-        CircuitPc {
-            pc,
-            lsq: 0,
-        }
+        CircuitPc { pc, lsq: 0 }
     }
 
     pub fn increment(&mut self) {

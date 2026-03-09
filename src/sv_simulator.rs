@@ -416,14 +416,13 @@ mod tests {
             .measure_bit(0, "tmp")
             .apply_if(r("tmp").gt(0))
             .x(0);
-        let circuit = Circuit::new(4)
-            .new_reg("tmp");
-            // .new_sub_circuit("U", sub);
-            // Init random state
-            // .call("U", 0)
-            // .call("U", 1)
-            // .call("U", 2)
-            // .call("U", 3);
+        let circuit = Circuit::new(4).new_reg("tmp");
+        // .new_sub_circuit("U", sub);
+        // Init random state
+        // .call("U", 0)
+        // .call("U", 1)
+        // .call("U", 2)
+        // .call("U", 3);
 
         let sim = SVSimulator::build(circuit.clone()).unwrap();
         let mut sim = sim.attach_debugger();
