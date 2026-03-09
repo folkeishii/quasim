@@ -154,7 +154,7 @@ impl Circuit {
 
     // Classical instructions
 
-    pub fn measure_bit<T: Into<String>>(mut self, target: usize, reg: (T, usize)) -> Self {
+    pub fn measure_bit(mut self, target: usize, reg: (&str, usize)) -> Self {
         self.instructions
             .push(Instruction::MeasureBit(target, (reg.0.into(), reg.1)));
         self
@@ -164,16 +164,22 @@ impl Circuit {
     ///
     /// Example:
     /// ```
-    /// measure(&[2,1,3], "reg")
+    /// measure_bits(&[2,1,3], "reg")
     /// // Is equivalent to
     /// measure_bit(2, ("reg", 0))
     /// measure_bit(1, ("reg", 1))
     /// measure_bit(3, ("reg", 2))
     /// ```
-    pub fn measure(mut self, targets: &[usize], reg: &str) -> Self {
+    pub fn measure_bits(mut self, targets: &[usize], reg: &str) -> Self {
         for (i, target) in targets.iter().enumerate() {
             self = self.measure_bit(*target, (reg, i))
         }
+        self
+    }
+
+    /// Measures all qubits into a register
+    pub fn measure(mut self, reg: &str) -> Self {
+        self.instructions.push(Instruction::MeasureAll(reg.into()));
         self
     }
 
