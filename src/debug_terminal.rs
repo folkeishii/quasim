@@ -168,7 +168,7 @@ where
                         
                         EXAMPLES
                         'state' - Show the entire current state.
-                        'state 5' - Show the part of the current state of bit string with value 3 (in binary, 101).
+                        'state 5' - Show the part of the current state of bit string with value 5 (in binary, 101).
                         'state 0 1 3' - Show the part of the current state of bit strings with values 0, 1 and 3 (in binary, 000, 001 and 011).
                         'state 0..4' - Show the part of the current state of bit strings with values between 0 and 4 (in binary, 000, 001, 010, 011 and 100).
                         "
