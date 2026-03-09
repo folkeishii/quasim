@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    f64::consts::PI,
+};
 
 use crate::{
     expr_dsl::Expr,
@@ -89,9 +92,23 @@ impl Circuit {
         self
     }
 
+    pub fn cx(mut self, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::X, controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
     pub fn y(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::Y, &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn cy(mut self, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::Y, controls, &[target]).unwrap(),
         ));
         self
     }
@@ -103,16 +120,23 @@ impl Circuit {
         self
     }
 
-    pub fn hadamard(mut self, target: usize) -> Self {
+    pub fn cz(mut self, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::Z, controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn h(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::H, &[], &[target]).unwrap(),
         ));
         self
     }
 
-    pub fn cnot(mut self, control: usize, target: usize) -> Self {
+    pub fn ch(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::X, &[control], &[target]).unwrap(),
+            Gate::new(GateType::H, controls, &[target]).unwrap(),
         ));
         self
     }
@@ -124,9 +148,9 @@ impl Circuit {
         self
     }
 
-    pub fn fredkin(mut self, control: usize, target1: usize, target2: usize) -> Self {
+    pub fn cswap(mut self, controls: &[usize], target1: usize, target2: usize) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::SWAP, &[control], &[target1, target2]).unwrap(),
+            Gate::new(GateType::SWAP, controls, &[target1, target2]).unwrap(),
         ));
         self
     }
@@ -138,9 +162,16 @@ impl Circuit {
         self
     }
 
-    pub fn cu(mut self, theta: f64, phi: f64, lambda: f64, control: usize, target: usize) -> Self {
+    pub fn cu(
+        mut self,
+        theta: f64,
+        phi: f64,
+        lambda: f64,
+        controls: &[usize],
+        target: usize,
+    ) -> Self {
         self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::U(theta, phi, lambda), &[control], &[target]).unwrap(),
+            Gate::new(GateType::U(theta, phi, lambda), controls, &[target]).unwrap(),
         ));
         self
     }
@@ -148,6 +179,55 @@ impl Circuit {
     pub fn s(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::S, &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn cs(mut self, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::S, controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn rx(mut self, theta: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn crx(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn ry(mut self, theta: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, 0.0, 0.0), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn cry(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(theta, 0.0, 0.0), controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn rz(mut self, theta: f64, target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(0.0, 0.0, theta), &[], &[target]).unwrap(),
+        ));
+        self
+    }
+
+    pub fn crz(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::U(0.0, 0.0, theta), controls, &[target]).unwrap(),
         ));
         self
     }
@@ -229,20 +309,6 @@ impl Circuit {
         self
     }
 
-    /// Controlled R_k
-    pub fn crk(mut self, k: usize, control: usize, target: usize) -> Self {
-        let pow2_inv = 1.0 / (1 << (k - 1)) as f64;
-        self.instructions.push(Instruction::Gate(
-            Gate::new(
-                GateType::U(0.0, 0.0, pow2_inv * std::f64::consts::PI),
-                &[control],
-                &[target],
-            )
-            .unwrap(),
-        ));
-        self
-    }
-
     /// Appends a circuit implementing the quantum Fourier transform.
     /// Targets are normally specified in order of least significance,
     /// for example [0,1,2,3,4].
@@ -255,11 +321,12 @@ impl Circuit {
         let n = targets.len();
 
         for i in (0..n).rev() {
-            self = self.hadamard(targets[i]);
+            self = self.h(targets[i]);
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
-                self = self.crk(k, targets[control as usize], targets[i]);
+                let theta = PI / (1 << (k - 1)) as f64;
+                self = self.crz(theta, &[targets[control as usize]], targets[i]);
                 control -= 1;
             }
         }
@@ -385,19 +452,19 @@ mod tests {
     #[test]
     fn inverse_test() {
         let circ = Circuit::new(5)
-            .hadamard(0)
-            .hadamard(1)
-            .hadamard(3)
+            .h(0)
+            .h(1)
+            .h(3)
             .x(0)
             .y(1)
             .z(2)
             .s(4)
-            .cnot(0, 1)
-            .cnot(4, 1)
+            .cx(&[0], 1)
+            .cx(&[4], 1)
             .u(23.3, 34.5, 56.1, 0)
-            .cu(1.0, 22.2, 0.1, 4, 2)
+            .cu(1.0, 22.2, 0.1, &[4], 2)
             .swap(3, 4)
-            .fredkin(0, 1, 2);
+            .cswap(&[0], 1, 2);
         let circ_and_inv = concat_circuits(&circ, &circ.inverse());
         let dim = 1 << 5;
         let id = DMatrix::<Complex<f64>>::identity(dim, dim);
@@ -413,15 +480,8 @@ mod tests {
 
     #[test]
     fn qft_test() {
-        let sim = SVSimulator::build(
-            Circuit::new(4)
-                .x(0)
-                .y(1)
-                .z(2)
-                .hadamard(3)
-                .qft(&[0, 1, 2, 3]),
-        )
-        .unwrap();
+        let sim =
+            SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).qft(&[0, 1, 2, 3])).unwrap();
 
         let expected_vec = dvector![
             cart!(0.0, 0.35355),  // |0000>

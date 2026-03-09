@@ -6,7 +6,7 @@ use quasim::debug_terminal::DebugTerminal;
 use quasim::sv_simulator::SVSimulatorDebugger;
 
 fn main() -> io::Result<()> {
-    let circuit = Circuit::new(3).hadamard(0).cnot(0, 2).cnot(2, 1);
+    let circuit = Circuit::new(3).h(0).cx(&[0], 2).cx(&[2], 1);
     let mut term = DebugTerminal::<SVSimulatorDebugger>::new(circuit)
         .expect("Test could not build debug terminal");
 

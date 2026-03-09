@@ -1,0 +1,8 @@
+[package]
+name = "phase-kickback"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+quasim = {path="../.."}
+nalgebra = "0.34.1"

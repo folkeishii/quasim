@@ -2270,13 +2270,13 @@ mod tests {
         let w = &mut stdout();
 
         let circuit = Circuit::new(7)
-            .hadamard(2)
+            .h(2)
             .z(5)
-            .cnot(1, 3)
+            .cx(&[1], 3)
             .x(6)
             .y(2)
             .swap(3, 5)
-            .fredkin(2, 3, 4);
+            .cswap(&[2], 3, 4);
         let sim = DebugSimulator::build(circuit).unwrap();
         show_circuit(w, &sim).unwrap();
     }
