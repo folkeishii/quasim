@@ -1,6 +1,6 @@
 use crate::{
     expr_dsl::Expr,
-    gate::{Gate, QBits},
+    gate::{Gate},
 };
 
 #[derive(Debug, Clone)]

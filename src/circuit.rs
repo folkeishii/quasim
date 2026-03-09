@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use crate::{
     expr_dsl::Expr,
-    gate::{Gate, GateType, QBits},
+    gate::{Gate, GateType},
     instruction::Instruction,
 };
 mod qasm_parse;

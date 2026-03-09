@@ -2134,7 +2134,7 @@ mod tests {
         circuit::Circuit,
         debug_simulator::DebugSimulator,
         debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit},
-        gate::{Gate, GateType, QBits},
+        gate::{Gate, GateType},
         instruction::Instruction,
         simulator::BuildSimulator,
     };
