@@ -243,7 +243,7 @@ impl Circuit {
     /// Measure multiple bits into a register
     ///
     /// Example:
-    /// ```
+    /// ```ignore
     /// measure_bits(&[2,1,3], "reg")
     /// // Is equivalent to
     /// measure_bit(2, ("reg", 0))
