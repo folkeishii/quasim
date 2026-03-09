@@ -198,18 +198,18 @@ where
             }
             HelpArgs::All => {
                 let all_help = "\
-                    continue (c) - Continue execution until a breakpoint is hit or end of circuit is reached.\
-                     Optionally specify to skip a number of breakpoints or ignore breakpoints entirely.
+                    continue (c|run) - Continue execution until a breakpoint is hit or end of circuit is reached. \
+                    Optionally specify to skip a number of breakpoints or ignore breakpoints entirely.
                     next (n) - Step forward one instruction. Optionally specify a number of instructions to step forward.
-                    prev (p) - Step back one instruction. Optionally specify a number of instructions to step back.
-                    break - Insert a breakpoint at the specified gate index.\
-                     Optionally specify to only enable an already existing breakpoint.
+                    previous (p|prev) - Step back one instruction. Optionally specify a number of instructions to step back.
+                    break - Insert a breakpoint at the specified gate index. \
+                    Optionally specify to only enable an already existing breakpoint.
                     delete - Delete the breakpoint at the specified gate index.
                     disable - Disable the breakpoint at the specified gate index.
                     enable - Enable the breakpoint at the specified gate index. Only works for already existing breakpoints.
                     state - Show the current state. Optionally specify to show only a specific part of the state.
-                    collapse - Collapse the current state into a single value and show the count of each value.\
-                     Optionally specify to collapse multiple times for a more even distribution of collapsed values.
+                    collapse (cl) - Collapse the current state into a single value and show the count of each value. \
+                    Optionally specify to collapse multiple times for a more even distribution of collapsed values.
                     show - Show information about the circuit or current state. E.g. show the circuit diagram.
                     help (h) - Show this help message. Optionally specify a command to get more specific help.
                     quit (q) - Exit the debugger.";
