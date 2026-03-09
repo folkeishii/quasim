@@ -68,7 +68,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
             circuit = circuit.x(N);
         }
         FunctionType::Balanced => {
-            circuit = circuit.cnot(&[0], N);
+            circuit = circuit.cx(&[0], N);
         }
     }
 

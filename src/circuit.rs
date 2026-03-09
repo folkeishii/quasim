@@ -89,6 +89,13 @@ impl Circuit {
         self
     }
 
+    pub fn cx(mut self, controls: &[usize], target: usize) -> Self {
+        self.instructions.push(Instruction::Gate(
+            Gate::new(GateType::X, controls, &[target]).unwrap(),
+        ));
+        self
+    }
+
     pub fn y(mut self, target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::Y, &[], &[target]).unwrap(),
@@ -127,13 +134,6 @@ impl Circuit {
     pub fn ch(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(Instruction::Gate(
             Gate::new(GateType::H, controls, &[target]).unwrap(),
-        ));
-        self
-    }
-
-    pub fn cnot(mut self, controls: &[usize], target: usize) -> Self {
-        self.instructions.push(Instruction::Gate(
-            Gate::new(GateType::X, controls, &[target]).unwrap(),
         ));
         self
     }
@@ -414,8 +414,8 @@ mod tests {
             .y(1)
             .z(2)
             .s(4)
-            .cnot(&[0], 1)
-            .cnot(&[4], 1)
+            .cx(&[0], 1)
+            .cx(&[4], 1)
             .u(23.3, 34.5, 56.1, 0)
             .cu(1.0, 22.2, 0.1, &[4], 2)
             .swap(3, 4)

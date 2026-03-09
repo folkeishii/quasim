@@ -133,7 +133,7 @@ fn apply_gate_call_expr(
                         2,
                     ));
                 }
-                circuit = circuit.cnot(&[qubit_indexes[0]], qubit_indexes[1]);
+                circuit = circuit.cx(&[qubit_indexes[0]], qubit_indexes[1]);
             }
             _ => return Err(QASMParseError::UnrecognizedGate(name.to_string())),
         }

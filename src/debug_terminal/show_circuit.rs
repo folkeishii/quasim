@@ -2274,7 +2274,7 @@ mod tests {
         let circuit = Circuit::new(7)
             .h(2)
             .z(5)
-            .cnot(&[1], 3)
+            .cx(&[1], 3)
             .x(6)
             .y(2)
             .swap(3, 5)
