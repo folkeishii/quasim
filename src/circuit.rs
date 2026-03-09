@@ -276,8 +276,8 @@ impl Circuit {
             self = self.hadamard(targets[i]);
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
-                let pow2_inv = 1.0 / (1 << (k - 1)) as f64;
-                self = self.crz(pow2_inv * PI, &[targets[control as usize]], targets[i]);
+                let theta = PI / (1 << (k - 1)) as f64;
+                self = self.crz(theta, &[targets[control as usize]], targets[i]);
                 control -= 1;
             }
         }
