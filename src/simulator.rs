@@ -97,7 +97,7 @@ mod tests {
 
     #[test]
     fn test_continue_until() {
-        let circ = Circuit::new(3).hadamard(0).hadamard(1).hadamard(2);
+        let circ = Circuit::new(3).h(0).h(1).h(2);
         let mut sim1 = DebugSimulator::build(circ).unwrap();
         let mut sim2 = sim1.clone();
 

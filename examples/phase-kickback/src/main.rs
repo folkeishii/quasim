@@ -40,7 +40,7 @@ fn get_bloch_vector(state_vector: &DVector<Complex<f64>>) -> Point {
 
 #[allow(dead_code)]
 fn before_phase_kickback() -> Point {
-    let circuit = Circuit::new(2).hadamard(0).x(1);
+    let circuit = Circuit::new(2).h(0).x(1);
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.continue_until(None);
@@ -51,10 +51,10 @@ fn before_phase_kickback() -> Point {
 #[allow(dead_code)]
 fn after_phase_kickback() -> Point {
     let circuit = Circuit::new(2)
-        .hadamard(0)
+        .h(0)
         .x(1)
-        .cu(0.0, 0.0, PI / 2.0, 0, 1)
-        .hadamard(0);
+        .cu(0.0, 0.0, PI / 2.0, &[0], 1)
+        .h(0);
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.continue_until(None);
@@ -64,10 +64,10 @@ fn after_phase_kickback() -> Point {
 
 fn main() {
     let circuit = Circuit::new(2)
-        .hadamard(0)
+        .h(0)
         .x(1)
-        .cu(0.0, 0.0, PI / 2.0, 0, 1)
-        .hadamard(0);
+        .cu(0.0, 0.0, PI / 2.0, &[0], 1)
+        .h(0);
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.continue_until(None);
