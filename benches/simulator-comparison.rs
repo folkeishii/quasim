@@ -23,7 +23,7 @@ where
     let mut circuit = Circuit::new(n_qubits);
 
     for i in 0..n_qubits {
-        circuit = circuit.hadamard(i);
+        circuit = circuit.h(i);
     }
 
     let mut sim = S::build(circuit).expect("Couldnt build circuit...");
@@ -42,7 +42,7 @@ where
     let mut circuit = Circuit::new(6);
 
     for i in 0..n_gates {
-        circuit = circuit.hadamard(i % 6);
+        circuit = circuit.h(i % 6);
     }
 
     let mut sim = S::build(circuit).expect("Couldnt build circuit...");
