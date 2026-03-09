@@ -28,51 +28,30 @@ where
     W: Write,
     S: DebuggableSimulator + StoredCircuitSimulator,
 {
-    let (pc, _) = simulator.current_instruction();
-    let sub_circuit = pc.sub_circuit().map(AsRef::as_ref);
     let mut cols;
-    if sub_circuit.is_none() {
-        cols = vec![Column::only_kets(
-            repeat('0').take(simulator.n_qubits(None)),
-        )];
-    } else {
-        cols = vec![Column::only_tracks(
-            simulator.n_qubits(sub_circuit),
-            Some(TrackModifier::Continues),
-        )]
-    }
+    cols = vec![Column::only_kets(repeat('0').take(simulator.n_qubits()))];
     // Add seperator
-    let mut ncol = Column::only_tracks(simulator.n_qubits(sub_circuit), None);
+    let mut ncol = Column::only_tracks(simulator.n_qubits(), None);
     let li = cols.len() - 1;
     cols[li].extend_east(&mut ncol);
     cols.push(ncol);
 
-    for instruction in simulator.instructions(sub_circuit) {
+    for instruction in simulator.instructions() {
         let mut ncol = Column::from_instruction(simulator, instruction);
         let li = cols.len() - 1;
         cols[li].extend_east(&mut ncol);
         cols.push(ncol);
         // Add seperator
-        let mut ncol = Column::only_tracks(simulator.n_qubits(sub_circuit), None);
+        let mut ncol = Column::only_tracks(simulator.n_qubits(), None);
         let li = cols.len() - 1;
         cols[li].extend_east(&mut ncol);
         cols.push(ncol);
     }
     // Add seperator
-    if sub_circuit.is_none() {
-        let mut ncol = Column::only_tracks(simulator.n_qubits(sub_circuit), None);
-        let li = cols.len() - 1;
-        cols[li].extend_east(&mut ncol);
-        cols.push(ncol)
-    } else {
-        let mut ncol = Column::only_tracks(
-            simulator.n_qubits(sub_circuit),
-            Some(TrackModifier::Continues),
-        );
-        let li = cols.len() - 1;
-        cols[li].extend_east(&mut ncol);
-        cols.push(ncol)
-    };
+    let mut ncol = Column::only_tracks(simulator.n_qubits(), None);
+    let li = cols.len() - 1;
+    cols[li].extend_east(&mut ncol);
+    cols.push(ncol);
 
     let mut col_iters = Vec::with_capacity(cols.len());
     for col in cols.iter() {
@@ -630,7 +609,7 @@ impl Column {
         instruction: &Instruction,
     ) -> Self {
         match instruction {
-            Instruction::Gate(gate) => Self::from_gate(simulator.n_qubits(None), gate),
+            Instruction::Gate(gate) => Self::from_gate(simulator.n_qubits(), gate),
             Instruction::Measurement(qbits, _) => {
                 let mut qbits = qbits.get_bitstring();
                 let mut column = if qbits & 1 == 1 {
@@ -638,7 +617,7 @@ impl Column {
                 } else {
                     Column::init_with_track(String::from("╭─╱─╮"))
                 };
-                for _ in 1..simulator.n_qubits(None) {
+                for _ in 1..simulator.n_qubits() {
                     qbits >>= 1;
                     if qbits & 1 == 1 {
                         column.close_with_gate();
@@ -651,40 +630,6 @@ impl Column {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::Call(sub_circuit, lsq) => {
-                let lsq = *lsq;
-                let n_qubits = simulator.n_qubits(None);
-                let sc_n_qubits = simulator.n_qubits(Some(sub_circuit.as_ref()));
-                let mut north = 0..lsq;
-                let mut gate = lsq..(lsq + sc_n_qubits);
-                let south = (lsq + sc_n_qubits)..n_qubits;
-
-                let mut column = if !north.is_empty() {
-                    let mut column = Column::init_with_track(sub_circuit.clone());
-                    north.start += 1;
-
-                    for _ in north {
-                        column.close_with_track();
-                    }
-
-                    column.close_with_gate();
-                    gate.start += 1;
-
-                    column
-                } else {
-                    gate.start += 1;
-                    Column::init_with_gate(sub_circuit.clone())
-                };
-
-                for _ in gate {
-                    column.extend_with_gate();
-                }
-                for _ in south {
-                    column.close_with_track();
-                }
-
-                column
-            }
         }
     }
 
@@ -2360,16 +2305,18 @@ mod tests {
     #[test]
     #[allow(unreachable_code)]
     fn sub_circuit() {
+        //Keep for sub circuit
+        return;
         let w = &mut stdout();
 
-        let sub = Circuit::new(5).breakpoint().cnot(0, 2).y(1).swap(2, 4);
+        let sub = Circuit::new(5).breakpoint().cx(&[0], 2).y(1).swap(2, 4);
 
         let circuit = Circuit::new(7)
-            .new_sub_circuit("Sub", sub)
-            .hadamard(2)
+            // .new_sub_circuit("Sub", sub)
+            .h(2)
             .z(5)
-            .call("Sub", 1)
-            .fredkin(2, 3, 4);
+            // .call("Sub", 1)
+            .cswap(&[2], 3, 4);
         let mut sim = DebugSimulator::build(circuit).unwrap();
         show_circuit(w, &sim).unwrap();
         sim.cont();

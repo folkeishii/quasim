@@ -22,26 +22,14 @@ impl TryFrom<Circuit> for DebugSimulator {
         let k = circuit.n_qubits();
 
         // Check for mid-cicuit measurement
-        for (sc, insts) in circuit.all_instructions() {
-            if sc.is_none() {
-                let mut encountered = false;
-                for inst in insts {
-                    let is_measurement = matches!(inst, Instruction::Measurement(_, _));
-                    if is_measurement {
-                        encountered = true;
-                    } else if encountered {
-                        // There was a gate between measurements
-                        return Err(DebugSimulatorError::MidCircuitMeasurement);
-                    }
-                }
-            } else {
-                if insts
-                    .iter()
-                    .any(|i| matches!(i, Instruction::Measurement(_, _)))
-                {
-                    // There was a gate between measurements
-                    return Err(DebugSimulatorError::MidCircuitMeasurement);
-                }
+        let mut encountered = false;
+        for inst in circuit.instructions() {
+            let is_measurement = matches!(inst, Instruction::Measurement(_, _));
+            if is_measurement {
+                encountered = true;
+            } else if encountered {
+                // There was a gate between measurements
+                return Err(DebugSimulatorError::MidCircuitMeasurement);
             }
         }
 
@@ -82,10 +70,6 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::Call(sub_circuit, lsq) => {
-                let new_pc = self.pc_mut().step_into(sub_circuit.clone(), lsq);
-                self.pc_stack.push(new_pc);
-            }
         }
         Some(&self.current_state)
     }
@@ -123,7 +107,6 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::Call(_, _) => (), // do nothing
         }
         Some(&self.current_state)
     }

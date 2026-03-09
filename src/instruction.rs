@@ -10,5 +10,4 @@ pub enum Instruction {
     Jump(usize),                // Cannot jump into another sub circuit
     JumpIf(Expr, usize),        // Cannot jump into another sub circuit
     Assign(Expr, String),
-    Call(String, usize), // Sub circuit name, least significant qubit inside sub circuit
 }

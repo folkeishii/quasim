@@ -189,11 +189,6 @@ impl SVExecutor {
         self.pc_mut().increment();
     }
 
-    fn call(&mut self, sub_circuit: String, lsq: usize) {
-        let new_pc = self.pc_mut().step_into(sub_circuit.clone(), lsq);
-        self.pc_stack.push(new_pc);
-    }
-
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
@@ -201,7 +196,6 @@ impl SVExecutor {
             Instruction::Jump(label_pc) => self.jump(*label_pc),
             Instruction::JumpIf(expr, label_pc) => self.jump_if(expr, *label_pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
-            Instruction::Call(sub_circuit, lsq) => self.call(sub_circuit.clone(), *lsq),
         }
     }
 
@@ -409,24 +403,27 @@ mod tests {
         ));
     }
 
+    #[allow(unreachable_code)]
     #[test]
     fn test_sub() {
+        // Keep for sub circuits
+        return;
         let sub = Circuit::new(1)
             .new_reg("tmp")
             .assign("tmp".into(), 0.into())
-            .hadamard(0)
+            .h(0)
             .breakpoint()
             .measure_bit(0, "tmp")
             .apply_if(r("tmp").gt(0))
             .x(0);
         let circuit = Circuit::new(4)
-            .new_reg("tmp")
-            .new_sub_circuit("U", sub)
+            .new_reg("tmp");
+            // .new_sub_circuit("U", sub);
             // Init random state
-            .call("U", 0)
-            .call("U", 1)
-            .call("U", 2)
-            .call("U", 3);
+            // .call("U", 0)
+            // .call("U", 1)
+            // .call("U", 2)
+            // .call("U", 3);
 
         let sim = SVSimulator::build(circuit.clone()).unwrap();
         let mut sim = sim.attach_debugger();
