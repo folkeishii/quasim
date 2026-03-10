@@ -105,10 +105,6 @@ impl Circuit<HybridCircuit> {
 }
 
 impl<B: CircuitBehaviour> Circuit<B> {
-    pub fn new_reg<I: Into<String>>(mut self, name: I) -> Self {
-        self.registers.insert(name.into());
-        self
-    }
 
     pub fn valid_pc(&self, circuit_pc: &CircuitPc) -> bool {
         circuit_pc.pc() <= self.instructions().len()
@@ -359,6 +355,12 @@ impl<B: CircuitBehaviour> Circuit<B>
 where
     Self: Into<Circuit<HybridCircuit>>,
 {
+    pub fn new_reg<I: Into<String>>(self, name: I) -> Circuit<HybridCircuit> {
+        let mut ret_self = self.into();
+        ret_self.registers.insert(name.into());
+        ret_self
+    }
+
     // Classical instructions
 
     pub fn measure_bit(self, target: usize, reg: &str) -> Circuit<HybridCircuit> {
