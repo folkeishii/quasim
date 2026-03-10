@@ -464,3 +464,99 @@ impl Circuit {
         self.breakpoints.delete(pc.pc())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{
+        cart,
+        circuit::Circuit,
+        ext::expand_matrix_from_gate,
+        instruction::Instruction,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
+    };
+    use nalgebra::{Complex, DMatrix, DVector, dvector};
+
+    fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
+        m1.iter()
+            .zip(m2.iter())
+            .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
+    }
+
+    macro_rules! assert_is_matrix_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_matrix_equal_to($m1, $m2))
+        };
+    }
+
+    fn is_vector_equal_to(v1: DVector<Complex<f64>>, v2: DVector<Complex<f64>>) -> bool {
+        let l = v1.len();
+        let m1 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v1.as_slice());
+        let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
+        l == v2.len() && is_matrix_equal_to(m1, m2)
+    }
+    macro_rules! assert_is_vector_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_vector_equal_to($m1, $m2))
+        };
+    }
+    fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
+        let mut circuit_tot = Circuit::new(std::cmp::max(circuit1.n_qubits(), circuit2.n_qubits()));
+        circuit_tot.instructions =
+            [circuit1.instructions.clone(), circuit2.instructions.clone()].concat();
+        circuit_tot
+    }
+    #[test]
+    fn inverse_test() {
+        let circ = Circuit::new(5)
+            .h(0)
+            .h(1)
+            .h(3)
+            .x(0)
+            .y(1)
+            .z(2)
+            .s(4)
+            .cx(&[0], 1)
+            .cx(&[4], 1)
+            .u(23.3, 34.5, 56.1, 0)
+            .cu(1.0, 22.2, 0.1, &[4], 2)
+            .swap(3, 4)
+            .cswap(&[0], 1, 2);
+        let circ_and_inv = concat_circuits(&circ, &circ.inverse());
+        let dim = 1 << 5;
+        let id = DMatrix::<Complex<f64>>::identity(dim, dim);
+        let mut res: DMatrix<Complex<f64>> = id.clone();
+        for instruction in circ_and_inv.instructions() {
+            match instruction {
+                Instruction::Gate(gate) => res = expand_matrix_from_gate(gate, 5) * res,
+                _ => panic!("circ should be non-hybrid"),
+            }
+        }
+        assert_is_matrix_equal!(id, res);
+    }
+    #[test]
+    fn qft_test() {
+        let sim =
+            SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).qft(&[0, 1, 2, 3])).unwrap();
+
+        let expected_vec = dvector![
+            cart!(0.0, 0.35355),  // |0000>
+            cart!(0.0),           // |0001>
+            cart!(-0.25, -0.25),  // |0010>
+            cart!(0.0),           // |0011>
+            cart!(0.35355, 0.0),  // |0100>
+            cart!(0.0),           // |0101>
+            cart!(-0.25, 0.25),   // |0110>
+            cart!(0.0),           // |0111>
+            cart!(0.0, -0.35355), // |1000>
+            cart!(0.0),           // |1001>
+            cart!(0.25, 0.25),    // |1010>
+            cart!(0.0),           // |1011>
+            cart!(-0.35355, 0.0), // |1100>
+            cart!(0.0),           // |1101>
+            cart!(0.25, -0.25),   // |1110>
+            cart!(0.0),           // |1111>
+        ];
+        assert_is_vector_equal!(expected_vec, sim.final_state());
+    }
+}
