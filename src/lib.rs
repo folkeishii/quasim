@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 pub mod circuit;
+mod common_test;
 pub mod debug_simulator;
 pub mod debug_terminal;
 pub mod expr_dsl;

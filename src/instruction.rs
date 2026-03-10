@@ -3,11 +3,11 @@ use crate::{
     gate::{Gate, QBits},
 };
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Gate(Gate),
-    Measurement(QBits, String),
-    Jump(usize),
-    JumpIf(Expr, usize),
+    Measurement(QBits, String), // Targets, Register, Register bit offset
+    Jump(usize),                // Cannot jump into another sub circuit
+    JumpIf(Expr, usize),        // Cannot jump into another sub circuit
     Assign(Expr, String),
 }

@@ -43,7 +43,7 @@ fn before_phase_kickback() -> Point {
     let circuit = Circuit::new(2).h(0).x(1);
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.continue_until(None);
+    sim.cont();
 
     get_bloch_vector(sim.current_state())
 }
@@ -57,7 +57,7 @@ fn after_phase_kickback() -> Point {
         .h(0);
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.continue_until(None);
+    sim.cont();
 
     get_bloch_vector(sim.current_state())
 }
@@ -70,7 +70,7 @@ fn main() {
         .h(0);
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.continue_until(None);
+    sim.cont();
 
     println!("{}", sim.current_state());
     println!("{:?}", get_bloch_vector(sim.current_state()));
