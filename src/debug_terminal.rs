@@ -10,7 +10,7 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::{
-    circuit::{Circuit, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
+    circuit::{Circuit, CircuitBehaviour, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
     debug_simulator::DebugSimulator,
     debug_terminal::{parse::into_tokens, show_circuit::show_circuit},
     ext::collapse,
@@ -29,11 +29,11 @@ impl<S> DebugTerminal<S>
 where
     S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit>,
 {
-    pub fn new(
-        circuit: Circuit<HybridCircuit>,
-    ) -> Result<Self, <S as BuildSimulator<HybridCircuit>>::E>
+    pub fn new<B: CircuitBehaviour>(
+        circuit: Circuit<B>,
+    ) -> Result<Self, <S as BuildSimulator<B>>::E>
     where
-        S: BuildSimulator<HybridCircuit>,
+        S: BuildSimulator<B>,
     {
         let simulator = S::build(circuit)?;
         Ok(Self { simulator })
