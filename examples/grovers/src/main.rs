@@ -1,6 +1,6 @@
 use quasim::circuit::Circuit;
 use quasim::expr_dsl::Value; 
-use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
+use quasim::simulator::{BuildSimulator, DebuggableSimulator,HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
 const PI: f64 = 3.14; // Used in calculating the number of iterations for Grover's algorithm
@@ -55,7 +55,7 @@ fn check_quantum(func: &[usize]) -> bool {
     circuit = circuit.measure(&(0..bits).collect::<Vec<usize>>(), "res");
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.continue_until(None);
+    sim.cont();
 
     let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
 
