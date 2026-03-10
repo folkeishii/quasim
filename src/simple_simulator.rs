@@ -3,7 +3,6 @@ use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::{
     circuit::Circuit,
-    instruction::Instruction,
     simulator::{BuildSimulator, RunnableSimulator},
     sv_simulator::{SVError, SVSimulator},
 };
