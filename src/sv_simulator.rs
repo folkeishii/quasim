@@ -262,27 +262,6 @@ impl TryFrom<Circuit> for SVSimulatorDebugger {
     }
 }
 
-impl SVSimulator {
-    pub fn get_executor(&self) -> SVExecutor {
-        let size = 1 << self.circuit.n_qubits();
-        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
-        init_state_vector[0] = cart![1.0];
-
-        SVExecutor {
-            state_vector: init_state_vector,
-            circuit: self.circuit.clone(),
-            pc: Default::default(),
-            registers: RegisterFile::from(self.circuit.registers()),
-        }
-    }
-
-    pub fn attach_debugger(&self) -> SVSimulatorDebugger {
-        SVSimulatorDebugger {
-            executor: self.get_executor(),
-        }
-    }
-}
-
 impl DebuggableSimulator for SVSimulatorDebugger {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         self.executor.step()
@@ -415,8 +394,7 @@ mod tests {
         // .call("U", 2)
         // .call("U", 3);
 
-        let sim = SVSimulator::build(circuit.clone()).unwrap();
-        let mut sim = sim.attach_debugger();
+        let mut sim = SVSimulatorDebugger::build(circuit.clone()).unwrap();
 
         assert!(equal_to_matrix_c(
             sim.cont(),
