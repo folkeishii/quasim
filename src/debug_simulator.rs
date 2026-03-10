@@ -1,7 +1,7 @@
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
-    ext::{Stack, expand_matrix_from_gate, measure},
+    ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
     simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
@@ -11,7 +11,7 @@ use nalgebra::{Complex, DVector};
 pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
     circuit: Circuit,
-    pc_stack: Stack<CircuitPc>,
+    pc: CircuitPc,
 }
 
 impl TryFrom<Circuit> for DebugSimulator {
@@ -40,7 +40,7 @@ impl TryFrom<Circuit> for DebugSimulator {
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),
             circuit: circuit,
-            pc_stack: Default::default(),
+            pc: Default::default(),
         };
 
         Ok(sim)
@@ -50,8 +50,7 @@ impl TryFrom<Circuit> for DebugSimulator {
 impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
-            // End of (sub) circuit: step out
-            return self.step_out();
+            return None
         };
 
         match inst {
@@ -84,17 +83,12 @@ impl DebuggableSimulator for DebugSimulator {
 
     fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
         if !self.pc_mut().decrement() {
-            // Beginning of (sub) circuit: step out
-            let state = self.step_out_prev();
-            return state;
+            return Some(&self.current_state);
         }
 
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // Should not happen
-            // Beginning of (sub) circuit: step out
-            self.pc_stack[1].decrement(); // undo step in increment
-            let state = self.step_out_prev();
-            return state;
+            return Some(&self.current_state);
         };
 
         match inst {
@@ -118,28 +112,11 @@ impl DebuggableSimulator for DebugSimulator {
 
 impl DebugSimulator {
     fn pc(&self) -> &CircuitPc {
-        self.pc_stack.top()
+        &self.pc
     }
 
     fn pc_mut(&mut self) -> &mut CircuitPc {
-        self.pc_stack.top_mut()
-    }
-
-    fn step_out(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.pc_stack.pop() {
-            Some(&self.current_state)
-        } else {
-            None
-        }
-    }
-
-    fn step_out_prev(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.pc_stack.pop() {
-            self.pc_mut().decrement();
-            Some(&self.current_state)
-        } else {
-            None
-        }
+        &mut self.pc
     }
 }
 

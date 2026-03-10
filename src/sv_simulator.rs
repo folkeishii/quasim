@@ -6,7 +6,7 @@ use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
-    ext::{Stack, get_gate_matrix},
+    ext::{get_gate_matrix},
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
@@ -16,7 +16,7 @@ use crate::{
 pub struct SVExecutor {
     state_vector: DVector<Complex<f64>>,
     circuit: Circuit,
-    pc_stack: Stack<CircuitPc>,
+    pc: CircuitPc,
     registers: RegisterFile<Value>,
 }
 
@@ -30,7 +30,7 @@ impl SVExecutor {
         Self {
             state_vector: init_state_vector,
             circuit: circuit,
-            pc_stack: Default::default(),
+            pc: Default::default(),
             registers: registers,
         }
     }
@@ -38,8 +38,7 @@ impl SVExecutor {
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
-            // End of (sub) circuit: step out
-            return self.step_out();
+            return None;
         };
 
         self.apply_instruction(&inst);
@@ -200,19 +199,11 @@ impl SVExecutor {
     }
 
     fn pc(&self) -> &CircuitPc {
-        self.pc_stack.top()
+        &self.pc
     }
 
     fn pc_mut(&mut self) -> &mut CircuitPc {
-        self.pc_stack.top_mut()
-    }
-
-    fn step_out(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.pc_stack.pop() {
-            Some(&self.state_vector)
-        } else {
-            None
-        }
+        &mut self.pc
     }
 }
 
@@ -280,7 +271,7 @@ impl SVSimulator {
         SVExecutor {
             state_vector: init_state_vector,
             circuit: self.circuit.clone(),
-            pc_stack: Default::default(),
+            pc: Default::default(),
             registers: RegisterFile::from(self.circuit.registers()),
         }
     }
@@ -408,14 +399,14 @@ mod tests {
     fn test_sub() {
         // Keep for sub circuits
         return;
-        let sub = Circuit::new(1)
-            .new_reg("tmp")
-            .assign("tmp".into(), 0.into())
-            .h(0)
-            .breakpoint()
-            .measure_bit(0, "tmp")
-            .apply_if(r("tmp").gt(0))
-            .x(0);
+        // let sub = Circuit::new(1)
+        //     .new_reg("tmp")
+        //     .assign("tmp".into(), 0.into())
+        //     .h(0)
+        //     .breakpoint()
+        //     .measure_bit(0, "tmp")
+        //     .apply_if(r("tmp").gt(0))
+        //     .x(0);
         let circuit = Circuit::new(4).new_reg("tmp");
         // .new_sub_circuit("U", sub);
         // Init random state

@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use std::mem::replace;
-use std::ops::{Deref, Index, IndexMut};
+use std::ops::{Deref};
 use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
@@ -274,67 +274,6 @@ pub fn expand_matrix(
         sum += eval_tensor_product(term);
     }
     sum
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Stack<T, const MIN: usize = 1>(Vec<T>);
-impl<T> Stack<T> {
-    pub fn new(value: T) -> Self {
-        Self(vec![value])
-    }
-
-    pub fn top(&self) -> &T {
-        &self[0]
-    }
-
-    pub fn top_mut(&mut self) -> &mut T {
-        &mut self[0]
-    }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn push(&mut self, value: T) {
-        self.0.push(value);
-    }
-
-    pub fn pop(&mut self) -> bool {
-        if self.0.len() > 1 {
-            self.0.pop();
-            true
-        } else {
-            false
-        }
-    }
-}
-impl<T> Index<usize> for Stack<T> {
-    type Output = T;
-
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0[self.0.len() - index - 1]
-    }
-}
-impl<T> IndexMut<usize> for Stack<T> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        let i = self.0.len() - index - 1;
-        &mut self.0[i]
-    }
-}
-impl<T: Default> Default for Stack<T> {
-    fn default() -> Self {
-        Self(vec![Default::default()])
-    }
-}
-impl<T> From<T> for Stack<T> {
-    fn from(value: T) -> Self {
-        Self(vec![value])
-    }
-}
-impl<T> From<Vec<T>> for Stack<T> {
-    fn from(value: Vec<T>) -> Self {
-        Self(value)
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

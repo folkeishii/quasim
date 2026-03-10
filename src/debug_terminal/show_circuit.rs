@@ -2309,7 +2309,7 @@ mod tests {
         return;
         let w = &mut stdout();
 
-        let sub = Circuit::new(5).breakpoint().cx(&[0], 2).y(1).swap(2, 4);
+        // let sub = Circuit::new(5).breakpoint().cx(&[0], 2).y(1).swap(2, 4);
 
         let circuit = Circuit::new(7)
             // .new_sub_circuit("Sub", sub)

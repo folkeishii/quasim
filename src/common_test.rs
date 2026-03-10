@@ -14,15 +14,15 @@ pub fn almost_grovers<D: BuildSimulator + DebuggableSimulator + StoredCircuitSim
     // Keep for sub circuits
     return;
     const N: usize = 2;
-    let sub = Circuit::new(N)
-        // Step 1
-        .h(0)
-        .z(1)
-        // Step 2
-        .cx(&[0], 1)
-        // Step 3
-        .h(0)
-        .z(1);
+    // let sub = Circuit::new(N)
+    //     // Step 1
+    //     .h(0)
+    //     .z(1)
+    //     // Step 2
+    //     .cx(&[0], 1)
+    //     // Step 3
+    //     .h(0)
+    //     .z(1);
 
     let mut circuit = Circuit::new(2 * N)
         // .new_sub_circuit("sub", sub)
