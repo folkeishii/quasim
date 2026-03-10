@@ -83,12 +83,12 @@ impl DebuggableSimulator for DebugSimulator {
 
     fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
         if !self.pc_mut().decrement() {
-            return Some(&self.current_state);
+            return None;
         }
 
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // Should not happen
-            return Some(&self.current_state);
+            return None;
         };
 
         match inst {
