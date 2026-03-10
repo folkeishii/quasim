@@ -609,7 +609,7 @@ impl Column {
         instruction: &Instruction,
     ) -> Self {
         match instruction {
-            Instruction::Gate(gate) => Self::from_gate(nqubits, gate),
+            Instruction::Gate(gate) => Self::from_gate(simulator.n_qubits(), gate),
             Instruction::MeasureBit(qbit, _) => {
                 let mut qbits = 1 << qbit;
                 let mut column = if qbits & 1 == 1 {
@@ -2242,14 +2242,14 @@ mod tests {
         let instruction3 = Instruction::Gate(Gate::new(GateType::X, &[1, 5], &[2]).unwrap());
         let instruction4 = Instruction::Gate(Gate::new(GateType::Z, &[1], &[4]).unwrap());
 
-        let mut col0 = Column::only_tracks(7);
-        let mut col1 = Column::from_instruction(7, &instruction1);
-        let mut col2 = Column::from_instruction(7, &instruction2);
-        let mut col3 = Column::from_instruction(7, &instruction3);
-        let mut col4 = Column::from_instruction(7, &instruction4);
-        let mut col5 = Column::only_tracks(7);
-        let mut col6 = Column::from_instruction(7, &Instruction::MeasureAll("".into()));
-        let mut col7 = Column::only_tracks(7);
+        let mut col0 = Column::only_tracks(7, None);
+        let mut col1 = Column::from_instruction(&sim, &instruction1);
+        let mut col2 = Column::from_instruction(&sim, &instruction2);
+        let mut col3 = Column::from_instruction(&sim, &instruction3);
+        let mut col4 = Column::from_instruction(&sim, &instruction4);
+        let mut col5 = Column::only_tracks(7, None);
+        let mut col6 = Column::from_instruction(&sim, &Instruction::MeasureAll("".into()));
+        let mut col7 = Column::only_tracks(7, None);
 
         col0.extend_east(&mut col1);
         col1.extend_east(&mut col2);

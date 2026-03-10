@@ -175,7 +175,7 @@ impl SVExecutor {
         self.state_vector.fill(cart!(0.0));
         self.state_vector[measurement] = cart!(1.0);
 
-        self.pc += 1;
+        self.pc_mut().increment();
     }
 
     fn jump(&mut self, label_pc: usize) {

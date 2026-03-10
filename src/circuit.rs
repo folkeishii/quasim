@@ -58,8 +58,8 @@ impl Circuit {
             Some(Instruction::Gate(gate)) => {
                 Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
             }
-            Some(Instruction::Measurement(targets, register)) => Some(Instruction::Measurement(
-                *targets << circuit_pc.lsq(),
+            Some(Instruction::MeasureBit(target, register)) => Some(Instruction::MeasureBit(
+                *target << circuit_pc.lsq(),
                 register.clone(),
             )),
             rst => rst.cloned(),
