@@ -11,13 +11,10 @@ use std::{
 use crossterm::style::ContentStyle;
 
 use crate::{
-    debug_terminal::show_circuit::connects::{
+    circuit::HybridCircuit, debug_terminal::show_circuit::connects::{
         Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, ExtendEast, ExtendSouth,
         IsDirection, Passes,
-    },
-    gate::{Gate, QBits},
-    instruction::Instruction,
-    simulator::{DebuggableSimulator, StoredCircuitSimulator},
+    }, gate::{Gate, QBits}, instruction::Instruction, simulator::{DebuggableSimulator, StoredCircuitSimulator}
 };
 
 const T: bool = true;
@@ -26,7 +23,7 @@ const F: bool = false;
 pub fn show_circuit<W, S>(w: &mut W, simulator: &S) -> io::Result<()>
 where
     W: Write,
-    S: DebuggableSimulator + StoredCircuitSimulator,
+    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit>,
 {
     let mut cols;
     cols = vec![Column::only_kets(repeat('0').take(simulator.n_qubits()))];
@@ -2217,7 +2214,7 @@ mod tests {
     fn measurement() {
         return;
         let w = &mut stdout();
-        let sim = DebugSimulator::build(Circuit::new(7)).unwrap();
+        let sim = DebugSimulator::build(Circuit::new(7).into()).unwrap();
         let instruction = Instruction::Measurement(QBits::from_bitstring(0b101011010), "".into());
         let mut track_col = Column::only_tracks(10, None);
         let mut measure_col = Column::from_instruction(&sim, &instruction);
@@ -2235,7 +2232,7 @@ mod tests {
     fn with_gate() {
         return;
         let w = &mut stdout();
-        let sim = DebugSimulator::build(Circuit::new(7)).unwrap();
+        let sim = DebugSimulator::build(Circuit::new(7).into()).unwrap();
         let instruction1 = Instruction::Gate(Gate::new(GateType::H, &[1, 5, 6], &[3]).unwrap());
         let instruction2 = Instruction::Gate(Gate::new(GateType::Y, &[], &[1]).unwrap());
         let instruction3 = Instruction::Gate(Gate::new(GateType::X, &[1, 5], &[2]).unwrap());
@@ -2298,7 +2295,7 @@ mod tests {
             .y(2)
             .swap(3, 5)
             .cswap(&[2], 3, 4);
-        let sim = DebugSimulator::build(circuit).unwrap();
+        let sim = DebugSimulator::build(circuit.into()).unwrap();
         show_circuit(w, &sim).unwrap();
     }
 
@@ -2317,7 +2314,7 @@ mod tests {
             .z(5)
             // .call("Sub", 1)
             .cswap(&[2], 3, 4);
-        let mut sim = DebugSimulator::build(circuit).unwrap();
+        let mut sim = DebugSimulator::build(circuit.into()).unwrap();
         show_circuit(w, &sim).unwrap();
         sim.cont();
         show_circuit(w, &sim).unwrap();

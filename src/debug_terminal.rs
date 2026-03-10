@@ -10,7 +10,7 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::{
-    circuit::{Circuit, breakpoint::IEBreakpoint, pc::CircuitPc},
+    circuit::{Circuit, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
     debug_simulator::DebugSimulator,
     debug_terminal::{parse::into_tokens, show_circuit::show_circuit},
     ext::collapse,
@@ -27,11 +27,11 @@ pub struct DebugTerminal<S = DebugSimulator> {
 
 impl<S> DebugTerminal<S>
 where
-    S: DebuggableSimulator + StoredCircuitSimulator,
+    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit>,
 {
-    pub fn new(circuit: Circuit) -> Result<Self, <S as BuildSimulator>::E>
+    pub fn new(circuit: Circuit<HybridCircuit>) -> Result<Self, <S as BuildSimulator<HybridCircuit>>::E>
     where
-        S: BuildSimulator,
+        S: BuildSimulator<HybridCircuit>,
     {
         let simulator = S::build(circuit)?;
         Ok(Self { simulator })
@@ -109,7 +109,7 @@ where
                     CommandIdent::Continue => {
                         "Continue execution until a breakpoint is hit or end of circuit is reached. \
                         Optionally specify to skip a number of breakpoints or type ignore to skip breakpoints entirely.
-                        
+
                         EXAMPLES
                         'continue' - Continue until a breakpoint is hit or end of circuit is reached.
                         'continue 2' - Skip the next 2 breakpoints and continue until the following breakpoint is hit or end of circuit is reached.
@@ -122,14 +122,14 @@ where
                     }
                     CommandIdent::Next => {
                         "Step forward one instruction. Optionally specify a number of instructions to step forward.
-                        
+
                         EXAMPLES
                         'next' - Step forward one instruction.
                         'next 5' - Step forward 5 instructions."
                     }
                     CommandIdent::Previous => {
                         "Step back one instruction. Optionally specify a number of instructions to step back.
-                        
+
                         EXAMPLES
                         'prev' - Step back one instruction.
                         'prev 3' - Step back 3 instructions."
@@ -143,14 +143,14 @@ where
                     }
                     CommandIdent::Delete => {
                         "Delete the breakpoint at the specified gate indices.
-                        
+
                         EXAMPLES
                         'delete 5' - Delete the breakpoint at gate index 5.
                         'delete 2 4 6' - Delete breakpoints at gate indices 2, 4 and 6."
                     }
                     CommandIdent::Disable => {
                         "Disable the breakpoint at the specified gate indices.
-                    
+
                         EXAMPLES
                         'disable 5' - Disable the breakpoint at gate index 5.
                         'disable 2 4 6' - Disable breakpoints at gate indices 2, 4 and 6."
@@ -164,7 +164,7 @@ where
                     }
                     CommandIdent::State => {
                         "Show the current state. Optionally specify to show only a specific part of the state.
-                        
+
                         EXAMPLES
                         'state' - Show the entire current state.
                         'state 5' - Show the part of the current state of bit string with value 5 (in binary, 101).
@@ -175,7 +175,7 @@ where
                     CommandIdent::Collapse => {
                         "Collapse the current state into a single value and show the count of each value. \
                         Optionally specify to collapse multiple times to get a distribution.
-                        
+
                         EXAMPLES
                         'collapse' - Collapse the current state once and show the count of each value.
                         'collapse 3' - Collapse the current state 3 times and show the count of each value."
@@ -185,7 +185,7 @@ where
                     }
                     CommandIdent::Help => {
                         "Show this help message. Optionally specify a command to get more specific help.
-                        
+
                         EXAMPLES
                         'help' - Show a list of all commands with a short description.
                         'help continue' - Show a detailed description of the continue command with examples."

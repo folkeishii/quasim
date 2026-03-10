@@ -18,15 +18,8 @@ impl TryFrom<Circuit> for SimpleSimulator {
 
     fn try_from(value: Circuit) -> Result<Self, Self::Error> {
         // Lets check so that circuit only contains quantum gates, otherwise we cant precompute state vector
-        let only_gates = value
-            .instructions()
-            .iter()
-            .all(|inst| matches!(inst, Instruction::Gate(_)));
-        if !only_gates {
-            return Err(SimpleError::UnsupportedInstruction);
-        }
 
-        let sv_sim = SVSimulator::build(value)?;
+        let sv_sim = SVSimulator::build(value.into())?;
         let state_vector = sv_sim.final_state();
         let probs = state_vector.iter().map(|&c| c.norm_sqr());
         let dist = WeightedIndex::new(probs)

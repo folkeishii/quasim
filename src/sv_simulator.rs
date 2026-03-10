@@ -1,6 +1,7 @@
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
+use crate::circuit::HybridCircuit;
 use crate::simulator::HybridSimulator;
 use crate::{
     cart,
@@ -15,13 +16,13 @@ use crate::{
 
 pub struct SVExecutor {
     state_vector: DVector<Complex<f64>>,
-    circuit: Circuit,
+    circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile<Value>,
 }
 
 impl SVExecutor {
-    fn new(circuit: Circuit) -> Self {
+    fn new(circuit: Circuit<HybridCircuit>) -> Self {
         let size = 1 << circuit.n_qubits();
         let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
         init_state_vector[0] = cart![1.0];
@@ -208,11 +209,13 @@ impl SVExecutor {
 }
 
 impl StoredCircuitSimulator for SVExecutor {
-    fn circuit(&self) -> &Circuit {
+    type B = HybridCircuit;
+
+    fn circuit(&self) -> &Circuit<HybridCircuit> {
         &self.circuit
     }
 
-    fn circuit_mut(&mut self) -> &mut Circuit {
+    fn circuit_mut(&mut self) -> &mut Circuit<HybridCircuit> {
         &mut self.circuit
     }
 }
@@ -220,13 +223,13 @@ impl StoredCircuitSimulator for SVExecutor {
 // SVSimulator
 
 pub struct SVSimulator {
-    circuit: Circuit,
+    circuit: Circuit<HybridCircuit>,
 }
 
-impl TryFrom<Circuit> for SVSimulator {
+impl TryFrom<Circuit<HybridCircuit>> for SVSimulator {
     type Error = SVError;
 
-    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         Ok(Self { circuit: value })
     }
 }
@@ -252,10 +255,10 @@ pub struct SVSimulatorDebugger {
     executor: SVExecutor,
 }
 
-impl TryFrom<Circuit> for SVSimulatorDebugger {
+impl TryFrom<Circuit<HybridCircuit>> for SVSimulatorDebugger {
     type Error = SVError;
 
-    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         Ok(Self {
             executor: SVExecutor::new(value),
         })
@@ -286,11 +289,13 @@ impl DebuggableSimulator for SVSimulatorDebugger {
 }
 
 impl StoredCircuitSimulator for SVSimulatorDebugger {
-    fn circuit(&self) -> &Circuit {
+    type B = HybridCircuit;
+
+    fn circuit(&self) -> &Circuit<HybridCircuit> {
         &self.executor.circuit
     }
 
-    fn circuit_mut(&mut self) -> &mut Circuit {
+    fn circuit_mut(&mut self) -> &mut Circuit<HybridCircuit> {
         &mut self.executor.circuit
     }
 }
@@ -394,7 +399,7 @@ mod tests {
         // .call("U", 2)
         // .call("U", 3);
 
-        let mut sim = SVSimulatorDebugger::build(circuit.clone()).unwrap();
+        let mut sim = SVSimulatorDebugger::build(circuit.into()).unwrap();
 
         assert!(equal_to_matrix_c(
             sim.cont(),
