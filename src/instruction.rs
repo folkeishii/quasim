@@ -1,13 +1,11 @@
-use crate::{
-    expr_dsl::Expr,
-    gate::{Gate, QBits},
-};
+use crate::{expr_dsl::Expr, gate::Gate};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Gate(Gate),
-    Measurement(QBits, String), // Targets, Register, Register bit offset
-    Jump(usize),                // Cannot jump into another sub circuit
-    JumpIf(Expr, usize),        // Cannot jump into another sub circuit
+    MeasureBit(usize, (String, usize)), // Qbit, (Creg, bit)
+    MeasureAll(String),                 // Creg
+    Jump(usize),
+    JumpIf(Expr, usize),
     Assign(Expr, String),
 }

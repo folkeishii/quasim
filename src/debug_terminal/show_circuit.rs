@@ -610,8 +610,8 @@ impl Column {
     ) -> Self {
         match instruction {
             Instruction::Gate(gate) => Self::from_gate(simulator.n_qubits(), gate),
-            Instruction::Measurement(qbits, _) => {
-                let mut qbits = qbits.get_bitstring();
+            Instruction::MeasureBit(qbit, _) => {
+                let mut qbits = 1 << qbit;
                 let mut column = if qbits & 1 == 1 {
                     Column::init_with_gate(String::from("╭─╱─╮"))
                 } else {
@@ -627,6 +627,7 @@ impl Column {
                 }
                 column
             }
+            Instruction::MeasureAll(_) => todo!(),
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
@@ -2151,7 +2152,7 @@ mod tests {
         circuit::Circuit,
         debug_simulator::DebugSimulator,
         debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit},
-        gate::{Gate, GateType, QBits},
+        gate::{Gate, GateType},
         instruction::Instruction,
         simulator::{BuildSimulator, DebuggableSimulator},
     };
@@ -2218,7 +2219,7 @@ mod tests {
         return;
         let w = &mut stdout();
         let sim = DebugSimulator::build(Circuit::new(7)).unwrap();
-        let instruction = Instruction::Measurement(QBits::from_bitstring(0b101011010), "".into());
+        let instruction = Instruction::MeasureBit(0, ("".into(), 0));
         let mut track_col = Column::only_tracks(10, None);
         let mut measure_col = Column::from_instruction(&sim, &instruction);
         track_col.extend_east(&mut measure_col);
@@ -2247,10 +2248,7 @@ mod tests {
         let mut col3 = Column::from_instruction(&sim, &instruction3);
         let mut col4 = Column::from_instruction(&sim, &instruction4);
         let mut col5 = Column::only_tracks(7, None);
-        let mut col6 = Column::from_instruction(
-            &sim,
-            &Instruction::Measurement(QBits::from_bitstring(0xFFFF), "".into()),
-        );
+        let mut col6 = Column::from_instruction(&sim, &Instruction::MeasureAll("".into()));
         let mut col7 = Column::only_tracks(7, None);
 
         col0.extend_east(&mut col1);

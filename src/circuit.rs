@@ -11,7 +11,7 @@ use crate::{
         pc::CircuitPc,
     },
     expr_dsl::Expr,
-    gate::{Gate, GateType, QBits},
+    gate::{Gate, GateType},
     instruction::Instruction,
 };
 mod qasm_parse;
@@ -58,8 +58,8 @@ impl Circuit {
             Some(Instruction::Gate(gate)) => {
                 Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
             }
-            Some(Instruction::Measurement(targets, register)) => Some(Instruction::Measurement(
-                *targets << circuit_pc.lsq(),
+            Some(Instruction::MeasureBit(target, register)) => Some(Instruction::MeasureBit(
+                *target << circuit_pc.lsq(),
                 register.clone(),
             )),
             rst => rst.cloned(),
@@ -259,19 +259,32 @@ impl Circuit {
 
     // Classical instructions
 
-    pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
-        self.instructions.push(Instruction::Measurement(
-            QBits::from_bitstring(1 << target),
-            reg.to_owned(),
-        ));
+    pub fn measure_bit(mut self, target: usize, reg: (&str, usize)) -> Self {
+        self.instructions
+            .push(Instruction::MeasureBit(target, (reg.0.into(), reg.1)));
         self
     }
 
-    pub fn measure(mut self, targets: &[usize], reg: &str) -> Self {
-        self.instructions.push(Instruction::Measurement(
-            QBits::from_indices(targets),
-            reg.to_owned(),
-        ));
+    /// Measure multiple bits into a register
+    ///
+    /// Example:
+    /// ```ignore
+    /// measure_bits(&[2,1,3], "reg")
+    /// // Is equivalent to
+    /// measure_bit(2, ("reg", 0))
+    /// measure_bit(1, ("reg", 1))
+    /// measure_bit(3, ("reg", 2))
+    /// ```
+    pub fn measure_bits(mut self, targets: &[usize], reg: &str) -> Self {
+        for (i, target) in targets.iter().enumerate() {
+            self = self.measure_bit(*target, (reg, i))
+        }
+        self
+    }
+
+    /// Measures all qubits into a register
+    pub fn measure(mut self, reg: &str) -> Self {
+        self.instructions.push(Instruction::MeasureAll(reg.into()));
         self
     }
 
@@ -305,7 +318,7 @@ impl Circuit {
 
     pub fn reset(self, target: usize) -> Self {
         self.new_reg("_reset")
-            .measure_bit(target, "_reset")
+            .measure_bit(target, ("_reset", 0))
             .apply_if(Expr::Reg("_reset".to_owned()).eq(1))
             .x(target)
     }
