@@ -1,5 +1,7 @@
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Sub};
 
+use serde::{Deserialize, Serialize};
+
 use crate::register_file::RegisterFile;
 
 #[derive(Debug, thiserror::Error)]
@@ -8,7 +10,7 @@ pub enum ValueError {
     TypeMismatch,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     Int(i32),
     Float(f32),
@@ -102,7 +104,7 @@ impl Value {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Expr {
     Val(Value),
     Reg(String),
