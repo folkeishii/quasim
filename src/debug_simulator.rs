@@ -32,7 +32,8 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
         // Check for mid-cicuit measurement
         let mut encountered = false;
         for inst in circuit.instructions() {
-            let is_measurement = matches!(inst, Instruction::Measurement(_, _));
+            let is_measurement = matches!(inst, Instruction::MeasureBit(_, _))
+                || matches!(inst, Instruction::MeasureAll(_));
             if is_measurement {
                 encountered = true;
             } else if encountered {
@@ -67,13 +68,11 @@ impl DebuggableSimulator for DebugSimulator {
                 self.current_state = mat * self.current_state.clone();
                 self.pc_mut().increment();
             }
-            Instruction::Measurement(qbits, _) => {
-                for qbit in qbits.get_indices() {
-                    self.current_state =
-                        measure(qbit, &self.current_state, self.circuit.n_qubits());
-                }
+            Instruction::MeasureBit(qbit, _) => {
+                self.current_state = measure(qbit, &self.current_state, self.circuit.n_qubits());
                 self.pc_mut().increment();
             }
+            Instruction::MeasureAll(_) => todo!(),
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
@@ -105,7 +104,8 @@ impl DebuggableSimulator for DebugSimulator {
                 mat.try_inverse_mut();
                 self.current_state = mat * self.current_state.clone();
             }
-            Instruction::Measurement(_, _) => todo!(),
+            Instruction::MeasureBit(_, _) => todo!(),
+            Instruction::MeasureAll(_) => todo!(),
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),

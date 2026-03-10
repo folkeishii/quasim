@@ -11,7 +11,7 @@ use crate::{
         pc::CircuitPc,
     },
     expr_dsl::Expr,
-    gate::{Gate, GateType, QBits},
+    gate::{Gate, GateType},
     instruction::Instruction,
 };
 mod qasm_parse;
@@ -95,8 +95,8 @@ impl Circuit<HybridCircuit> {
             Some(Instruction::Gate(gate)) => {
                 Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
             }
-            Some(Instruction::Measurement(targets, register)) => Some(Instruction::Measurement(
-                *targets << circuit_pc.lsq(),
+            Some(Instruction::MeasureBit(target, register)) => Some(Instruction::MeasureBit(
+                *target << circuit_pc.lsq(),
                 register.clone(),
             )),
             rst => rst.cloned(),
@@ -105,7 +105,6 @@ impl Circuit<HybridCircuit> {
 }
 
 impl<B: CircuitBehaviour> Circuit<B> {
-
     pub fn valid_pc(&self, circuit_pc: &CircuitPc) -> bool {
         circuit_pc.pc() <= self.instructions().len()
     }
@@ -351,6 +350,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self.breakpoints.delete(pc.pc())
     }
 }
+
 impl<B: CircuitBehaviour> Circuit<B>
 where
     Self: Into<Circuit<HybridCircuit>>,
@@ -363,21 +363,37 @@ where
 
     // Classical instructions
 
-    pub fn measure_bit(self, target: usize, reg: &str) -> Circuit<HybridCircuit> {
+    pub fn measure_bit(self, target: usize, reg: (&str, usize)) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
-        ret_self.instructions.push(Instruction::Measurement(
-            QBits::from_bitstring(1 << target),
-            reg.to_owned(),
-        ));
+        ret_self
+            .instructions
+            .push(Instruction::MeasureBit(target, (reg.0.into(), reg.1)));
         ret_self
     }
 
-    pub fn measure(self, targets: &[usize], reg: &str) -> Circuit<HybridCircuit> {
+    /// Measure multiple bits into a register
+    ///
+    /// Example:
+    /// ```ignore
+    /// measure_bits(&[2,1,3], "reg")
+    /// // Is equivalent to
+    /// measure_bit(2, ("reg", 0))
+    /// measure_bit(1, ("reg", 1))
+    /// measure_bit(3, ("reg", 2))
+    /// ```
+    pub fn measure_bits(self, targets: &[usize], reg: &str) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
-        ret_self.instructions.push(Instruction::Measurement(
-            QBits::from_indices(targets),
-            reg.to_owned(),
-        ));
+        for (i, target) in targets.iter().enumerate() {
+            ret_self = ret_self.measure_bit(*target, (reg, i))
+        }
+        ret_self
+    }
+
+    pub fn measure(self, reg: &str) -> Circuit<HybridCircuit> {
+        let mut ret_self = self.into();
+        ret_self
+            .instructions
+            .push(Instruction::MeasureAll(reg.into()));
         ret_self
     }
 
@@ -418,7 +434,7 @@ where
 
     pub fn reset(self, target: usize) -> Circuit<HybridCircuit> {
         self.new_reg("_reset")
-            .measure_bit(target, "_reset")
+            .measure_bit(target, ("_reset", 0))
             .apply_if(Expr::Reg("_reset".to_owned()).eq(1))
             .x(target)
     }
