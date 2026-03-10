@@ -3,8 +3,6 @@ use quasim::expr_dsl::Value;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
-const PI: f64 = 3.14; // Used in calculating the number of iterations for Grover's algorithm
-
 fn check_quantum(func: &[usize]) -> bool {
     let bits: usize = func.len();
     let n = 1 << bits;
@@ -14,7 +12,7 @@ fn check_quantum(func: &[usize]) -> bool {
         circuit = circuit.h(i);
     }
 
-    let iterations = (PI / 4.0 * ((n as f64).sqrt())).floor() as usize;
+    let iterations = (std::f64::consts::PI / 4.0 * ((n as f64).sqrt())).floor() as usize;
 
     for _i in 0..iterations {
         // Controlbits
