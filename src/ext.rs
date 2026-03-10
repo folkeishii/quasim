@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 use std::mem::replace;
-use std::ops::{Deref};
+use std::ops::Deref;
 use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};

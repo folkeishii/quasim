@@ -6,7 +6,7 @@ use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
-    ext::{get_gate_matrix},
+    ext::get_gate_matrix,
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,

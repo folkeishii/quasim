@@ -50,7 +50,7 @@ impl TryFrom<Circuit> for DebugSimulator {
 impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
-            return None
+            return None;
         };
 
         match inst {
