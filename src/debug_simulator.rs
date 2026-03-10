@@ -1,6 +1,6 @@
 use crate::{
     cart,
-    circuit::{Circuit, HybridCircuit, pc::CircuitPc},
+    circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
     simulator::{DebuggableSimulator, StoredCircuitSimulator},
@@ -12,6 +12,16 @@ pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
+}
+
+
+impl TryFrom<Circuit<PureCircuit>> for DebugSimulator {
+    type Error = DebugSimulatorError;
+
+    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+        Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
+    }
+
 }
 
 impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
@@ -179,7 +189,7 @@ mod tests {
     #[test]
     fn measure_hadamard_all() {
         let circ = Circuit::new(3).h(0).h(1).h(2);
-        let mut sim = DebugSimulator::build(circ.into()).expect("Circuit should be valid");
+        let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
         let mut res = sim.cont().clone();
         let plus_plus_plus: DVector<Complex<f64>> = dvector![
             cart!(0.5 * FRAC_1_SQRT_2), // |000>
@@ -286,7 +296,7 @@ mod tests {
     #[test]
     fn measure_entanglement() {
         let circ = Circuit::new(3).h(0).cx(&[0], 1);
-        let mut sim = DebugSimulator::build(circ.into()).expect("Circuit should be valid");
+        let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
         let mut res = sim.cont().clone();
         // Expected state vector before any measurments
         let bell: DVector<Complex<f64>> = dvector![
@@ -339,7 +349,7 @@ mod tests {
     fn bell_state_test() {
         let circ = Circuit::new(2).h(0).cx(&[0], 1);
 
-        let mut sim = DebugSimulator::build(circ.into()).expect("No mid-circuit measurements");
+        let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
         let collapsed = collapse(sim.cont().as_ref());
 
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
@@ -540,7 +550,7 @@ mod tests {
             cart!(0.0),
             cart!(FRAC_1_SQRT_2) // |111>
         ];
-        let mut sim = DebugSimulator::build(circ.into()).expect("Should be no measurements in circ.");
+        let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
         assert_is_vector_equal!(psi0.clone(), sim.current_state().clone());
         sim.next().expect("Apply Hadamard.");
         assert_is_vector_equal!(psi1.clone(), sim.current_state().clone());

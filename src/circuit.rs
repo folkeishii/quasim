@@ -607,7 +607,6 @@ mod tests {
                 .z(2)
                 .h(3)
                 .qft(&[0, 1, 2, 3])
-                .into(),
         )
         .unwrap();
 

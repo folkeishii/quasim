@@ -1,7 +1,7 @@
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
-use crate::circuit::HybridCircuit;
+use crate::circuit::{HybridCircuit, PureCircuit};
 use crate::simulator::HybridSimulator;
 use crate::{
     cart,
@@ -226,6 +226,14 @@ pub struct SVSimulator {
     circuit: Circuit<HybridCircuit>,
 }
 
+impl TryFrom<Circuit<PureCircuit>> for SVSimulator {
+    type Error = SVError;
+
+    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+        Ok(Self { circuit: value.into() })
+    }
+}
+
 impl TryFrom<Circuit<HybridCircuit>> for SVSimulator {
     type Error = SVError;
 
@@ -255,6 +263,15 @@ pub struct SVSimulatorDebugger {
     executor: SVExecutor,
 }
 
+impl TryFrom<Circuit<PureCircuit>> for SVSimulatorDebugger {
+    type Error = SVError;
+
+    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            executor: SVExecutor::new(value.into()),
+        })
+    }
+}
 impl TryFrom<Circuit<HybridCircuit>> for SVSimulatorDebugger {
     type Error = SVError;
 
@@ -399,7 +416,7 @@ mod tests {
         // .call("U", 2)
         // .call("U", 3);
 
-        let mut sim = SVSimulatorDebugger::build(circuit.into()).unwrap();
+        let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
 
         assert!(equal_to_matrix_c(
             sim.cont(),
