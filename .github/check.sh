@@ -2,9 +2,10 @@
 
 set -euo pipefail
 
-for filename in examples/*/Cargo.toml; do
+shopt -s globstar
+for filename in **/Cargo.toml; do
     [ -e "$filename" ] || continue
     cargo fmt --manifest-path "$filename" --all -- --check
-    cargo check --manifest-path "$filename"
+    cargo check --manifest-path "$filename" --benches
     cargo test --manifest-path "$filename"
 done
