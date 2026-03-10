@@ -28,11 +28,8 @@ fn check_quantum(func: &[usize]) -> bool {
                 circuit = circuit.x(j);
             }
         }
-        circuit = circuit.h(bits-1);
 
-        circuit = circuit.cx(&c_array, bits-1);
-
-        circuit = circuit.h(bits-1);
+        circuit = circuit.cz(&c_array, bits-1);
 
         for (j, &bit) in func.iter().rev().enumerate() {
             if bit == 0{
@@ -46,12 +43,8 @@ fn check_quantum(func: &[usize]) -> bool {
             circuit = circuit.x(i);
         }
 
-        circuit = circuit.h(bits-1);
-
-        circuit = circuit.cx(&c_array, bits-1);
-
-        circuit = circuit.h(bits-1); 
-
+        circuit = circuit.cz(&c_array, bits-1);
+        
         for i in 0..bits {
             circuit = circuit.x(i);
             circuit = circuit.h(i);
@@ -82,9 +75,9 @@ fn check_quantum(func: &[usize]) -> bool {
 
 fn main(){
 
-    let func: &[usize] = &[1, 1]; // f(x) written as b_x,b_(x-1),...,b_0
+    let func: &[usize] = &[1, 0, 1]; // f(x) written as b_x,b_(x-1),...,b_0
 
-    let iter = 100;
+    let iter = 1000;
     let mut true_count = 0;
 
     for _ in 0..iter {
@@ -94,4 +87,23 @@ fn main(){
     }
 
     println!("True count: {}", true_count);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_grover() {
+        let func: &[usize] = &[1, 0, 1]; // f(x) written as b_x,b_(x-1),...,b_0
+        let iter = 1000;
+        let mut true_count = 0;
+        for _ in 0..iter {
+            if check_quantum(func){
+                true_count += 1;
+            }
+        }
+
+        assert!(true_count >= 1-1/2_i32.pow(func.len() as u32));
+    }
 }
