@@ -1,6 +1,6 @@
 use std::f64::consts::FRAC_1_SQRT_2;
 
-use nalgebra::{Complex, Const, DVector, Dyn, SVector};
+use nalgebra::{Const, DVector, Dyn, SVector};
 use quasim::{
     cart,
     ext::equal_to_matrix_c,

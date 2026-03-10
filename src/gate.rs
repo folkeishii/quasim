@@ -1,10 +1,13 @@
-use std::f64::consts::{FRAC_1_SQRT_2, PI};
+use std::{
+    f64::consts::{FRAC_1_SQRT_2, PI},
+    ops::{Shl, Shr},
+};
 
 use nalgebra::Complex;
 
 use crate::cart;
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct QBits(usize);
 
 impl QBits {
@@ -42,8 +45,22 @@ impl QBits {
         vec
     }
 }
+impl Shl<usize> for QBits {
+    type Output = QBits;
 
-#[derive(Debug, Copy, Clone)]
+    fn shl(self, rhs: usize) -> Self::Output {
+        Self(self.0 << rhs)
+    }
+}
+impl Shr<usize> for QBits {
+    type Output = QBits;
+
+    fn shr(self, rhs: usize) -> Self::Output {
+        Self(self.0 >> rhs)
+    }
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum GateType {
     X,
     Y,
@@ -77,7 +94,7 @@ pub enum GateError {
     InvalidTargets,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Gate {
     ty: GateType,
     controls: QBits,
@@ -162,5 +179,17 @@ impl Gate {
             &self.targets.get_indices(),
         )
         .unwrap()
+    }
+}
+
+impl Shl<usize> for Gate {
+    type Output = Gate;
+
+    fn shl(self, rhs: usize) -> Self::Output {
+        Gate {
+            ty: self.ty,
+            controls: self.controls << rhs,
+            targets: self.targets << rhs,
+        }
     }
 }

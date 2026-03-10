@@ -1,9 +1,9 @@
 use crate::{
     cart,
-    circuit::Circuit,
+    circuit::{Circuit, pc::CircuitPc},
     ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
-    simulator::{DebuggableSimulator, DoubleEndedSimulator, StoredCircuitSimulator},
+    simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
 use nalgebra::{Complex, DVector};
 
@@ -11,7 +11,7 @@ use nalgebra::{Complex, DVector};
 pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
     circuit: Circuit,
-    current_step: usize,
+    pc: CircuitPc,
 }
 
 impl TryFrom<Circuit> for DebugSimulator {
@@ -24,8 +24,7 @@ impl TryFrom<Circuit> for DebugSimulator {
         // Check for mid-cicuit measurement
         let mut encountered = false;
         for inst in circuit.instructions() {
-            let _ = inst; // avoid warning for now
-            let is_measurement = false; // matches!(inst, Instruction::Measurement(_));
+            let is_measurement = matches!(inst, Instruction::Measurement(_, _));
             if is_measurement {
                 encountered = true;
             } else if encountered {
@@ -41,7 +40,7 @@ impl TryFrom<Circuit> for DebugSimulator {
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),
             circuit: circuit,
-            current_step: 0,
+            pc: Default::default(),
         };
 
         Ok(sim)
@@ -50,47 +49,49 @@ impl TryFrom<Circuit> for DebugSimulator {
 
 impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.current_step >= self.instruction_count() {
+        let Some(inst) = self.circuit.instruction(self.pc()) else {
             return None;
-        }
-        match &self.circuit.instructions()[self.current_step] {
+        };
+
+        match inst {
             Instruction::Gate(gate) => {
                 let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
                 self.current_state = mat * self.current_state.clone();
+                self.pc_mut().increment();
             }
             Instruction::Measurement(qbits, _) => {
                 for qbit in qbits.get_indices() {
                     self.current_state =
                         measure(qbit, &self.current_state, self.circuit.n_qubits());
                 }
+                self.pc_mut().increment();
             }
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
         }
-        self.current_step += 1;
         Some(&self.current_state)
     }
 
-    fn current_instruction(&self) -> Option<(usize, &Instruction)> {
-        self.circuit
-            .instructions()
-            .get(self.current_step)
-            .map(|inst| (self.current_step, inst))
+    fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
+        (self.pc(), self.circuit.instruction(self.pc()))
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
         &self.current_state
     }
-}
 
-impl DoubleEndedSimulator for DebugSimulator {
     fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.current_step <= 0 {
+        if !self.pc_mut().decrement() {
             return None;
         }
-        self.current_step -= 1;
-        match &self.circuit.instructions()[self.current_step] {
+
+        let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // Should not happen
+            return None;
+        };
+
+        match inst {
             Instruction::Gate(gate) => {
                 let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits()).adjoint(); // All matricies are unitary --> inverse <=> adjoint
                 self.current_state = mat * self.current_state.clone();
@@ -102,17 +103,29 @@ impl DoubleEndedSimulator for DebugSimulator {
         }
         Some(&self.current_state)
     }
+
+    fn double_ended(&self) -> bool {
+        true
+    }
 }
 
 impl DebugSimulator {
-    pub fn instruction_count(&self) -> usize {
-        self.circuit.instructions().len()
+    fn pc(&self) -> &CircuitPc {
+        &self.pc
+    }
+
+    fn pc_mut(&mut self) -> &mut CircuitPc {
+        &mut self.pc
     }
 }
 
 impl StoredCircuitSimulator for DebugSimulator {
     fn circuit(&self) -> &Circuit {
         &self.circuit
+    }
+
+    fn circuit_mut(&mut self) -> &mut Circuit {
+        &mut self.circuit
     }
 }
 
@@ -124,13 +137,14 @@ pub enum DebugSimulatorError {
 
 #[cfg(test)]
 mod tests {
+    use crate::common_test;
     use crate::ext::{collapse, expand_matrix, expand_matrix_from_gate, get_gate_matrix, measure};
     use crate::{
         cart,
         circuit::Circuit,
         debug_simulator::DebugSimulator,
         gate::{Gate, GateType},
-        simulator::{BuildSimulator, DebuggableSimulator, DoubleEndedSimulator},
+        simulator::{BuildSimulator, DebuggableSimulator},
     };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f64::consts::FRAC_1_SQRT_2;
@@ -162,9 +176,9 @@ mod tests {
 
     #[test]
     fn measure_hadamard_all() {
-        let circ = Circuit::new(3).hadamard(0).hadamard(1).hadamard(2);
+        let circ = Circuit::new(3).h(0).h(1).h(2);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
-        let mut res = sim.continue_until(None).clone();
+        let mut res = sim.cont().clone();
         let plus_plus_plus: DVector<Complex<f64>> = dvector![
             cart!(0.5 * FRAC_1_SQRT_2), // |000>
             cart!(0.5 * FRAC_1_SQRT_2), // |001>
@@ -269,9 +283,9 @@ mod tests {
 
     #[test]
     fn measure_entanglement() {
-        let circ = Circuit::new(3).hadamard(0).cnot(0, 1);
+        let circ = Circuit::new(3).h(0).cx(&[0], 1);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
-        let mut res = sim.continue_until(None).clone();
+        let mut res = sim.cont().clone();
         // Expected state vector before any measurments
         let bell: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
@@ -321,10 +335,10 @@ mod tests {
 
     #[test]
     fn bell_state_test() {
-        let circ = Circuit::new(2).hadamard(0).cnot(0, 1);
+        let circ = Circuit::new(2).h(0).cx(&[0], 1);
 
         let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
-        let collapsed = collapse(sim.continue_until(None).as_ref());
+        let collapsed = collapse(sim.cont().as_ref());
 
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
         assert!(collapsed == 0b00 || collapsed == 0b11);
@@ -482,7 +496,7 @@ mod tests {
 
     #[test]
     fn test_hadamard_double_cnot_entanglement() {
-        let circ = Circuit::new(3).hadamard(0).cnot(0, 1).cnot(0, 2);
+        let circ = Circuit::new(3).h(0).cx(&[0], 1).cx(&[0], 2);
 
         let psi0: DVector<Complex<f64>> = dvector![
             cart!(1.0), // |000>
@@ -551,5 +565,10 @@ mod tests {
             Some(_) => panic!("Does not err correctly when stepping forwards."),
             None => println!("Errs correctly when stepping backwards"),
         }
+    }
+
+    #[test]
+    fn almost_grovers() {
+        common_test::almost_grovers::<DebugSimulator>();
     }
 }
