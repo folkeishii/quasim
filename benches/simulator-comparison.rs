@@ -1,5 +1,5 @@
 use quasim::{
-    circuit::Circuit,
+    circuit::{Circuit, HybridCircuit},
     debug_simulator::DebugSimulator,
     simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
     sv_simulator::SVSimulatorDebugger,
@@ -18,7 +18,7 @@ fn main() {
 )]
 fn circuit_size<S>(n_qubits: usize)
 where
-    S: DebuggableSimulator + BuildSimulator + StoredCircuitSimulator,
+    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
 {
     let mut circuit = Circuit::new(n_qubits);
 
@@ -26,7 +26,7 @@ where
         circuit = circuit.h(i);
     }
 
-    let mut sim = S::build(circuit).expect("Couldnt build circuit...");
+    let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
     sim.cont();
 }
 
@@ -37,7 +37,7 @@ where
 )]
 fn num_gates<S>(n_gates: usize)
 where
-    S: DebuggableSimulator + BuildSimulator + StoredCircuitSimulator,
+    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
 {
     let mut circuit = Circuit::new(6);
 
@@ -45,6 +45,6 @@ where
         circuit = circuit.h(i % 6);
     }
 
-    let mut sim = S::build(circuit).expect("Couldnt build circuit...");
+    let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
     sim.cont();
 }

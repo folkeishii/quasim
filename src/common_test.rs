@@ -2,7 +2,7 @@ use nalgebra::dvector;
 
 use crate::{
     cart,
-    circuit::Circuit,
+    circuit::{Circuit, HybridCircuit},
     ext::equal_to_matrix_c,
     simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
 };
@@ -10,7 +10,9 @@ use crate::{
 #[allow(dead_code)]
 #[allow(unreachable_code)]
 // Multi control not gates not possible rn.
-pub fn almost_grovers<D: BuildSimulator + DebuggableSimulator + StoredCircuitSimulator>() {
+pub fn almost_grovers<
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+>() {
     // Keep for sub circuits
     return;
     const N: usize = 2;
@@ -39,7 +41,7 @@ pub fn almost_grovers<D: BuildSimulator + DebuggableSimulator + StoredCircuitSim
         // circuit = circuit.call("sub", 2);
     }
 
-    let mut sim = D::build(circuit).expect("Could not build simulator");
+    let mut sim = D::build(circuit.into()).expect("Could not build simulator");
 
     assert!(equal_to_matrix_c(
         sim.cont(),

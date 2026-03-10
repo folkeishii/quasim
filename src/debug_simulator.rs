@@ -1,6 +1,6 @@
 use crate::{
     cart,
-    circuit::{Circuit, pc::CircuitPc},
+    circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
     simulator::{DebuggableSimulator, StoredCircuitSimulator},
@@ -10,14 +10,22 @@ use nalgebra::{Complex, DVector};
 #[derive(Debug, Clone)]
 pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
-    circuit: Circuit,
+    circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
 }
 
-impl TryFrom<Circuit> for DebugSimulator {
+impl TryFrom<Circuit<PureCircuit>> for DebugSimulator {
     type Error = DebugSimulatorError;
 
-    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+        Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
+    }
+}
+
+impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
+    type Error = DebugSimulatorError;
+
+    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         let circuit = value;
         let k = circuit.n_qubits();
 
@@ -121,11 +129,12 @@ impl DebugSimulator {
 }
 
 impl StoredCircuitSimulator for DebugSimulator {
-    fn circuit(&self) -> &Circuit {
+    type B = HybridCircuit;
+    fn circuit(&self) -> &Circuit<HybridCircuit> {
         &self.circuit
     }
 
-    fn circuit_mut(&mut self) -> &mut Circuit {
+    fn circuit_mut(&mut self) -> &mut Circuit<HybridCircuit> {
         &mut self.circuit
     }
 }
