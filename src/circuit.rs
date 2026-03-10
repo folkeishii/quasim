@@ -556,7 +556,6 @@ mod tests {
         cart,
         circuit::Circuit,
         ext::expand_matrix_from_gate,
-        instruction::Instruction,
         simulator::{BuildSimulator, RunnableSimulator},
         sv_simulator::SVSimulator,
     };
