@@ -2,10 +2,16 @@ use std::{
     collections::{HashMap, HashSet},
     f64::consts::PI,
 };
+pub mod breakpoint;
+pub mod pc;
 
 use crate::{
+    circuit::{
+        breakpoint::{Breakpoint, BreakpointList, IEBreakpoint},
+        pc::CircuitPc,
+    },
     expr_dsl::Expr,
-    gate::{Gate, GateType, QBits},
+    gate::{Gate, GateType},
     instruction::Instruction,
 };
 mod qasm_parse;
@@ -20,9 +26,10 @@ pub use qasm_parse::*;
 pub struct Circuit {
     instructions: Vec<Instruction>,
     n_qubits: usize,
-    registers: HashSet<String>,
     labels: HashMap<String, usize>,
     unresolved_labels: Vec<(String, usize)>,
+    breakpoints: BreakpointList,
+    registers: HashSet<String>,
 }
 
 impl Circuit {
@@ -33,12 +40,30 @@ impl Circuit {
             registers: HashSet::new(),
             labels: HashMap::new(),
             unresolved_labels: Vec::new(),
+            breakpoints: Default::default(),
         }
     }
 
-    pub fn new_reg(mut self, name: &str) -> Self {
-        self.registers.insert(name.to_owned());
+    pub fn new_reg<I: Into<String>>(mut self, name: I) -> Self {
+        self.registers.insert(name.into());
         self
+    }
+
+    pub fn valid_pc(&self, circuit_pc: &CircuitPc) -> bool {
+        circuit_pc.pc() <= self.instructions().len()
+    }
+
+    pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<Instruction> {
+        match self.instructions().get(circuit_pc.pc()) {
+            Some(Instruction::Gate(gate)) => {
+                Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
+            }
+            Some(Instruction::MeasureBit(target, register)) => Some(Instruction::MeasureBit(
+                *target << circuit_pc.lsq(),
+                register.clone(),
+            )),
+            rst => rst.cloned(),
+        }
     }
 
     pub fn instructions(&self) -> &[Instruction] {
@@ -234,39 +259,53 @@ impl Circuit {
 
     // Classical instructions
 
-    pub fn measure_bit(mut self, target: usize, reg: &str) -> Self {
-        self.instructions.push(Instruction::Measurement(
-            QBits::from_bitstring(1 << target),
-            reg.to_owned(),
-        ));
+    pub fn measure_bit(mut self, target: usize, reg: (&str, usize)) -> Self {
+        self.instructions
+            .push(Instruction::MeasureBit(target, (reg.0.into(), reg.1)));
         self
     }
 
-    pub fn measure(mut self, targets: &[usize], reg: &str) -> Self {
-        self.instructions.push(Instruction::Measurement(
-            QBits::from_indices(targets),
-            reg.to_owned(),
-        ));
+    /// Measure multiple bits into a register
+    ///
+    /// Example:
+    /// ```ignore
+    /// measure_bits(&[2,1,3], "reg")
+    /// // Is equivalent to
+    /// measure_bit(2, ("reg", 0))
+    /// measure_bit(1, ("reg", 1))
+    /// measure_bit(3, ("reg", 2))
+    /// ```
+    pub fn measure_bits(mut self, targets: &[usize], reg: &str) -> Self {
+        for (i, target) in targets.iter().enumerate() {
+            self = self.measure_bit(*target, (reg, i))
+        }
         self
     }
 
-    pub fn jump(mut self, label: &str) -> Self {
-        let pc = match self.try_to_resolve_label(label) {
-            Some(label_pc) => label_pc,
+    /// Measures all qubits into a register
+    pub fn measure(mut self, reg: &str) -> Self {
+        self.instructions.push(Instruction::MeasureAll(reg.into()));
+        self
+    }
+
+    pub fn jump(mut self, label: String) -> Self {
+        let circuit_pc = match self.try_to_resolve_label(label) {
+            Some(circuit_pc) => circuit_pc.clone(),
             None => 0, // Placeholder pc
         };
 
-        self.instructions.push(Instruction::Jump(pc));
+        self.instructions.push(Instruction::Jump(circuit_pc));
         self
     }
 
-    pub fn jump_if(mut self, expr: Expr, label: &str) -> Self {
-        let pc = match self.try_to_resolve_label(label) {
-            Some(label_pc) => label_pc,
+    pub fn jump_if(mut self, expr: Expr, label: String) -> Self {
+        let circuit_pc = match self.try_to_resolve_label(label) {
+            Some(circuit_pc) => circuit_pc.clone(),
             None => 0, // Placeholder pc
         };
 
-        self.instructions.push(Instruction::JumpIf(expr, pc));
+        self.instructions
+            .push(Instruction::JumpIf(expr, circuit_pc));
         self
     }
 
@@ -279,7 +318,7 @@ impl Circuit {
 
     pub fn reset(self, target: usize) -> Self {
         self.new_reg("_reset")
-            .measure_bit(target, "_reset")
+            .measure_bit(target, ("_reset", 0))
             .apply_if(Expr::Reg("_reset".to_owned()).eq(1))
             .x(target)
     }
@@ -326,27 +365,27 @@ impl Circuit {
     }
 
     // Label
-    pub fn label(mut self, label: &str) -> Self {
+    pub fn label(mut self, label: String) -> Self {
         let pc = self.instructions.len();
 
-        if let Some(idx) = self.labels.get(label) {
+        if let Some(idx) = self.labels.get(&label) {
             panic!("Label '{label}' was already defined on instruction row {idx}")
         }
 
-        self.labels.insert(label.to_owned(), pc);
+        self.labels.insert(label, pc);
 
         // After a new label has been added we try to resolve unresolved labels and patch instructions
         self.try_to_patch_instructions();
         self
     }
 
-    fn try_to_resolve_label(&mut self, label: &str) -> Option<usize> {
-        if let Some(pc) = self.labels.get(label) {
-            return Some(*pc);
+    fn try_to_resolve_label(&mut self, label: String) -> Option<usize> {
+        if let Some(&pc) = self.labels.get(&label) {
+            return Some(pc);
         }
 
         // 1. If label doesnt exist, add it to list of unresolved labels with accompanying instruction index
-        let pair = (label.to_owned(), self.instructions.len());
+        let pair = (label, self.instructions.len());
         self.unresolved_labels.push(pair);
         None
     }
@@ -355,20 +394,20 @@ impl Circuit {
         let mut to_remove = Vec::new();
 
         // 2. Patch instructions
-        for (label, inst_index) in &self.unresolved_labels.clone() {
-            if let Some(resolved_pc) = self.try_to_resolve_label(label) {
-                let inst = &mut self.instructions[*inst_index];
+        for (label, pc) in self.unresolved_labels.clone() {
+            let Some(resolved_pc) = self.try_to_resolve_label(label.clone()) else {
+                continue;
+            };
 
-                *inst = match inst {
-                    Instruction::Jump(_) => Instruction::Jump(resolved_pc),
+            let inst = &mut self.instructions[pc];
 
-                    Instruction::JumpIf(expr, _) => Instruction::JumpIf(expr.clone(), resolved_pc),
+            match inst {
+                Instruction::Jump(jump_pc) => *jump_pc = resolved_pc,
+                Instruction::JumpIf(_expr, jump_pc) => *jump_pc = resolved_pc,
+                _ => continue,
+            };
 
-                    _ => continue,
-                };
-
-                to_remove.push((label.clone(), *inst_index));
-            }
+            to_remove.push((label.clone(), pc));
         }
 
         // 3. Remove resolved labels after patching
@@ -389,6 +428,53 @@ impl Circuit {
         }
         inverted_circuit.instructions.reverse();
         inverted_circuit
+    }
+
+    // Breakpoint
+
+    pub fn breakpoint(mut self) -> Self {
+        self.breakpoints.insert_or_enable(self.instructions.len());
+        self
+    }
+
+    pub fn next_break(&self, pc: &CircuitPc) -> Option<(CircuitPc, bool)> {
+        let brk = self.breakpoints.next_break(pc.pc())?;
+        Some((CircuitPc::new(brk.pc()), brk.enabled()))
+    }
+
+    pub fn next_enabled_break(&self, pc: &CircuitPc) -> Option<CircuitPc> {
+        while let Some((pc, enabled)) = self.next_break(pc) {
+            if enabled {
+                return Some(pc);
+            }
+        }
+        None
+    }
+
+    pub fn breakpoint_at(&self, pc: &CircuitPc) -> Option<&Breakpoint> {
+        self.breakpoints.get(pc.pc())
+    }
+
+    pub fn enabled_breakpoint_at(&self, pc: &CircuitPc) -> bool {
+        self.breakpoint_at(pc)
+            .map(Breakpoint::enabled)
+            .unwrap_or(false)
+    }
+
+    pub fn insert_breakpoint(&mut self, pc: &CircuitPc) -> IEBreakpoint {
+        self.breakpoints.insert_or_enable(pc.pc())
+    }
+
+    pub fn enable_breakpoint(&mut self, pc: &CircuitPc) -> bool {
+        self.breakpoints.enable(pc.pc())
+    }
+
+    pub fn disable_breakpoint(&mut self, pc: &CircuitPc) -> bool {
+        self.breakpoints.disable(pc.pc())
+    }
+
+    pub fn delete_breakpoint(&mut self, pc: &CircuitPc) -> bool {
+        self.breakpoints.delete(pc.pc())
     }
 }
 
@@ -422,20 +508,17 @@ mod tests {
         let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
         l == v2.len() && is_matrix_equal_to(m1, m2)
     }
-
     macro_rules! assert_is_vector_equal {
         ($m1: expr, $m2: expr) => {
             assert!(is_vector_equal_to($m1, $m2))
         };
     }
-
     fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
         let mut circuit_tot = Circuit::new(std::cmp::max(circuit1.n_qubits(), circuit2.n_qubits()));
         circuit_tot.instructions =
             [circuit1.instructions.clone(), circuit2.instructions.clone()].concat();
         circuit_tot
     }
-
     #[test]
     fn inverse_test() {
         let circ = Circuit::new(5)
@@ -464,7 +547,6 @@ mod tests {
         }
         assert_is_matrix_equal!(id, res);
     }
-
     #[test]
     fn qft_test() {
         let sim =
