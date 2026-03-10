@@ -37,7 +37,7 @@ fn send_int(i: u8) -> u8 {
         .measure(&[0, 1], "b");
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.continue_until(None);
+    sim.cont();
 
     return match sim.register("b") {
         Value::Int(s) => s as u8,

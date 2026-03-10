@@ -78,7 +78,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
 
     circuit = circuit.measure(&[0, 1, 2, 3, 4, 5, 6, 7], "res");
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.continue_until(None);
+    sim.cont();
 
     match sim.register("res") {
         Value::Int(i) => i == 0,
