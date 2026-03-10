@@ -47,7 +47,7 @@ fn check_quantum(func: &[usize]) -> bool {
         }
     }
 
-    circuit = circuit.measure(&(0..bits).collect::<Vec<usize>>(), "res");
+    circuit = circuit.measure("res");
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.cont();
@@ -69,7 +69,7 @@ fn check_quantum(func: &[usize]) -> bool {
 }
 
 fn main() {
-    let func: &[usize] = &[1, 0, 1]; // f(x) written as b_x,b_(x-1),...,b_0
+    let func: &[usize] = &[1, 0, 0]; // f(x) written as b_x,b_(x-1),...,b_0
 
     let iter = 1000;
     let mut true_count = 0;
