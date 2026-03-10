@@ -600,15 +600,8 @@ mod tests {
     }
     #[test]
     fn qft_test() {
-        let sim = SVSimulator::build(
-            Circuit::new(4)
-                .x(0)
-                .y(1)
-                .z(2)
-                .h(3)
-                .qft(&[0, 1, 2, 3])
-        )
-        .unwrap();
+        let sim =
+            SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).qft(&[0, 1, 2, 3])).unwrap();
 
         let expected_vec = dvector![
             cart!(0.0, 0.35355),  // |0000>

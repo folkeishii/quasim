@@ -29,7 +29,9 @@ impl<S> DebugTerminal<S>
 where
     S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit>,
 {
-    pub fn new(circuit: Circuit<HybridCircuit>) -> Result<Self, <S as BuildSimulator<HybridCircuit>>::E>
+    pub fn new(
+        circuit: Circuit<HybridCircuit>,
+    ) -> Result<Self, <S as BuildSimulator<HybridCircuit>>::E>
     where
         S: BuildSimulator<HybridCircuit>,
     {

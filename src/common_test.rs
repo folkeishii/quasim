@@ -10,7 +10,9 @@ use crate::{
 #[allow(dead_code)]
 #[allow(unreachable_code)]
 // Multi control not gates not possible rn.
-pub fn almost_grovers<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator>() {
+pub fn almost_grovers<
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+>() {
     // Keep for sub circuits
     return;
     const N: usize = 2;

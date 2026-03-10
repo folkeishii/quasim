@@ -230,7 +230,9 @@ impl TryFrom<Circuit<PureCircuit>> for SVSimulator {
     type Error = SVError;
 
     fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
-        Ok(Self { circuit: value.into() })
+        Ok(Self {
+            circuit: value.into(),
+        })
     }
 }
 

@@ -11,10 +11,14 @@ use std::{
 use crossterm::style::ContentStyle;
 
 use crate::{
-    circuit::HybridCircuit, debug_terminal::show_circuit::connects::{
+    circuit::HybridCircuit,
+    debug_terminal::show_circuit::connects::{
         Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, ExtendEast, ExtendSouth,
         IsDirection, Passes,
-    }, gate::{Gate, QBits}, instruction::Instruction, simulator::{DebuggableSimulator, StoredCircuitSimulator}
+    },
+    gate::{Gate, QBits},
+    instruction::Instruction,
+    simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
 
 const T: bool = true;

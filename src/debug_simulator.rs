@@ -14,14 +14,12 @@ pub struct DebugSimulator {
     pc: CircuitPc,
 }
 
-
 impl TryFrom<Circuit<PureCircuit>> for DebugSimulator {
     type Error = DebugSimulatorError;
 
     fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
         Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
     }
-
 }
 
 impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
