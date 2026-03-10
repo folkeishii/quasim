@@ -1,6 +1,6 @@
 use crate::{expr_dsl::Expr, gate::Gate};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Gate(Gate),
     MeasureBit(usize, (String, usize)), // Qbit, (Creg, bit)

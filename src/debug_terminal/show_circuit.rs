@@ -28,25 +28,30 @@ where
     W: Write,
     S: DebuggableSimulator + StoredCircuitSimulator,
 {
-    let circuit = simulator.circuit();
-    let mut cols = vec![Column::only_kets(repeat('0').take(circuit.n_qubits()))];
+    let mut cols;
+    cols = vec![Column::only_kets(repeat('0').take(simulator.n_qubits()))];
     // Add seperator
-    let mut ncol = Column::only_tracks(circuit.n_qubits());
+    let mut ncol = Column::only_tracks(simulator.n_qubits(), None);
     let li = cols.len() - 1;
     cols[li].extend_east(&mut ncol);
     cols.push(ncol);
 
-    for instruction in circuit.instructions() {
-        let mut ncol = Column::from_instruction(circuit.n_qubits(), instruction);
+    for instruction in simulator.instructions() {
+        let mut ncol = Column::from_instruction(simulator, instruction);
         let li = cols.len() - 1;
         cols[li].extend_east(&mut ncol);
         cols.push(ncol);
         // Add seperator
-        let mut ncol = Column::only_tracks(circuit.n_qubits());
+        let mut ncol = Column::only_tracks(simulator.n_qubits(), None);
         let li = cols.len() - 1;
         cols[li].extend_east(&mut ncol);
         cols.push(ncol);
     }
+    // Add seperator
+    let mut ncol = Column::only_tracks(simulator.n_qubits(), None);
+    let li = cols.len() - 1;
+    cols[li].extend_east(&mut ncol);
+    cols.push(ncol);
 
     let mut col_iters = Vec::with_capacity(cols.len());
     for col in cols.iter() {
@@ -86,6 +91,7 @@ pub enum TrackModifier {
     CtrlNot,
     Swap,
     Ket(char),
+    Continues,
 }
 pub enum GateModifier {
     Ctrl,
@@ -244,8 +250,7 @@ impl Primitive {
             Some(TrackModifier::Ket(c)) => {
                 Self::track_char_3_mid(direction, TrackModifier::Ket(c), ix_3_mid, y)
             }
-            Some(TrackModifier::Swap) => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
-            None => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
+            _ => Self::track_char_1_mid(direction, modifier, ix_1_mid, y),
         }
     }
 
@@ -271,6 +276,7 @@ impl Primitive {
               (2, 1, _,  _,  _,  _,  Some(TrackModifier::CtrlNot)) => '□',
               (2, 1, _,  _,  _,  _,  Some(TrackModifier::Ket(c))) => c,
               (2, 1, _,  _,  _,  _,  Some(TrackModifier::Swap)) => '╳',
+              (2, 1, _,  _,  _,  _,  Some(TrackModifier::Continues)) => '⋯',
               (2, 1, F,  F,  F,  F,  None) => ' ',
               (2, 1, F,  F,  F,  T,  None) => ' '.connected_west(),
               (2, 1, F,  F,  T,  F,  None) => ' '.connected_south(),
@@ -327,6 +333,7 @@ impl Primitive {
               (2, 2, _,  _,  _,  _, TrackModifier::CtrlNot) => '□',
               (2, 2, _,  _,  _,  _, TrackModifier::Ket(c)) => c,
               (2, 2, _,  _,  _,  _, TrackModifier::Swap) => '╳',
+              (2, 2, _,  _,  _,  _,  TrackModifier::Continues) => '⋯',
               (2, 3, _,  _,  _,  _, TrackModifier::Ket(_)) => '⟩',
               (2, 3, _,  T,  _,  _, _) => ' '.passed_vertical().connected_east(),
               (2, 4, _,  _,  _,  _, TrackModifier::Ket(_)) => ' ',
@@ -597,7 +604,10 @@ pub struct Column {
     gate_content: EitherContent,
 }
 impl Column {
-    pub fn from_instruction(nqubits: usize, instruction: &Instruction) -> Self {
+    pub fn from_instruction<S: DebuggableSimulator + StoredCircuitSimulator>(
+        simulator: &S,
+        instruction: &Instruction,
+    ) -> Self {
         match instruction {
             Instruction::Gate(gate) => Self::from_gate(nqubits, gate),
             Instruction::MeasureBit(qbit, _) => {
@@ -607,7 +617,7 @@ impl Column {
                 } else {
                     Column::init_with_track(String::from("╭─╱─╮"))
                 };
-                for _ in 1..nqubits {
+                for _ in 1..simulator.n_qubits() {
                     qbits >>= 1;
                     if qbits & 1 == 1 {
                         column.close_with_gate();
@@ -839,10 +849,10 @@ impl Column {
         column
     }
 
-    pub fn only_tracks(nqubits: usize) -> Self {
-        let mut column = Self::init_with_track(1);
+    pub fn only_tracks(nqubits: usize, modifier: Option<TrackModifier>) -> Self {
+        let mut column = Self::init_with_track_modifier(1, modifier);
         for _ in 1..nqubits {
-            column.close_with_track();
+            column.close_with_track_modifier(modifier);
         }
         column
     }
@@ -968,6 +978,14 @@ impl ExtendEast for Column {
         {
             wst.extend_east(est);
         }
+    }
+}
+impl ExtendSouth for Column {
+    fn extend_south(&mut self, sth: &mut Self) {
+        self.last_mut().extend_south(sth.first_mut());
+        self.primitives
+            .0
+            .extend_from_slice(sth.primitives.0.as_slice());
     }
 }
 impl<'a> IntoIterator for &'a Column {
@@ -2136,7 +2154,7 @@ mod tests {
         debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit},
         gate::{Gate, GateType},
         instruction::Instruction,
-        simulator::BuildSimulator,
+        simulator::{BuildSimulator, DebuggableSimulator},
     };
 
     #[test]
@@ -2200,9 +2218,10 @@ mod tests {
     fn measurement() {
         return;
         let w = &mut stdout();
+        let sim = DebugSimulator::build(Circuit::new(7)).unwrap();
         let instruction = Instruction::MeasureBit(0, ("".into(), 0));
-        let mut track_col = Column::only_tracks(10);
-        let mut measure_col = Column::from_instruction(10, &instruction);
+        let mut track_col = Column::only_tracks(10, None);
+        let mut measure_col = Column::from_instruction(&sim, &instruction);
         track_col.extend_east(&mut measure_col);
         for (tp, mp) in track_col.into_iter().zip(measure_col.into_iter()) {
             tp.queue_print(w).unwrap();
@@ -2217,7 +2236,7 @@ mod tests {
     fn with_gate() {
         return;
         let w = &mut stdout();
-
+        let sim = DebugSimulator::build(Circuit::new(7)).unwrap();
         let instruction1 = Instruction::Gate(Gate::new(GateType::H, &[1, 5, 6], &[3]).unwrap());
         let instruction2 = Instruction::Gate(Gate::new(GateType::Y, &[], &[1]).unwrap());
         let instruction3 = Instruction::Gate(Gate::new(GateType::X, &[1, 5], &[2]).unwrap());
@@ -2278,6 +2297,29 @@ mod tests {
             .swap(3, 5)
             .cswap(&[2], 3, 4);
         let sim = DebugSimulator::build(circuit).unwrap();
+        show_circuit(w, &sim).unwrap();
+    }
+
+    #[test]
+    #[allow(unreachable_code)]
+    fn sub_circuit() {
+        //Keep for sub circuit
+        return;
+        let w = &mut stdout();
+
+        // let sub = Circuit::new(5).breakpoint().cx(&[0], 2).y(1).swap(2, 4);
+
+        let circuit = Circuit::new(7)
+            // .new_sub_circuit("Sub", sub)
+            .h(2)
+            .z(5)
+            // .call("Sub", 1)
+            .cswap(&[2], 3, 4);
+        let mut sim = DebugSimulator::build(circuit).unwrap();
+        show_circuit(w, &sim).unwrap();
+        sim.cont();
+        show_circuit(w, &sim).unwrap();
+        sim.cont();
         show_circuit(w, &sim).unwrap();
     }
 }
