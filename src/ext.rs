@@ -236,6 +236,28 @@ pub fn swap_matrix(
     cnot_12.clone() * cnot_21 * cnot_12
 }
 
+/// # reverse_matrix
+/// Returns the 2^n by 2^n matrix describing reversing the order of qubits.
+pub fn reverse_matrix(
+    controls: &[usize],
+    targets: &[usize],
+    n_qubits: usize,
+) -> DMatrix<Complex<f64>> {
+    let dim = 1 << n_qubits;
+    let mut mat = DMatrix::<Complex<f64>>::identity(dim, dim);
+    for i in 0..(n_qubits >> 1) {
+        mat *= swap_matrix(controls, targets[i], targets[n_qubits - 1 - i], n_qubits);
+    }
+    mat
+}
+
+/// # convention_convertion_matrix
+/// Returns the 2^n by 2^n matrix that converts a state vector/density matrix between,
+/// little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
+pub fn convention_convertion_matrix(n_qubits: usize) -> DMatrix<Complex<f64>> {
+    reverse_matrix(&[], &(0..n_qubits).collect::<Vec<usize>>(), n_qubits)
+}
+
 /// # expand_matrix
 /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
 pub fn expand_matrix(
@@ -362,9 +384,9 @@ impl<T: Ord> OrdByKey<T> for T {
 
 #[cfg(test)]
 mod tests {
-    use crate::ext::{get_gate_matrix, swap_matrix};
+    use crate::ext::{convention_convertion_matrix, get_gate_matrix, swap_matrix};
     use crate::gate::{Gate, GateType};
-    use nalgebra::{Complex, DMatrix, DVector, dmatrix};
+    use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
 
     fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
         m1.iter()
@@ -382,6 +404,12 @@ mod tests {
     macro_rules! assert_is_matrix_equal {
         ($m1: expr, $m2: expr) => {
             assert!(is_matrix_equal_to($m1, $m2))
+        };
+    }
+
+    macro_rules! assert_is_vector_equal {
+        ($m1: expr, $m2: expr) => {
+            assert!(is_vector_equal_to($m1, $m2))
         };
     }
 
@@ -407,5 +435,32 @@ mod tests {
                 cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
             ]
         );
+    }
+
+    #[test]
+    fn convention_test() {
+        let vec_msb = dvector![
+            cart!(0.0), //|000>
+            cart!(1.0), //|001>
+            cart!(2.0), //|010>
+            cart!(3.0), //|011>
+            cart!(4.0), //|100>
+            cart!(5.0), //|101>
+            cart!(6.0), //|110>
+            cart!(7.0), //|111>
+        ];
+        let vec_lsb = dvector![
+            cart!(0.0), //|000>
+            cart!(4.0), //|001>
+            cart!(2.0), //|010>
+            cart!(6.0), //|011>
+            cart!(1.0), //|100>
+            cart!(5.0), //|101>
+            cart!(3.0), //|110>
+            cart!(7.0), //|111>
+        ];
+        let mat = convention_convertion_matrix(3);
+        assert_is_vector_equal!(vec_lsb.clone(), mat.clone() * vec_msb.clone());
+        assert_is_vector_equal!(vec_msb, mat * vec_lsb);
     }
 }
