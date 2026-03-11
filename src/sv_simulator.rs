@@ -13,6 +13,7 @@ use crate::{
     simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
 };
 
+#[derive(Debug, Clone)]
 pub struct SVExecutor {
     state_vector: DVector<Complex<f64>>,
     circuit: Circuit,
@@ -139,9 +140,10 @@ impl SVExecutor {
         let mask = 1 << target;
         let measured_bit = measurement & mask;
         let shifted_measurement = ((measurement >> target) & 1) << bit_pos;
+        let register_bit_mask = 1 << bit_pos;
 
         if let Value::Int(val) = self.registers[reg] {
-            let val_cleared = (val as usize) & !shifted_measurement;
+            let val_cleared = (val as usize) & !register_bit_mask;
             self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
         } else {
             self.registers[reg] = Value::Int(shifted_measurement as i32)
@@ -262,6 +264,7 @@ impl RunnableSimulator for SVSimulator {
 
 // SVSimulatorDebugger
 
+#[derive(Debug, Clone)]
 pub struct SVSimulatorDebugger {
     executor: SVExecutor,
 }
@@ -530,6 +533,39 @@ mod tests {
         sim.executor.step_all();
 
         assert_eq!(sim.register("r0"), Value::Int(1));
+    }
+
+    #[test]
+    fn test_measure_bit_overwrites_existing_zero() {
+        let circuit = Circuit::new(2)
+            .new_reg("tmp")
+            .x(0)
+            .measure_bit(0, ("tmp", 0))
+            .measure_bit(1, ("tmp", 0));
+
+        let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
+        sim.executor.step_all();
+
+        assert_eq!(sim.register("tmp"), Value::Int(0));
+    }
+
+    #[test]
+    fn test_reset_with_shared_scratch_register() {
+        let circuit = Circuit::new(4)
+            .h(0)
+            .h(1)
+            .h(2)
+            .h(3)
+            .reset(0)
+            .reset(1)
+            .reset(2)
+            .reset(3);
+
+        let sim = SVSimulator::build(circuit).unwrap();
+
+        for _ in 0..100 {
+            assert!(sim.run() == 0);
+        }
     }
 
     #[test]

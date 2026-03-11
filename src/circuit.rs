@@ -395,7 +395,7 @@ impl Circuit {
 
         // 2. Patch instructions
         for (label, pc) in self.unresolved_labels.clone() {
-            let Some(resolved_pc) = self.try_to_resolve_label(label.clone()) else {
+            let Some(&resolved_pc) = self.labels.get(&label) else {
                 continue;
             };
 
@@ -571,5 +571,17 @@ mod tests {
             cart!(0.0),           // |1111>
         ];
         assert_is_vector_equal!(expected_vec, sim.final_state());
+    }
+
+    #[test]
+    fn unresolved_labels_are_patched_without_duplication() {
+        let circuit = Circuit::new(1)
+            .jump("target".into())
+            .label("other".into())
+            .x(0)
+            .label("target".into());
+
+        assert!(!circuit.has_unresolved_labels());
+        assert_eq!(circuit.instructions()[0], Instruction::Jump(2));
     }
 }
