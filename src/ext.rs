@@ -384,47 +384,25 @@ impl<T: Ord> OrdByKey<T> for T {
 
 #[cfg(test)]
 mod tests {
-    use crate::ext::{convention_convertion_matrix, get_gate_matrix, swap_matrix};
+    use crate::ext::{
+        convention_convertion_matrix, equal_to_matrix_c, get_gate_matrix, swap_matrix,
+    };
     use crate::gate::{Gate, GateType};
-    use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
-
-    fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
-        m1.iter()
-            .zip(m2.iter())
-            .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
-    }
-
-    fn is_vector_equal_to(v1: DVector<Complex<f64>>, v2: DVector<Complex<f64>>) -> bool {
-        let l = v1.len();
-        let m1 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v1.as_slice());
-        let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
-        l == v2.len() && is_matrix_equal_to(m1, m2)
-    }
-
-    macro_rules! assert_is_matrix_equal {
-        ($m1: expr, $m2: expr) => {
-            assert!(is_matrix_equal_to($m1, $m2))
-        };
-    }
-
-    macro_rules! assert_is_vector_equal {
-        ($m1: expr, $m2: expr) => {
-            assert!(is_vector_equal_to($m1, $m2))
-        };
-    }
+    use nalgebra::{dmatrix, dvector};
 
     #[test]
     fn swap_test() {
-        assert_is_matrix_equal!(
-            swap_matrix(&[], 0, 1, 2),
-            get_gate_matrix(&Gate::new(GateType::SWAP, &[], &[0, 1]).unwrap())
-        );
+        assert!(equal_to_matrix_c(
+            &swap_matrix(&[], 0, 1, 2),
+            &get_gate_matrix(&Gate::new(GateType::SWAP, &[], &[0, 1]).unwrap()),
+            0.001
+        ));
     }
     #[test]
     fn fredkin_test() {
-        assert_is_matrix_equal!(
-            swap_matrix(&[2], 1, 0, 3),
-            dmatrix![
+        assert!(equal_to_matrix_c(
+            &swap_matrix(&[2], 1, 0, 3),
+            &dmatrix![
                 cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
                 cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
                 cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -433,8 +411,9 @@ mod tests {
                 cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
                 cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
                 cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
-            ]
-        );
+            ],
+            0.001
+        ));
     }
 
     #[test]
@@ -460,7 +439,11 @@ mod tests {
             cart!(7.0), //|111>
         ];
         let mat = convention_convertion_matrix(3);
-        assert_is_vector_equal!(vec_lsb.clone(), mat.clone() * vec_msb.clone());
-        assert_is_vector_equal!(vec_msb, mat * vec_lsb);
+        assert!(equal_to_matrix_c(
+            &vec_lsb,
+            &(mat.clone() * vec_msb.clone()),
+            0.001
+        ));
+        assert!(equal_to_matrix_c(&vec_msb, &(mat * vec_lsb), 0.001));
     }
 }

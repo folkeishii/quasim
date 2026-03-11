@@ -555,35 +555,11 @@ mod tests {
     use crate::{
         cart,
         circuit::Circuit,
-        ext::expand_matrix_from_gate,
+        ext::{equal_to_matrix_c, expand_matrix_from_gate},
         simulator::{BuildSimulator, RunnableSimulator},
         sv_simulator::SVSimulator,
     };
-    use nalgebra::{Complex, DMatrix, DVector, dvector};
-
-    fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
-        m1.iter()
-            .zip(m2.iter())
-            .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
-    }
-
-    macro_rules! assert_is_matrix_equal {
-        ($m1: expr, $m2: expr) => {
-            assert!(is_matrix_equal_to($m1, $m2))
-        };
-    }
-
-    fn is_vector_equal_to(v1: DVector<Complex<f64>>, v2: DVector<Complex<f64>>) -> bool {
-        let l = v1.len();
-        let m1 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v1.as_slice());
-        let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
-        l == v2.len() && is_matrix_equal_to(m1, m2)
-    }
-    macro_rules! assert_is_vector_equal {
-        ($m1: expr, $m2: expr) => {
-            assert!(is_vector_equal_to($m1, $m2))
-        };
-    }
+    use nalgebra::{Complex, DMatrix, dvector};
     fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
         let mut circuit_tot = Circuit::new(std::cmp::max(circuit1.n_qubits(), circuit2.n_qubits()));
         circuit_tot.instructions =
@@ -613,7 +589,7 @@ mod tests {
         for gate in circ_and_inv.instructions() {
             res = expand_matrix_from_gate(gate, 5) * res
         }
-        assert_is_matrix_equal!(id, res);
+        assert!(equal_to_matrix_c(&id, &res, 0.001));
     }
     #[test]
     fn qft_test() {
@@ -638,6 +614,6 @@ mod tests {
             cart!(0.25, -0.25),   // |1110>
             cart!(0.0),           // |1111>
         ];
-        assert_is_vector_equal!(expected_vec, sim.final_state());
+        assert!(equal_to_matrix_c(&expected_vec, &sim.final_state(), 0.001));
     }
 }
