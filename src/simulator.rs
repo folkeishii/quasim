@@ -1,3 +1,5 @@
+use crate::circuit::CircuitBehaviour;
+use crate::circuit::pc::CircuitPc;
 use crate::register_file::RegisterFile;
 use crate::{circuit::Circuit, instruction::Instruction};
 use nalgebra::{Complex, DVector};
@@ -9,19 +11,19 @@ use nalgebra::{Complex, DVector};
 /// To support `TryFrom<Cicuit>` there is an auto
 /// implementation of `BuildSimulator` for any type
 /// that implements `TryFrom<Circuit>`
-pub trait BuildSimulator: Sized {
+pub trait BuildSimulator<B: CircuitBehaviour>: Sized {
     type E: std::error::Error;
 
-    fn build(circuit: Circuit) -> Result<Self, Self::E>;
+    fn build(circuit: Circuit<B>) -> Result<Self, Self::E>;
 }
-impl<T, E> BuildSimulator for T
+impl<T, B: CircuitBehaviour, E> BuildSimulator<B> for T
 where
-    T: TryFrom<Circuit, Error = E>,
+    T: TryFrom<Circuit<B>, Error = E>,
     E: std::error::Error,
 {
     type E = E;
 
-    fn build(circuit: Circuit) -> Result<Self, Self::E> {
+    fn build(circuit: Circuit<B>) -> Result<Self, Self::E> {
         Self::try_from(circuit)
     }
 }
@@ -40,37 +42,51 @@ pub trait RunnableSimulator {
 /// one gate at a time should implement this trait
 pub trait DebuggableSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>>;
-    fn current_instruction(&self) -> Option<(usize, &Instruction)>;
+    /// Not guaranteed to be implemented for every simulator
+    ///
+    /// `prev` should be implemented if `fn double_ended(&self)`
+    /// returns true
+    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+        todo!()
+    }
+    fn double_ended(&self) -> bool;
+    /// Returns current pc and instruction
+    ///
+    /// If returned value is (pc, None)
+    /// then we have reached the end of (sub) circuit
+    fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>);
     fn current_state(&self) -> &DVector<Complex<f64>>;
 
-    fn continue_until(&mut self, breakpoint: Option<usize>) -> &DVector<Complex<f64>> {
-        while let Some(index) = self.current_instruction().map(|(i, _)| i) {
-            if Some(index) == breakpoint {
+    fn cont(&mut self) -> &DVector<Complex<f64>>
+    where
+        Self: StoredCircuitSimulator,
+    {
+        while !self.next().is_none() {
+            let (pc, _) = self.current_instruction();
+            if self.circuit().enabled_breakpoint_at(pc) {
                 break;
             }
-            self.next();
         }
         self.current_state()
     }
-}
-
-/// # DebuggableSimulator
-/// Any simulator that can step back through a circuit
-/// one gate at a time should implement this trait
-pub trait DoubleEndedSimulator: DebuggableSimulator {
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>>;
 }
 
 /// # StoredCircuitSimulator
 /// Any simulator that stores the underlying circuit
 /// internally should implment this trait
 pub trait StoredCircuitSimulator {
-    fn circuit(&self) -> &Circuit;
-    fn instructions(&self) -> &[Instruction] {
+    type B: CircuitBehaviour;
+
+    fn circuit(&self) -> &Circuit<Self::B>;
+    fn circuit_mut(&mut self) -> &mut Circuit<Self::B>;
+    fn instructions(&self) -> &[<Self::B as CircuitBehaviour>::InstructionTy] {
         self.circuit().instructions()
     }
     fn instruction_count(&self) -> usize {
         self.circuit().instructions().len()
+    }
+    fn n_qubits(&self) -> usize {
+        self.circuit().n_qubits()
     }
 }
 
@@ -97,16 +113,12 @@ mod tests {
 
     #[test]
     fn test_continue_until() {
-        let circ = Circuit::new(3).hadamard(0).hadamard(1).hadamard(2);
+        let circ = Circuit::new(3).h(0).h(1).h(2);
         let mut sim1 = DebugSimulator::build(circ).unwrap();
         let mut sim2 = sim1.clone();
 
         sim1.next().unwrap();
         sim1.next().unwrap();
-        assert!(equal_to_matrix_c(
-            sim1.next().unwrap(),
-            sim2.continue_until(None),
-            0.001
-        ))
+        assert!(equal_to_matrix_c(sim1.next().unwrap(), sim2.cont(), 0.001))
     }
 }

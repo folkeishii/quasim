@@ -1,3 +1,6 @@
+use std::marker::PhantomData;
+use std::mem::replace;
+use std::ops::Deref;
 use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
@@ -9,24 +12,30 @@ use crate::gate::{Gate, GateType};
 #[macro_export]
 macro_rules! cart {
     ($re:expr) => {
-        Complex { re: $re, im: 0.0 }
+        nalgebra::Complex {
+            re: $re as f64,
+            im: 0.0,
+        }
     };
     ($re:expr, $im:expr) => {
-        Complex { re: $re, im: $im }
+        nalgebra::Complex {
+            re: $re as f64,
+            im: $im as f64,
+        }
     };
 }
 
 #[macro_export]
 macro_rules! polar {
     ($r: expr, $theta: expr) => {
-        Complex::from_polar($r, $theta)
+        Complex::from_polar($r as f64, $theta as f64)
     };
 }
 
 #[macro_export]
 macro_rules! cexp {
     ($exp: expr) => {
-        Complex::exp($exp)
+        Complex::exp($exp as f64)
     };
 }
 
@@ -364,6 +373,90 @@ pub fn reduced_state(
         sum += left_of_density * density * right_of_density;
     }
     sum
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SortedVec<T, K = T>(Vec<T>, PhantomData<K>);
+impl<T: OrdByKey<K>, K: Ord> SortedVec<T, K> {
+    pub fn new() -> Self {
+        Self(Default::default(), PhantomData)
+    }
+
+    pub fn insert(&mut self, value: T) -> Option<T> {
+        match self.index_of(&value) {
+            Ok(index) => Some(replace(&mut self.0[index], value)),
+            Err(index) => {
+                self.0.insert(index, value);
+                None
+            }
+        }
+    }
+
+    pub fn remove<Q: OrdByKey<K>>(&mut self, key: &Q) -> Option<T> {
+        match self.index_of(key) {
+            Ok(index) => Some(self.0.remove(index)),
+            Err(_) => None,
+        }
+    }
+
+    pub fn get<Q: OrdByKey<K>>(&self, key: &Q) -> Option<&T> {
+        match self.index_of(key) {
+            Ok(index) => Some(&self.0[index]),
+            Err(_) => None,
+        }
+    }
+
+    pub fn get_or_next<Q: OrdByKey<K>>(&self, key: &Q) -> Option<&T> {
+        match self.index_of(key) {
+            Ok(index) => Some(&self.0[index]),
+            Err(index) => self.0.get(index),
+        }
+    }
+
+    pub fn map<Q: OrdByKey<K>>(&mut self, key: &Q, f: &mut impl FnMut(&mut T)) -> bool
+    where
+        K: Clone,
+    {
+        match self.index_of(key) {
+            Ok(index) => {
+                let value = &mut self.0[index];
+                let old_key = value.key().clone();
+                f(value);
+                if value.key() != &old_key {
+                    let value = self.0.remove(index);
+                    self.insert(value);
+                }
+                true
+            }
+            Err(_) => false,
+        }
+    }
+
+    fn index_of<Q: OrdByKey<K>>(&self, key: &Q) -> Result<usize, usize> {
+        let key = key.key();
+        self.0.binary_search_by(|t| t.key().cmp(key))
+    }
+}
+impl<T, K> Default for SortedVec<T, K> {
+    fn default() -> Self {
+        Self(Default::default(), Default::default())
+    }
+}
+impl<T> Deref for SortedVec<T> {
+    type Target = [T];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+pub trait OrdByKey<K: PartialOrd> {
+    fn key(&self) -> &K;
+}
+impl<T: Ord> OrdByKey<T> for T {
+    fn key(&self) -> &T {
+        self
+    }
 }
 
 #[cfg(test)]

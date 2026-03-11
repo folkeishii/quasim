@@ -1,29 +1,28 @@
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
+use crate::circuit::{HybridCircuit, PureCircuit};
 use crate::simulator::HybridSimulator;
 use crate::{
     cart,
-    circuit::Circuit,
+    circuit::{Circuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
     ext::get_gate_matrix,
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::{
-        DebuggableSimulator, DoubleEndedSimulator, RunnableSimulator, StoredCircuitSimulator,
-    },
+    simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
 };
 
-struct SVExecutor {
+pub struct SVExecutor {
     state_vector: DVector<Complex<f64>>,
-    circuit: Circuit,
-    pc: usize,
+    circuit: Circuit<HybridCircuit>,
+    pc: CircuitPc,
     registers: RegisterFile<Value>,
 }
 
 impl SVExecutor {
-    fn new(circuit: Circuit) -> Self {
+    fn new(circuit: Circuit<HybridCircuit>) -> Self {
         let size = 1 << circuit.n_qubits();
         let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
         init_state_vector[0] = cart![1.0];
@@ -32,18 +31,17 @@ impl SVExecutor {
         Self {
             state_vector: init_state_vector,
             circuit: circuit,
-            pc: 0,
+            pc: Default::default(),
             registers: registers,
         }
     }
 
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if self.pc >= self.circuit.instructions().len() {
+        let Some(inst) = self.circuit.instruction(self.pc()) else {
             return None;
-        }
+        };
 
-        let inst = self.circuit.instructions()[self.pc].clone();
         self.apply_instruction(&inst);
 
         Some(&self.state_vector)
@@ -134,24 +132,25 @@ impl SVExecutor {
             }
         }
 
-        self.pc += 1;
+        self.pc_mut().increment();
     }
 
-    fn measure(&mut self, targets: QBits, reg: &str) {
+    fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
         let measurement = self.get_collapsed_state();
-        let mask = targets.get_bitstring();
-        let collapsed_bitstring = measurement & mask;
+        let mask = 1 << target;
+        let measured_bit = measurement & mask;
+        let shifted_measurement = ((measurement >> target) & 1) << bit_pos;
 
-        let mut bits_compacted = 0;
-        for (i, bit) in targets.get_indices().into_iter().enumerate() {
-            let value = (collapsed_bitstring >> bit) & 1;
-            bits_compacted |= value << i;
+        if let Value::Int(val) = self.registers[reg] {
+            let val_cleared = (val as usize) & !shifted_measurement;
+            self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
+        } else {
+            self.registers[reg] = Value::Int(shifted_measurement as i32)
         }
-        self.registers[reg] = Value::Int(bits_compacted as i32);
 
         // Go through state vector and remove amplitude for all states that do not align with measurement
         for (i, amp) in self.state_vector.iter_mut().enumerate() {
-            if (i & mask) != collapsed_bitstring {
+            if (i & mask) != measured_bit {
                 *amp = Complex::ZERO;
             }
         }
@@ -165,22 +164,29 @@ impl SVExecutor {
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
 
-        self.pc += 1;
+        self.pc_mut().increment();
     }
 
-    fn jump(&mut self, pc: usize) {
-        self.pc = pc;
+    fn measure_all(&mut self, reg: &str) {
+        let measurement = self.get_collapsed_state();
+
+        self.registers[reg] = Value::Int(measurement as i32);
+
+        // Collapse whole state vector
+        self.state_vector.fill(cart!(0.0));
+        self.state_vector[measurement] = cart!(1.0);
+
+        self.pc_mut().increment();
     }
 
-    fn jump_if(&mut self, expr: &Expr, pc: usize) {
+    fn jump(&mut self, label_pc: usize) {
+        self.pc_mut().jump(label_pc);
+    }
+
+    fn jump_if(&mut self, expr: &Expr, label_pc: usize) {
         match expr.eval(&self.registers) {
-            Ok(Value::Bool(b)) => {
-                if b {
-                    self.pc = pc;
-                    return;
-                }
-                self.pc += 1;
-            }
+            Ok(Value::Bool(true)) => self.jump(label_pc),
+            Ok(Value::Bool(false)) => self.pc_mut().increment(),
             Err(err) => panic!("{}", err),
             _ => panic!(
                 "Expression was expected to evaluate to boolean type but got something else."
@@ -193,30 +199,61 @@ impl SVExecutor {
             Ok(value) => self.registers[reg] = value,
             Err(err) => panic!("{}", err),
         }
-        self.pc += 1;
+        self.pc_mut().increment();
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => self.gate(gate),
-            Instruction::Measurement(qbits, reg) => self.measure(*qbits, reg),
+            Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(*qbit, reg, *bit_pos),
+            Instruction::MeasureAll(reg) => self.measure_all(reg),
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
         }
+    }
+
+    fn pc(&self) -> &CircuitPc {
+        &self.pc
+    }
+
+    fn pc_mut(&mut self) -> &mut CircuitPc {
+        &mut self.pc
+    }
+}
+
+impl StoredCircuitSimulator for SVExecutor {
+    type B = HybridCircuit;
+
+    fn circuit(&self) -> &Circuit<HybridCircuit> {
+        &self.circuit
+    }
+
+    fn circuit_mut(&mut self) -> &mut Circuit<HybridCircuit> {
+        &mut self.circuit
     }
 }
 
 // SVSimulator
 
 pub struct SVSimulator {
-    circuit: Circuit,
+    circuit: Circuit<HybridCircuit>,
 }
 
-impl TryFrom<Circuit> for SVSimulator {
+impl TryFrom<Circuit<PureCircuit>> for SVSimulator {
     type Error = SVError;
 
-    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            circuit: value.into(),
+        })
+    }
+}
+
+impl TryFrom<Circuit<HybridCircuit>> for SVSimulator {
+    type Error = SVError;
+
+    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         Ok(Self { circuit: value })
     }
 }
@@ -242,10 +279,19 @@ pub struct SVSimulatorDebugger {
     executor: SVExecutor,
 }
 
-impl TryFrom<Circuit> for SVSimulatorDebugger {
+impl TryFrom<Circuit<PureCircuit>> for SVSimulatorDebugger {
     type Error = SVError;
 
-    fn try_from(value: Circuit) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            executor: SVExecutor::new(value.into()),
+        })
+    }
+}
+impl TryFrom<Circuit<HybridCircuit>> for SVSimulatorDebugger {
+    type Error = SVError;
+
+    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         Ok(Self {
             executor: SVExecutor::new(value),
         })
@@ -257,28 +303,33 @@ impl DebuggableSimulator for SVSimulatorDebugger {
         self.executor.step()
     }
 
-    fn current_instruction(&self) -> Option<(usize, &Instruction)> {
-        let pc = self.executor.pc;
-        if pc >= self.executor.circuit.instructions().len() {
-            return None;
-        }
-        Some((pc, &self.executor.circuit.instructions()[pc]))
+    fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
+        let pc = self.executor.pc();
+        (pc, self.executor.circuit.instruction(pc))
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
         &self.executor.state_vector
     }
-}
 
-impl StoredCircuitSimulator for SVSimulatorDebugger {
-    fn circuit(&self) -> &Circuit {
-        &self.executor.circuit
+    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+        None
+    }
+
+    fn double_ended(&self) -> bool {
+        true
     }
 }
 
-impl DoubleEndedSimulator for SVSimulatorDebugger {
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
-        todo!() // For the sake of being able to run debug terminal
+impl StoredCircuitSimulator for SVSimulatorDebugger {
+    type B = HybridCircuit;
+
+    fn circuit(&self) -> &Circuit<HybridCircuit> {
+        &self.executor.circuit
+    }
+
+    fn circuit_mut(&mut self) -> &mut Circuit<HybridCircuit> {
+        &mut self.executor.circuit
     }
 }
 
@@ -293,9 +344,15 @@ pub enum SVError {}
 
 #[cfg(test)]
 mod tests {
+    use std::f64::consts::FRAC_1_SQRT_2;
+
+    use nalgebra::dvector;
+
     use crate::expr_dsl::Value;
-    use crate::simulator::HybridSimulator;
+    use crate::ext::equal_to_matrix_c;
+    use crate::simulator::{DebuggableSimulator, HybridSimulator};
     use crate::sv_simulator::SVSimulatorDebugger;
+    use crate::{cart, common_test};
     use crate::{
         circuit::Circuit,
         expr_dsl::expr_helpers::r,
@@ -311,14 +368,14 @@ mod tests {
             .new_reg("r2")
             .new_reg("r3")
             // Init random state
-            .hadamard(0)
-            .hadamard(1)
-            .hadamard(2)
-            .hadamard(3)
-            .measure_bit(0, "r0")
-            .measure_bit(1, "r1")
-            .measure_bit(2, "r2")
-            .measure_bit(3, "r3")
+            .h(0)
+            .h(1)
+            .h(2)
+            .h(3)
+            .measure_bit(0, ("r0", 0))
+            .measure_bit(1, ("r1", 0))
+            .measure_bit(2, ("r2", 0))
+            .measure_bit(3, ("r3", 0))
             .apply_if(r("r0").eq(1))
             .x(0)
             .apply_if(r("r1").eq(1))
@@ -330,16 +387,177 @@ mod tests {
 
         let sim = SVSimulator::build(circuit.clone()).unwrap();
 
-        println!("{}", sim.final_state());
+        assert!(equal_to_matrix_c(
+            &sim.final_state(),
+            &dvector![
+                cart!(1), // |0000>
+                cart!(0), // |0001>
+                cart!(0), // |0010>
+                cart!(0), // |0011>
+                cart!(0), // |0100>
+                cart!(0), // |0101>
+                cart!(0), // |0110>
+                cart!(0), // |0111>
+                cart!(0), // |1000>
+                cart!(0), // |1001>
+                cart!(0), // |1010>
+                cart!(0), // |1011>
+                cart!(0), // |1100>
+                cart!(0), // |1101>
+                cart!(0), // |1110>
+                cart!(0), // |1111>
+            ],
+            0.0001
+        ));
+    }
+
+    #[allow(unreachable_code)]
+    #[test]
+    fn test_sub() {
+        // Keep for sub circuits
+        return;
+        // let sub = Circuit::new(1)
+        //     .new_reg("tmp")
+        //     .assign("tmp".into(), 0.into())
+        //     .h(0)
+        //     .breakpoint()
+        //     .measure_bit(0, "tmp")
+        //     .apply_if(r("tmp").gt(0))
+        //     .x(0);
+        let circuit = Circuit::new(4).new_reg("tmp");
+        // .new_sub_circuit("U", sub);
+        // Init random state
+        // .call("U", 0)
+        // .call("U", 1)
+        // .call("U", 2)
+        // .call("U", 3);
+
+        let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
+
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(FRAC_1_SQRT_2), // |0000>
+                cart!(FRAC_1_SQRT_2), // |0001>
+                cart!(0),             // |0010>
+                cart!(0),             // |0011>
+                cart!(0),             // |0100>
+                cart!(0),             // |0101>
+                cart!(0),             // |0110>
+                cart!(0),             // |0111>
+                cart!(0),             // |1000>
+                cart!(0),             // |1001>
+                cart!(0),             // |1010>
+                cart!(0),             // |1011>
+                cart!(0),             // |1100>
+                cart!(0),             // |1101>
+                cart!(0),             // |1110>
+                cart!(0),             // |1111>
+            ],
+            0.0001
+        ));
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(FRAC_1_SQRT_2), // |0000>
+                cart!(0),             // |0001>
+                cart!(FRAC_1_SQRT_2), // |0010>
+                cart!(0),             // |0011>
+                cart!(0),             // |0100>
+                cart!(0),             // |0101>
+                cart!(0),             // |0110>
+                cart!(0),             // |0111>
+                cart!(0),             // |1000>
+                cart!(0),             // |1001>
+                cart!(0),             // |1010>
+                cart!(0),             // |1011>
+                cart!(0),             // |1100>
+                cart!(0),             // |1101>
+                cart!(0),             // |1110>
+                cart!(0),             // |1111>
+            ],
+            0.0001
+        ));
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(FRAC_1_SQRT_2), // |0000>
+                cart!(0),             // |0001>
+                cart!(0),             // |0010>
+                cart!(0),             // |0011>
+                cart!(FRAC_1_SQRT_2), // |0100>
+                cart!(0),             // |0101>
+                cart!(0),             // |0110>
+                cart!(0),             // |0111>
+                cart!(0),             // |1000>
+                cart!(0),             // |1001>
+                cart!(0),             // |1010>
+                cart!(0),             // |1011>
+                cart!(0),             // |1100>
+                cart!(0),             // |1101>
+                cart!(0),             // |1110>
+                cart!(0),             // |1111>
+            ],
+            0.0001
+        ));
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(FRAC_1_SQRT_2), // |0000>
+                cart!(0),             // |0001>
+                cart!(0),             // |0010>
+                cart!(0),             // |0011>
+                cart!(0),             // |0100>
+                cart!(0),             // |0101>
+                cart!(0),             // |0110>
+                cart!(0),             // |0111>
+                cart!(FRAC_1_SQRT_2), // |1000>
+                cart!(0),             // |1001>
+                cart!(0),             // |1010>
+                cart!(0),             // |1011>
+                cart!(0),             // |1100>
+                cart!(0),             // |1101>
+                cart!(0),             // |1110>
+                cart!(0),             // |1111>
+            ],
+            0.0001
+        ));
+        assert!(equal_to_matrix_c(
+            sim.cont(),
+            &dvector![
+                cart!(1), // |0000>
+                cart!(0), // |0001>
+                cart!(0), // |0010>
+                cart!(0), // |0011>
+                cart!(0), // |0100>
+                cart!(0), // |0101>
+                cart!(0), // |0110>
+                cart!(0), // |0111>
+                cart!(0), // |1000>
+                cart!(0), // |1001>
+                cart!(0), // |1010>
+                cart!(0), // |1011>
+                cart!(0), // |1100>
+                cart!(0), // |1101>
+                cart!(0), // |1110>
+                cart!(0), // |1111>
+            ],
+            0.0001
+        ));
     }
 
     #[test]
     fn test_register() {
-        let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, "r0");
+        let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, ("r0", 0));
 
         let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
         sim.executor.step_all();
 
         assert_eq!(sim.register("r0"), Value::Int(1));
+    }
+
+    #[test]
+    fn almost_grovers() {
+        common_test::almost_grovers::<SVSimulatorDebugger>();
     }
 }

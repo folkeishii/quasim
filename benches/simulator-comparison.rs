@@ -1,7 +1,7 @@
 use quasim::{
-    circuit::Circuit,
+    circuit::{Circuit, HybridCircuit},
     debug_simulator::DebugSimulator,
-    simulator::{BuildSimulator, DebuggableSimulator},
+    simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
     sv_simulator::SVSimulatorDebugger,
 };
 
@@ -18,16 +18,16 @@ fn main() {
 )]
 fn circuit_size<S>(n_qubits: usize)
 where
-    S: DebuggableSimulator + BuildSimulator,
+    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
 {
     let mut circuit = Circuit::new(n_qubits);
 
     for i in 0..n_qubits {
-        circuit = circuit.hadamard(i);
+        circuit = circuit.h(i);
     }
 
-    let mut sim = S::build(circuit).expect("Couldnt build circuit...");
-    sim.continue_until(None);
+    let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
+    sim.cont();
 }
 
 #[divan::bench(
@@ -37,14 +37,14 @@ where
 )]
 fn num_gates<S>(n_gates: usize)
 where
-    S: DebuggableSimulator + BuildSimulator,
+    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
 {
     let mut circuit = Circuit::new(6);
 
     for i in 0..n_gates {
-        circuit = circuit.hadamard(i % 6);
+        circuit = circuit.h(i % 6);
     }
 
-    let mut sim = S::build(circuit).expect("Couldnt build circuit...");
-    sim.continue_until(None);
+    let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
+    sim.cont();
 }
