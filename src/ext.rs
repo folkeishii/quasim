@@ -279,8 +279,8 @@ pub fn expand_matrix(
 /// # measure_and_observe_dm
 /// Returns the mesurement a probable density matrix after measurement.
 pub fn measure_and_observe_dm(
-    density: &DMatrix<Complex<f64>>,
     target: usize,
+    density: &DMatrix<Complex<f64>>,
     n_qubits: usize,
 ) -> (usize, DMatrix<Complex<f64>>) {
     // Choose a collapsed state
