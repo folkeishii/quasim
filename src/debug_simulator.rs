@@ -59,6 +59,12 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
 impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // End of (sub) circuit: Try to return
+            if self.pc_mut().ret() {
+                return Some(&self.current_state)
+            }
+
+            // Could not return: End of circuit
             return None;
         };
 
@@ -76,6 +82,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
+            Instruction::Call(name, lsq) => self.pc_mut().jump_and_link(name, lsq),
         }
         Some(&self.current_state)
     }
@@ -90,6 +97,12 @@ impl DebuggableSimulator for DebugSimulator {
 
     fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
         if !self.pc_mut().decrement() {
+            // Beginnning of (sub) circuit: Try to return
+            if self.pc_mut().ret_backwards() {
+                return Some(&self.current_state)
+            }
+
+            // Could not return: Beginning of circuit
             return None;
         }
 
@@ -109,6 +122,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
+            Instruction::Call(name, lsq) => self.pc_mut().jump_and_link(name, lsq),
         }
         Some(&self.current_state)
     }

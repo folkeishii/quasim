@@ -30,6 +30,7 @@ pub struct Circuit<B: CircuitBehaviour = PureCircuit> {
     unresolved_labels: Vec<(String, usize)>,
     breakpoints: BreakpointList,
     registers: HashSet<String>,
+    sub_circuits: HashMap<String, Circuit>,
 }
 
 // Pure specific
@@ -42,6 +43,7 @@ impl Circuit {
             labels: HashMap::new(),
             unresolved_labels: Vec::new(),
             breakpoints: Default::default(),
+            sub_circuits: Default::default(),
         }
     }
 
@@ -81,9 +83,13 @@ impl Circuit {
     }
 
     pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<Gate> {
-        match self.instructions().get(circuit_pc.pc()) {
-            Some(gate) => Some(gate.clone() << circuit_pc.lsq()),
-            None => None,
+        if let Some((name, sub_pc)) = circuit_pc.next_sub_pc() {
+            self.sub_circuits[name].instruction(sub_pc)
+        } else {
+            match self.instructions().get(circuit_pc.pc()) {
+                Some(gate) => Some(gate.clone() << circuit_pc.lsq()),
+                None => None,
+            }
         }
     }
 }
@@ -91,15 +97,21 @@ impl Circuit {
 // Hybrid specific
 impl Circuit<HybridCircuit> {
     pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<Instruction> {
-        match self.instructions().get(circuit_pc.pc()) {
-            Some(Instruction::Gate(gate)) => {
-                Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
+        if let Some((name, sub_pc)) = circuit_pc.next_sub_pc() {
+            self.sub_circuits[name]
+                .instruction(sub_pc)
+                .map(Instruction::Gate)
+        } else {
+            match self.instructions().get(circuit_pc.pc()) {
+                Some(Instruction::Gate(gate)) => {
+                    Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
+                }
+                Some(Instruction::MeasureBit(target, register)) => Some(Instruction::MeasureBit(
+                    *target << circuit_pc.lsq(),
+                    register.clone(),
+                )),
+                rst => rst.cloned(),
             }
-            Some(Instruction::MeasureBit(target, register)) => Some(Instruction::MeasureBit(
-                *target << circuit_pc.lsq(),
-                register.clone(),
-            )),
-            rst => rst.cloned(),
         }
     }
 }
@@ -521,6 +533,7 @@ impl Into<Circuit<HybridCircuit>> for Circuit<PureCircuit> {
             unresolved_labels: self.unresolved_labels,
             breakpoints: self.breakpoints,
             registers: self.registers,
+            sub_circuits: self.sub_circuits,
         }
     }
 }

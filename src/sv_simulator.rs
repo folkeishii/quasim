@@ -210,6 +210,7 @@ impl SVExecutor {
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
+            Instruction::Call(name, lsq) => self.pc_mut().jump_and_link(name.clone(), *lsq),
         }
     }
 
