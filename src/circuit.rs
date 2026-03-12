@@ -12,7 +12,7 @@ use crate::{
     },
     expr_dsl::Expr,
     gate::{Gate, GateType},
-    instruction::Instruction,
+    instruction::{Instruction, PureInstruction},
 };
 mod qasm_parse;
 
@@ -37,7 +37,7 @@ pub struct Circuit<B: CircuitBehaviour = PureCircuit> {
 impl Circuit {
     pub fn new(n_qubits: usize) -> Circuit<PureCircuit> {
         Self {
-            instructions: Vec::<Gate>::default(),
+            instructions: Vec::<PureInstruction>::default(),
             n_qubits: n_qubits,
             registers: HashSet::new(),
             labels: HashMap::new(),
@@ -76,18 +76,32 @@ impl Circuit {
     /// Inverts a non-hybrid circuit.
     pub fn inverse(&self) -> Self {
         let mut inverted_circuit = Circuit::new(self.n_qubits());
-        for gate in self.instructions.iter().rev() {
-            inverted_circuit.instructions.push(gate.inverse());
+        for instruction in self.instructions.iter().rev() {
+            match instruction {
+                PureInstruction::Gate(gate) => inverted_circuit.instructions.push(gate.inverse().into()),
+                PureInstruction::Call(name, lsq) => {
+                    inverted_circuit.instructions.push(PureInstruction::Call(name.clone(), *lsq))
+                },
+            }
         }
+
+        // Invert sub circuits
+        for (name, circuit) in self.sub_circuits.iter() {
+            inverted_circuit.sub_circuits.insert(name.clone(), circuit.inverse());
+        }
+
         inverted_circuit
     }
 
-    pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<Gate> {
+    pub fn instruction(&self, circuit_pc: &CircuitPc) -> Option<PureInstruction> {
         if let Some((name, sub_pc)) = circuit_pc.next_sub_pc() {
             self.sub_circuits[name].instruction(sub_pc)
         } else {
             match self.instructions().get(circuit_pc.pc()) {
-                Some(gate) => Some(gate.clone() << circuit_pc.lsq()),
+                Some(PureInstruction::Gate(gate)) => Some(
+                    (gate.clone() << circuit_pc.lsq()).into()
+                ),
+                Some(inst) => Some(inst.clone()),
                 None => None,
             }
         }
@@ -100,7 +114,7 @@ impl Circuit<HybridCircuit> {
         if let Some((name, sub_pc)) = circuit_pc.next_sub_pc() {
             self.sub_circuits[name]
                 .instruction(sub_pc)
-                .map(Instruction::Gate)
+                .map(HybridCircuit::from_pure)
         } else {
             match self.instructions().get(circuit_pc.pc()) {
                 Some(Instruction::Gate(gate)) => {
@@ -140,78 +154,84 @@ impl<B: CircuitBehaviour> Circuit<B> {
     // Builder methods
 
     pub fn x(mut self, target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::X, &[], &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::X, &[], &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn cx(mut self, controls: &[usize], target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::X, controls, &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::X, controls, &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn y(mut self, target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::Y, &[], &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::Y, &[], &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn cy(mut self, controls: &[usize], target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::Y, controls, &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::Y, controls, &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn z(mut self, target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::Z, &[], &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::Z, &[], &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn cz(mut self, controls: &[usize], target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::Z, controls, &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::Z, controls, &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn h(mut self, target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::H, &[], &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::H, &[], &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn ch(mut self, controls: &[usize], target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::H, controls, &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::H, controls, &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn swap(mut self, target1: usize, target2: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::SWAP, &[], &[target1, target2]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::SWAP, &[], &[target1, target2])
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn cswap(mut self, controls: &[usize], target1: usize, target2: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::SWAP, controls, &[target1, target2]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::SWAP, controls, &[target1, target2])
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn u(mut self, theta: f64, phi: f64, lambda: f64, target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::U(theta, phi, lambda), &[], &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::U(theta, phi, lambda), &[], &[target])
+                .unwrap()
+                .into(),
         ));
         self
     }
@@ -224,64 +244,78 @@ impl<B: CircuitBehaviour> Circuit<B> {
         controls: &[usize],
         target: usize,
     ) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::U(theta, phi, lambda), controls, &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::U(theta, phi, lambda), controls, &[target])
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn s(mut self, target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::S, &[], &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::S, &[], &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn cs(mut self, controls: &[usize], target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::S, controls, &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::S, controls, &[target]).unwrap().into(),
         ));
         self
     }
 
     pub fn rx(mut self, theta: f64, target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), &[], &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), &[], &[target])
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn crx(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), controls, &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), controls, &[target])
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn ry(mut self, theta: f64, target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::U(theta, 0.0, 0.0), &[], &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::U(theta, 0.0, 0.0), &[], &[target])
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn cry(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::U(theta, 0.0, 0.0), controls, &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::U(theta, 0.0, 0.0), controls, &[target])
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn rz(mut self, theta: f64, target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::U(0.0, 0.0, theta), &[], &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::U(0.0, 0.0, theta), &[], &[target])
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn crz(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
-        self.instructions.push(B::from_gate(
-            Gate::new(GateType::U(0.0, 0.0, theta), controls, &[target]).unwrap(),
+        self.instructions.push(B::from_pure(
+            Gate::new(GateType::U(0.0, 0.0, theta), controls, &[target])
+                .unwrap()
+                .into(),
         ));
         self
     }
@@ -526,7 +560,7 @@ impl Into<Circuit<HybridCircuit>> for Circuit<PureCircuit> {
             instructions: self
                 .instructions
                 .into_iter()
-                .map(HybridCircuit::from_gate)
+                .map(HybridCircuit::from_pure)
                 .collect(),
             n_qubits: self.n_qubits,
             labels: self.labels,
@@ -543,24 +577,27 @@ pub struct HybridCircuit;
 impl CircuitBehaviour for HybridCircuit {
     type InstructionTy = Instruction;
 
-    fn from_gate(gate: Gate) -> Self::InstructionTy {
-        Instruction::Gate(gate)
+    fn from_pure(instruction: PureInstruction) -> Self::InstructionTy {
+        match instruction {
+            PureInstruction::Gate(gate) => Instruction::Gate(gate),
+            PureInstruction::Call(name, lsq) => Instruction::Call(name, lsq),
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PureCircuit;
 impl CircuitBehaviour for PureCircuit {
-    type InstructionTy = Gate;
+    type InstructionTy = PureInstruction;
 
-    fn from_gate(gate: Gate) -> Self::InstructionTy {
-        gate
+    fn from_pure(instruction: PureInstruction) -> Self::InstructionTy {
+        instruction
     }
 }
 
 pub trait CircuitBehaviour {
     type InstructionTy;
-    fn from_gate(gate: Gate) -> Self::InstructionTy;
+    fn from_pure(instruction: PureInstruction) -> Self::InstructionTy;
 }
 
 #[cfg(test)]
@@ -569,6 +606,7 @@ mod tests {
         cart,
         circuit::Circuit,
         ext::expand_matrix_from_gate,
+        instruction::PureInstruction,
         simulator::{BuildSimulator, RunnableSimulator},
         sv_simulator::SVSimulator,
     };
@@ -623,8 +661,10 @@ mod tests {
         let dim = 1 << 5;
         let id = DMatrix::<Complex<f64>>::identity(dim, dim);
         let mut res: DMatrix<Complex<f64>> = id.clone();
-        for gate in circ_and_inv.instructions() {
-            res = expand_matrix_from_gate(gate, 5) * res
+        for instruction in circ_and_inv.instructions() {
+            if let PureInstruction::Gate(gate) = instruction {
+                res = expand_matrix_from_gate(gate, 5) * res;
+            }
         }
         assert_is_matrix_equal!(id, res);
     }

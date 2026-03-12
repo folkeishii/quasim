@@ -13,3 +13,16 @@ pub enum Instruction {
     /// `Call(name, lsq)`
     Call(String, usize)
 }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum PureInstruction {
+    Gate(Gate),
+    /// `Call(name, lsq)`
+    Call(String, usize)
+
+}
+impl From<Gate> for PureInstruction {
+    fn from(value: Gate) -> Self {
+        Self::Gate(value)
+    }
+}
