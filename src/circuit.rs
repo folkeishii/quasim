@@ -78,16 +78,20 @@ impl Circuit {
         let mut inverted_circuit = Circuit::new(self.n_qubits());
         for instruction in self.instructions.iter().rev() {
             match instruction {
-                PureInstruction::Gate(gate) => inverted_circuit.instructions.push(gate.inverse().into()),
-                PureInstruction::Call(name, lsq) => {
-                    inverted_circuit.instructions.push(PureInstruction::Call(name.clone(), *lsq))
-                },
+                PureInstruction::Gate(gate) => {
+                    inverted_circuit.instructions.push(gate.inverse().into())
+                }
+                PureInstruction::Call(name, lsq) => inverted_circuit
+                    .instructions
+                    .push(PureInstruction::Call(name.clone(), *lsq)),
             }
         }
 
         // Invert sub circuits
         for (name, circuit) in self.sub_circuits.iter() {
-            inverted_circuit.sub_circuits.insert(name.clone(), circuit.inverse());
+            inverted_circuit
+                .sub_circuits
+                .insert(name.clone(), circuit.inverse());
         }
 
         inverted_circuit
@@ -98,9 +102,9 @@ impl Circuit {
             self.sub_circuits[name].instruction(sub_pc)
         } else {
             match self.instructions().get(circuit_pc.pc()) {
-                Some(PureInstruction::Gate(gate)) => Some(
-                    (gate.clone() << circuit_pc.lsq()).into()
-                ),
+                Some(PureInstruction::Gate(gate)) => {
+                    Some((gate.clone() << circuit_pc.lsq()).into())
+                }
                 Some(inst) => Some(inst.clone()),
                 None => None,
             }
@@ -394,6 +398,50 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
     pub fn delete_breakpoint(&mut self, pc: &CircuitPc) -> bool {
         self.breakpoints.delete(pc.pc())
+    }
+
+    // Sub circuits
+
+    pub fn new_sub_circuit<I: Into<String>>(mut self, name: I, pure_circuit: Circuit) -> Self {
+        if self
+            .sub_circuits
+            .insert(name.into(), pure_circuit)
+            .is_some()
+        {
+            log::warn!("Inserted sub circuit replaced an already defined circuit")
+        }
+        self
+    }
+
+    /// ## Arguments
+    ///  - `name`: Name of registered sub circuit
+    ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
+    pub fn call<I: Into<String>>(mut self, name: I, lsq: usize) -> Self {
+        let name = name.into();
+        if !self.sub_circuits.contains_key(&name) {
+            panic!("No registered sub circuit with the name {}", name)
+        } else if lsq + self.sub_circuits[&name].n_qubits() > self.n_qubits() {
+            panic!(
+                "Qubit overflow: Sub circuit \"{}\" and {} qubits with lsq: {} overflows the current qubit capacity of {}",
+                name,
+                self.sub_circuits[&name].n_qubits(),
+                lsq,
+                self.n_qubits()
+            );
+        }
+        self.instructions
+            .push(B::from_pure(PureInstruction::Call(name, lsq)));
+        self
+    }
+
+    /// ## Arguments
+    ///  - `name`: Name of registered sub circuit
+    ///  - `pure_circuit`: Definition of specified circuit
+    ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
+    pub fn call_new<I: Into<String>>(self, name: I, pure_circuit: Circuit, lsq: usize) -> Self {
+        let name = name.into();
+        self.new_sub_circuit(name.clone(), pure_circuit)
+            .call(name, lsq)
     }
 }
 
