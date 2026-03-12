@@ -3,9 +3,9 @@ use std::mem::replace;
 use std::ops::Deref;
 use std::{iter::Map, ops::Range};
 
-use nalgebra::{dmatrix, Complex, DMatrix, DVector, Dim, Matrix, RawStorage};
+use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
 use rand::distr::weighted::WeightedIndex;
-use rand::{prelude::Distribution, Rng};
+use rand::{Rng, prelude::Distribution};
 
 use crate::gate::{Gate, GateType};
 
