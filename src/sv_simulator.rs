@@ -39,6 +39,12 @@ impl SVExecutor {
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // End of (sub) circuit: Try to return
+            if self.pc_mut().ret() {
+                return Some(&self.state_vector);
+            }
+
+            // Could not return: End of circuit
             return None;
         };
 
