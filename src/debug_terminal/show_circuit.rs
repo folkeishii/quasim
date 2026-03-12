@@ -11,6 +11,7 @@ use std::{
 use crossterm::style::ContentStyle;
 
 use crate::{
+    circuit::HybridCircuit,
     debug_terminal::show_circuit::connects::{
         Combines, ConnectEast, ConnectNorth, ConnectSouth, ConnectWest, ExtendEast, ExtendSouth,
         IsDirection, Passes,
@@ -26,7 +27,7 @@ const F: bool = false;
 pub fn show_circuit<W, S>(w: &mut W, simulator: &S) -> io::Result<()>
 where
     W: Write,
-    S: DebuggableSimulator + StoredCircuitSimulator,
+    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit>,
 {
     let mut cols;
     cols = vec![Column::only_kets(repeat('0').take(simulator.n_qubits()))];
