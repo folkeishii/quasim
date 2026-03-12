@@ -2,6 +2,7 @@ use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     ext::{expand_matrix_from_gate, measure_and_observe_dm},
+    gate::Gate,
     instruction::Instruction,
     simulator::StoredCircuitSimulator,
 };
@@ -27,7 +28,6 @@ impl TryFrom<Circuit<HybridCircuit>> for DMSimulator {
 
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         let circuit = value;
-        let k = circuit.n_qubits();
 
         // Check for mid-cicuit measurement
         let mut encountered = false;
@@ -42,17 +42,7 @@ impl TryFrom<Circuit<HybridCircuit>> for DMSimulator {
             }
         }
 
-         // Initial state assumed to be |000..>
-        // == |0><0| * |0><0| * |0><0| * ...
-        let dim = 1 << k;
-        let mut init_state = DMatrix::<Complex<f64>>::zeros(dim, dim);
-        init_state[(0, 0)] = cart!(1.0);
-
-        let sim = DMSimulator {
-            current_state: init_state,
-            circuit: circuit,
-            pc: Default::default(),
-        };
+        let sim = Self::init(circuit);
 
         Ok(sim)
     }
@@ -66,13 +56,12 @@ impl DMSimulator {
 
         match inst {
             Instruction::Gate(gate) => {
-                let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
-                let adj = mat.adjoint();
-                self.current_state = mat * self.current_state.clone() * adj;
+                self.apply_gate(gate);
                 self.pc_mut().increment();
             }
             Instruction::MeasureBit(qbit, _) => {
-                let (_res, new_state) = measure_and_observe_dm(qbit, &self.current_state, self.n_qubits());
+                let (_res, new_state) =
+                    measure_and_observe_dm(qbit, &self.current_state, self.n_qubits());
                 self.current_state = new_state;
                 self.pc_mut().increment();
             }
@@ -103,11 +92,7 @@ impl DMSimulator {
         };
 
         match inst {
-            Instruction::Gate(gate) => {
-                let adj = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
-                let mat = adj.adjoint();
-                self.current_state = mat * self.current_state.clone() * adj;
-            }
+            Instruction::Gate(gate) => self.apply_gate_inv(gate),
             Instruction::MeasureBit(_, _) => todo!(),
             Instruction::MeasureAll(_) => todo!(),
             Instruction::Jump(_) => todo!(),
@@ -128,6 +113,32 @@ impl DMSimulator {
     fn pc_mut(&mut self) -> &mut CircuitPc {
         &mut self.pc
     }
+
+    fn apply_gate(&mut self, gate: Gate) {
+        let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
+        let adj = mat.adjoint();
+        self.current_state = mat * self.current_state.clone() * adj;
+    }
+
+    fn apply_gate_inv(&mut self, gate: Gate) {
+        let adj_inv = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
+        let mat_inv = adj_inv.adjoint();
+        self.current_state = mat_inv * self.current_state.clone() * adj_inv;
+    }
+
+    fn init(circuit: Circuit<HybridCircuit>) -> Self {
+        // Initial state assumed to be |000..>
+        // == |0><0| * |0><0| * |0><0| * ...
+        let dim = 1 << circuit.n_qubits();
+        let mut init_state = DMatrix::<Complex<f64>>::zeros(dim, dim);
+        init_state[(0, 0)] = cart!(1.0);
+
+        DMSimulator {
+            current_state: init_state,
+            circuit: circuit,
+            pc: Default::default(),
+        }
+    }
 }
 
 impl StoredCircuitSimulator for DMSimulator {
@@ -147,3 +158,27 @@ pub enum DMSimulatorError {
     MidCircuitMeasurement,
 }
 
+#[cfg(test)]
+mod tests {
+    use crate::ext::equal_to_matrix_c;
+    use crate::{
+        cart,
+        circuit::Circuit,
+        dm_simulator::DMSimulator,
+    };
+    use nalgebra::dmatrix;
+
+    #[test]
+    fn hch_test() {
+        let mut sim = DMSimulator::init(Circuit::new(2).h(0).ch(&[0], 1).into());
+        sim.next();
+        sim.next();
+        let expected_mat = dmatrix![
+            cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.353553);
+            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
+            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0);
+            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
+        ];
+        assert!(equal_to_matrix_c(&sim.current_state,&expected_mat,0.001));
+    }
+}
