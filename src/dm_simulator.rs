@@ -160,12 +160,8 @@ pub enum DMSimulatorError {
 
 #[cfg(test)]
 mod tests {
-    use crate::ext::equal_to_matrix_c;
-    use crate::{
-        cart,
-        circuit::Circuit,
-        dm_simulator::DMSimulator,
-    };
+    use crate::ext::{equal_to_matrix_c, reduced_state};
+    use crate::{cart, circuit::Circuit, dm_simulator::DMSimulator};
     use nalgebra::dmatrix;
 
     #[test]
@@ -179,6 +175,80 @@ mod tests {
             cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0);
             cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
         ];
-        assert!(equal_to_matrix_c(&sim.current_state,&expected_mat,0.001));
+        assert!(equal_to_matrix_c(&sim.current_state, &expected_mat, 0.001));
+    }
+
+    #[test]
+    fn hchch_test() {
+        let mut sim = DMSimulator::init(Circuit::new(3).h(0).ch(&[0], 1).ch(&[1], 2).into());
+        sim.next();
+        sim.next();
+        sim.next();
+        let rho_0 = dmatrix![
+            cart!(0.5), cart!(0.353553);
+            cart!(0.353553), cart!(0.5)
+        ];
+        let rho_1 = dmatrix![
+            cart!(0.75), cart!(0.176777);
+            cart!(0.176777), cart!(0.25)
+        ];
+        let rho_2 = dmatrix![
+            cart!(0.875), cart!(0.125);
+            cart!(0.125), cart!(0.125)
+        ];
+        let rho_01 = dmatrix![
+            cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.25);
+            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.176777);
+            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0);
+            cart!(0.25)    , cart!(0.176777), cart!(0.0), cart!(0.25);
+        ];
+        let rho_12 = dmatrix![
+            cart!(0.75)    , cart!(0.176777), cart!(0.0), cart!(0.176777);
+            cart!(0.176777), cart!(0.125)    , cart!(0.0), cart!(0.125);
+            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0);
+            cart!(0.176777), cart!(0.125)   , cart!(0.0), cart!(0.125);
+        ];
+        let rho_012 = dmatrix![
+            cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.25)    , cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.25);
+            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.176777), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.176777);
+            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0)     , cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.25)    , cart!(0.176777), cart!(0.0), cart!(0.125)   , cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.125);
+            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0)     , cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0)     , cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0)     , cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.25)    , cart!(0.176777), cart!(0.0), cart!(0.125)   , cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.125);
+        ];
+        let rho = sim.current_state;
+        assert!(equal_to_matrix_c(
+            &rho_0,
+            &reduced_state(&rho, &[0], 3),
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &rho_1,
+            &reduced_state(&rho, &[1], 3),
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &rho_2,
+            &reduced_state(&rho, &[2], 3),
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &rho_01,
+            &reduced_state(&rho, &[0, 1], 3),
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &rho_12,
+            &reduced_state(&rho, &[1, 2], 3),
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &rho_012,
+            &reduced_state(&rho, &[0, 1, 2], 3),
+            0.001
+        ));
+        assert!(equal_to_matrix_c(&rho, &rho_012, 0.001));
     }
 }
