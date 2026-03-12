@@ -105,9 +105,9 @@ impl Circuit<HybridCircuit> {
 }
 
 impl<B: CircuitBehaviour> Circuit<B> {
-
     pub fn append_circuit(mut self, circuit: &Self) -> Self {
-        self.instructions.extend(circuit.instructions.iter().cloned());
+        self.instructions
+            .extend(circuit.instructions.iter().cloned());
         self
     }
 
