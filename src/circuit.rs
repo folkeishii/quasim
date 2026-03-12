@@ -105,6 +105,12 @@ impl Circuit<HybridCircuit> {
 }
 
 impl<B: CircuitBehaviour> Circuit<B> {
+    pub fn append_circuit(mut self, circuit: &Self) -> Self {
+        self.instructions
+            .extend(circuit.instructions.iter().cloned());
+        self
+    }
+
     pub fn valid_pc(&self, circuit_pc: &CircuitPc) -> bool {
         circuit_pc.pc() <= self.instructions().len()
     }
@@ -546,7 +552,7 @@ impl CircuitBehaviour for PureCircuit {
 }
 
 pub trait CircuitBehaviour {
-    type InstructionTy;
+    type InstructionTy: Clone;
     fn from_gate(gate: Gate) -> Self::InstructionTy;
 }
 
@@ -584,12 +590,6 @@ mod tests {
             assert!(is_vector_equal_to($m1, $m2))
         };
     }
-    fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
-        let mut circuit_tot = Circuit::new(std::cmp::max(circuit1.n_qubits(), circuit2.n_qubits()));
-        circuit_tot.instructions =
-            [circuit1.instructions.clone(), circuit2.instructions.clone()].concat();
-        circuit_tot
-    }
     #[test]
     fn inverse_test() {
         let circ = Circuit::new(5)
@@ -606,7 +606,8 @@ mod tests {
             .cu(1.0, 22.2, 0.1, &[4], 2)
             .swap(3, 4)
             .cswap(&[0], 1, 2);
-        let circ_and_inv = concat_circuits(&circ, &circ.inverse());
+        let inv = circ.inverse();
+        let circ_and_inv = circ.append_circuit(&inv);
         let dim = 1 << 5;
         let id = DMatrix::<Complex<f64>>::identity(dim, dim);
         let mut res: DMatrix<Complex<f64>> = id.clone();
