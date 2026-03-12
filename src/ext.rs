@@ -3,9 +3,9 @@ use std::mem::replace;
 use std::ops::Deref;
 use std::{iter::Map, ops::Range};
 
-use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
+use nalgebra::{dmatrix, Complex, DMatrix, DVector, Dim, Matrix, RawStorage};
 use rand::distr::weighted::WeightedIndex;
-use rand::{Rng, prelude::Distribution};
+use rand::{prelude::Distribution, Rng};
 
 use crate::gate::{Gate, GateType};
 
@@ -258,6 +258,22 @@ pub fn convention_convertion_matrix(n_qubits: usize) -> DMatrix<Complex<f64>> {
     reverse_matrix(&[], &(0..n_qubits).collect::<Vec<usize>>(), n_qubits)
 }
 
+/// # convert_vector
+/// converts a state vector between little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
+pub fn convert_vector(vector: &DVector<Complex<f64>>) -> DVector<Complex<f64>> {
+    let n_qubits = (vector.nrows() as f32).log2() as usize;
+    convention_convertion_matrix(n_qubits) * vector
+}
+
+/// # convert_matrix
+/// converts a matrix between little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
+pub fn convert_matrix(matrix: &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>> {
+    let n_qubits = (matrix.nrows() as f32).log2() as usize;
+    let mat = convention_convertion_matrix(n_qubits);
+    let adj = mat.adjoint();
+    mat * matrix * adj
+}
+
 /// # expand_matrix
 /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
 pub fn expand_matrix(
@@ -385,10 +401,12 @@ impl<T: Ord> OrdByKey<T> for T {
 #[cfg(test)]
 mod tests {
     use crate::ext::{
-        convention_convertion_matrix, equal_to_matrix_c, get_gate_matrix, swap_matrix,
+        convert_matrix, convert_vector, equal_to_matrix_c, expand_matrix_from_gate,
+        get_gate_matrix, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
+    use std::f64::consts::FRAC_1_SQRT_2;
 
     #[test]
     fn swap_test() {
@@ -438,12 +456,33 @@ mod tests {
             cart!(3.0), //|110>
             cart!(7.0), //|111>
         ];
-        let mat = convention_convertion_matrix(3);
         assert!(equal_to_matrix_c(
             &vec_lsb,
-            &(mat.clone() * vec_msb.clone()),
+            &convert_vector(&vec_msb),
             0.001
         ));
-        assert!(equal_to_matrix_c(&vec_msb, &(mat * vec_lsb), 0.001));
+        assert!(equal_to_matrix_c(
+            &vec_msb,
+            &convert_vector(&vec_lsb),
+            0.001
+        ));
+        let textbook_ch = dmatrix![
+            cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2);
+            cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(-FRAC_1_SQRT_2);
+        ];
+        let sim_ch = expand_matrix_from_gate(&Gate::new(GateType::H, &[0], &[1]).unwrap(), 2);
+
+        assert!(equal_to_matrix_c(
+            &convert_matrix(&sim_ch),
+            &textbook_ch,
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &convert_matrix(&textbook_ch),
+            &sim_ch,
+            0.001
+        ));
     }
 }
