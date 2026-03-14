@@ -236,6 +236,44 @@ pub fn swap_matrix(
     cnot_12.clone() * cnot_21 * cnot_12
 }
 
+/// # reverse_matrix
+/// Returns the 2^n by 2^n matrix describing reversing the order of qubits.
+pub fn reverse_matrix(
+    controls: &[usize],
+    targets: &[usize],
+    n_qubits: usize,
+) -> DMatrix<Complex<f64>> {
+    let dim = 1 << n_qubits;
+    let mut mat = DMatrix::<Complex<f64>>::identity(dim, dim);
+    for i in 0..(n_qubits >> 1) {
+        mat *= swap_matrix(controls, targets[i], targets[n_qubits - 1 - i], n_qubits);
+    }
+    mat
+}
+
+/// # convention_convertion_matrix
+/// Returns the 2^n by 2^n matrix that converts a state vector/density matrix between,
+/// little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
+pub fn convention_convertion_matrix(n_qubits: usize) -> DMatrix<Complex<f64>> {
+    reverse_matrix(&[], &(0..n_qubits).collect::<Vec<usize>>(), n_qubits)
+}
+
+/// # convert_vector
+/// converts a state vector between little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
+pub fn convert_vector(vector: &DVector<Complex<f64>>) -> DVector<Complex<f64>> {
+    let n_qubits = (vector.nrows() as f32).log2() as usize;
+    convention_convertion_matrix(n_qubits) * vector
+}
+
+/// # convert_matrix
+/// converts a matrix between little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
+pub fn convert_matrix(matrix: &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>> {
+    let n_qubits = (matrix.nrows() as f32).log2() as usize;
+    let mat = convention_convertion_matrix(n_qubits);
+    let adj = mat.adjoint();
+    mat * matrix * adj
+}
+
 /// # expand_matrix
 /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
 pub fn expand_matrix(
@@ -362,41 +400,27 @@ impl<T: Ord> OrdByKey<T> for T {
 
 #[cfg(test)]
 mod tests {
-    use crate::ext::{get_gate_matrix, swap_matrix};
+    use crate::ext::{
+        convert_matrix, convert_vector, equal_to_matrix_c, expand_matrix_from_gate,
+        get_gate_matrix, swap_matrix,
+    };
     use crate::gate::{Gate, GateType};
-    use nalgebra::{Complex, DMatrix, DVector, dmatrix};
-
-    fn is_matrix_equal_to(m1: DMatrix<Complex<f64>>, m2: DMatrix<Complex<f64>>) -> bool {
-        m1.iter()
-            .zip(m2.iter())
-            .all(|(a, b)| nalgebra::ComplexField::abs(a - b) < 0.001)
-    }
-
-    fn is_vector_equal_to(v1: DVector<Complex<f64>>, v2: DVector<Complex<f64>>) -> bool {
-        let l = v1.len();
-        let m1 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v1.as_slice());
-        let m2 = DMatrix::<Complex<f64>>::from_row_slice(l, 1, v2.as_slice());
-        l == v2.len() && is_matrix_equal_to(m1, m2)
-    }
-
-    macro_rules! assert_is_matrix_equal {
-        ($m1: expr, $m2: expr) => {
-            assert!(is_matrix_equal_to($m1, $m2))
-        };
-    }
+    use nalgebra::{dmatrix, dvector};
+    use std::f64::consts::FRAC_1_SQRT_2;
 
     #[test]
     fn swap_test() {
-        assert_is_matrix_equal!(
-            swap_matrix(&[], 0, 1, 2),
-            get_gate_matrix(&Gate::new(GateType::SWAP, &[], &[0, 1]).unwrap())
-        );
+        assert!(equal_to_matrix_c(
+            &swap_matrix(&[], 0, 1, 2),
+            &get_gate_matrix(&Gate::new(GateType::SWAP, &[], &[0, 1]).unwrap()),
+            0.001
+        ));
     }
     #[test]
     fn fredkin_test() {
-        assert_is_matrix_equal!(
-            swap_matrix(&[2], 1, 0, 3),
-            dmatrix![
+        assert!(equal_to_matrix_c(
+            &swap_matrix(&[2], 1, 0, 3),
+            &dmatrix![
                 cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
                 cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
                 cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -405,7 +429,60 @@ mod tests {
                 cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
                 cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
                 cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
-            ]
-        );
+            ],
+            0.001
+        ));
+    }
+
+    #[test]
+    fn convention_test() {
+        let vec_msb = dvector![
+            cart!(0.0), //|000>
+            cart!(1.0), //|001>
+            cart!(2.0), //|010>
+            cart!(3.0), //|011>
+            cart!(4.0), //|100>
+            cart!(5.0), //|101>
+            cart!(6.0), //|110>
+            cart!(7.0), //|111>
+        ];
+        let vec_lsb = dvector![
+            cart!(0.0), //|000>
+            cart!(4.0), //|001>
+            cart!(2.0), //|010>
+            cart!(6.0), //|011>
+            cart!(1.0), //|100>
+            cart!(5.0), //|101>
+            cart!(3.0), //|110>
+            cart!(7.0), //|111>
+        ];
+        assert!(equal_to_matrix_c(
+            &vec_lsb,
+            &convert_vector(&vec_msb),
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &vec_msb,
+            &convert_vector(&vec_lsb),
+            0.001
+        ));
+        let textbook_ch = dmatrix![
+            cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
+            cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2);
+            cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(-FRAC_1_SQRT_2);
+        ];
+        let sim_ch = expand_matrix_from_gate(&Gate::new(GateType::H, &[0], &[1]).unwrap(), 2);
+
+        assert!(equal_to_matrix_c(
+            &convert_matrix(&sim_ch),
+            &textbook_ch,
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &convert_matrix(&textbook_ch),
+            &sim_ch,
+            0.001
+        ));
     }
 }
