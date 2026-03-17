@@ -1,7 +1,7 @@
 use nalgebra::{Complex, DMatrix, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
-use crate::circuit::{HybridCircuit, PureCircuit};
+use crate::circuit::{CircuitBehaviour, HybridCircuit};
 use crate::simulator::HybridSimulator;
 use crate::{
     cart,
@@ -242,21 +242,17 @@ pub struct SVSimulator {
     circuit: Circuit<HybridCircuit>,
 }
 
-impl TryFrom<Circuit<PureCircuit>> for SVSimulator {
+impl<T> TryFrom<Circuit<T>> for SVSimulator
+where
+    T: CircuitBehaviour,
+    Circuit<T>: Into<Circuit<HybridCircuit>>,
+{
     type Error = SVError;
 
-    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<T>) -> Result<Self, Self::Error> {
         Ok(Self {
             circuit: value.into(),
         })
-    }
-}
-
-impl TryFrom<Circuit<HybridCircuit>> for SVSimulator {
-    type Error = SVError;
-
-    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
-        Ok(Self { circuit: value })
     }
 }
 
@@ -282,21 +278,16 @@ pub struct SVSimulatorDebugger {
     executor: SVExecutor,
 }
 
-impl TryFrom<Circuit<PureCircuit>> for SVSimulatorDebugger {
+impl<T> TryFrom<Circuit<T>> for SVSimulatorDebugger
+where
+    T: CircuitBehaviour,
+    Circuit<T>: Into<Circuit<HybridCircuit>>,
+{
     type Error = SVError;
 
-    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<T>) -> Result<Self, Self::Error> {
         Ok(Self {
             executor: SVExecutor::new(value.into()),
-        })
-    }
-}
-impl TryFrom<Circuit<HybridCircuit>> for SVSimulatorDebugger {
-    type Error = SVError;
-
-    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            executor: SVExecutor::new(value),
         })
     }
 }
