@@ -553,7 +553,12 @@ pub trait CircuitBehaviour {
 #[cfg(test)]
 mod tests {
     use crate::{
-        cart, circuit::Circuit, ext::{equal_to_matrix_c, expand_matrix_from_gate}, instruction::Instruction, simulator::{BuildSimulator, RunnableSimulator}, sv_simulator::SVSimulator
+        cart,
+        circuit::Circuit,
+        ext::{equal_to_matrix_c, expand_matrix_from_gate},
+        instruction::Instruction,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
     };
     use nalgebra::{Complex, DMatrix, dvector};
     fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
