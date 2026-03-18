@@ -1,13 +1,18 @@
-use nalgebra::{Complex, DMatrix, DVector};
+use nalgebra::{Complex, DVector, Matrix2};
 use rand::distr::{Distribution, weighted::WeightedIndex};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
+};
+use rayon::slice::ParallelSliceMut;
 
 use crate::circuit::{CircuitBehaviour, HybridCircuit};
+use crate::ext::get_u_matrix2;
+use crate::gate::GateType;
 use crate::simulator::HybridSimulator;
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
-    ext::get_gate_matrix,
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
@@ -82,32 +87,157 @@ impl SVExecutor {
         (i & target_mask) == 0
     }
 
-    fn block_indices(base: usize, targets: &[usize]) -> Vec<usize> {
-        let k = targets.len();
-        let mut indices = Vec::with_capacity(1 << k);
+    // 0 1
+    // 1 0
+    #[inline(always)]
+    fn apply_x(&mut self, base_index: usize, target: QBits) {
+        self.state_vector
+            .as_mut_slice()
+            .swap(base_index, base_index | target.get_bitstring());
+    }
 
-        for mask in 0..(1 << k) {
-            let mut idx = base;
-            // We embed the bits of mask into the corresponding target qubit positions
-            for (j, &target_bit_pos) in targets.iter().enumerate() {
-                // Take the j:th bit of the mask and place it at the correct position
-                // of the target bit
-                idx |= ((mask >> j) & 1) << target_bit_pos;
-            }
-            indices.push(idx);
-        }
+    #[inline(always)]
+    fn p_apply_x(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
+        let tmp = *amp0;
+        *amp0 = *amp1;
+        *amp1 = tmp;
+    }
 
-        indices
+    // 0 -i
+    // i  0
+    #[inline(always)]
+    fn apply_y(&mut self, base_index: usize, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let state = self.state_vector.as_mut_slice();
+        let a = state[base_index];
+        let b = state[flipped_index];
+
+        state[base_index] = cart!(b.im, -b.re);
+        state[flipped_index] = cart!(-a.im, a.re);
+    }
+
+    #[inline(always)]
+    fn p_apply_y(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
+        let a = *amp0;
+        let b = *amp1;
+        *amp0 = cart!(b.im, -b.re);
+        *amp1 = cart!(-a.im, a.re);
+    }
+
+    // 1  0
+    // 0 -1
+    #[inline(always)]
+    fn apply_z(&mut self, base_index: usize, target: QBits) {
+        let i = base_index | target.get_bitstring();
+        let amp = &mut self.state_vector[i];
+
+        amp.re = -amp.re;
+        amp.im = -amp.im;
+    }
+
+    #[inline(always)]
+    fn p_apply_z(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
+        amp1.re = -amp1.re;
+        amp1.im = -amp1.im;
+    }
+
+    #[inline(always)]
+    fn apply_h(&mut self, base_index: usize, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let state = self.state_vector.as_mut_slice();
+        let a = state[base_index];
+        let b = state[flipped_index];
+        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
+
+        state[base_index] = (a + b) * inv_sqrt2;
+        state[flipped_index] = (a - b) * inv_sqrt2;
+    }
+
+    #[inline(always)]
+    fn p_apply_h(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
+        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
+        let a = *amp0;
+        let b = *amp1;
+        *amp0 = (a + b) * inv_sqrt2;
+        *amp1 = (a - b) * inv_sqrt2;
+    }
+
+    // #[inline(always)]
+    // fn apply_rx(&mut self, base_index: usize, target: QBits) {}
+
+    // #[inline(always)]
+    // fn apply_ry(&mut self, base_index: usize, target: QBits) {}
+
+    // #[inline(always)]
+    // fn apply_rz(&mut self, base_index: usize, target: QBits) {}
+
+    // #[inline(always)]
+    // fn apply_phase(&mut self, base_index: usize, target: QBits) {}
+
+    fn apply_s(&mut self, base_index: usize, target: QBits) {
+        let i = base_index | target.get_bitstring();
+        let amp = self.state_vector[i];
+
+        self.state_vector[i].re = -amp.im;
+        self.state_vector[i].im = amp.re;
+    }
+
+    #[inline(always)]
+    fn p_apply_s(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
+        let tmp = *amp1;
+        amp1.re = -tmp.im;
+        amp1.im = tmp.re;
+    }
+
+    #[inline(always)]
+    fn apply_swap(&mut self, base_index: usize, targets: QBits) {
+        let t0 = targets.get_indices()[0];
+        let t1 = targets.get_indices()[1];
+
+        let i01 = base_index | (1 << t0);
+        let i10 = base_index | (1 << t1);
+
+        self.state_vector.as_mut_slice().swap(i01, i10);
+    }
+
+    #[inline(always)]
+    fn p_apply_swap(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
+        let tmp = *amp0;
+        *amp0 = *amp1;
+        *amp1 = tmp;
+    }
+
+    #[inline(always)]
+    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f64>>, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let a = self.state_vector[base_index];
+        let b = self.state_vector[flipped_index];
+
+        self.state_vector[base_index] = u[(0, 0)] * a + u[(0, 1)] * b;
+        self.state_vector[flipped_index] = u[(1, 0)] * a + u[(1, 1)] * b;
+    }
+
+    #[inline(always)]
+    fn p_apply_unitary2(
+        amp0: &mut Complex<f64>,
+        amp1: &mut Complex<f64>,
+        u: &Matrix2<Complex<f64>>,
+    ) {
+        let a = *amp0;
+        let b = *amp1;
+
+        *amp0 = u[(0, 0)] * a + u[(0, 1)] * b;
+        *amp1 = u[(1, 0)] * a + u[(1, 1)] * b;
     }
 
     fn gate(&mut self, gate: &Gate) {
         let controls = gate.get_control_bits();
         let targets = gate.get_target_bits();
-        let u: DMatrix<Complex<f64>> = get_gate_matrix(gate);
-        let target_indices = targets.get_indices();
+        let n = self.state_vector.len();
 
+        // No parallelization
         // State vector is length 2^n , n=num qubits
-        for i in 0..self.state_vector.len() {
+        for i in 0..n {
             if !Self::is_block_base(i, targets) {
                 continue;
             }
@@ -116,23 +246,60 @@ impl SVExecutor {
                 continue;
             }
 
-            let indices = Self::block_indices(i, &target_indices);
-
-            // Read amplitudes
-            let v = DVector::from_iterator(
-                indices.len(),
-                indices.iter().map(|&idx| self.state_vector[idx]),
-            );
-
-            // Apply gate matrix, assumes u matches size of v
-            let v2 = &u * &v;
-
-            // Write updated amplitudes back
-            for (j, &idx) in indices.iter().enumerate() {
-                self.state_vector[idx] = v2[j];
+            match gate.get_type() {
+                GateType::X => self.apply_x(i, targets),
+                GateType::Y => self.apply_y(i, targets),
+                GateType::Z => self.apply_z(i, targets),
+                GateType::H => self.apply_h(i, targets),
+                GateType::S => self.apply_s(i, targets),
+                GateType::SWAP => self.apply_swap(i, targets),
+                GateType::U(theta, phi, lambda) => {
+                    self.apply_unitary2(i, &get_u_matrix2(theta, phi, lambda), targets)
+                }
             }
         }
 
+        self.pc_mut().increment();
+    }
+
+    fn p_gate(&mut self, gate: &Gate) {
+        let controls = gate.get_control_bits();
+        let targets = gate.get_target_bits();
+
+        let rev = targets.get_bitstring().reverse_bits();
+        let half = (rev & rev.wrapping_neg()).reverse_bits();
+        let block_size = half << 1;
+
+        // Rayon parallelization wip
+        self.state_vector
+            .as_mut_slice()
+            .par_chunks_mut(block_size)
+            .enumerate()
+            .for_each(|(block_idx, chunk)| {
+                let (lo, hi) = chunk.split_at_mut(half);
+
+                for n in 0..half {
+                    if !Self::controls_active(block_idx + n, controls) {
+                        continue;
+                    }
+
+                    let amp0 = &mut lo[n];
+                    let amp1 = &mut hi[n];
+
+                    match gate.get_type() {
+                        GateType::X => Self::p_apply_x(amp0, amp1),
+                        GateType::Y => Self::p_apply_y(amp0, amp1),
+                        GateType::Z => Self::p_apply_z(amp0, amp1),
+                        GateType::H => Self::p_apply_h(amp0, amp1),
+                        GateType::S => Self::p_apply_s(amp0, amp1),
+                        GateType::SWAP => Self::p_apply_swap(amp0, amp1),
+                        GateType::U(theta, phi, lambda) => {
+                            Self::p_apply_unitary2(amp0, amp1, &get_u_matrix2(theta, phi, lambda))
+                        }
+                    }
+                }
+            });
+        
         self.pc_mut().increment();
     }
 
@@ -206,7 +373,7 @@ impl SVExecutor {
 
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
-            Instruction::Gate(gate) => self.gate(gate),
+            Instruction::Gate(gate) => self.p_gate(gate),
             Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(*qbit, reg, *bit_pos),
             Instruction::MeasureAll(reg) => self.measure_all(reg),
             Instruction::Jump(pc) => self.jump(*pc),
@@ -344,6 +511,7 @@ mod tests {
 
     use crate::expr_dsl::Value;
     use crate::ext::equal_to_matrix_c;
+    use crate::gate::QBits;
     use crate::simulator::{DebuggableSimulator, HybridSimulator};
     use crate::sv_simulator::SVSimulatorDebugger;
     use crate::{cart, common_test};
@@ -586,5 +754,19 @@ mod tests {
     #[test]
     fn almost_grovers() {
         common_test::almost_grovers::<SVSimulatorDebugger>();
+    }
+
+    #[test]
+    fn testy() {
+        let targets = QBits::from_indices(&[2, 1, 4]);
+
+        let rev = targets.get_bitstring().reverse_bits();
+        let chk = (rev & rev.wrapping_neg()).reverse_bits();
+        let block_size = chk << 1;
+
+        println!("{:?}", targets);
+        println!("{:?}", rev);
+        println!("{:?}", chk);
+        println!("{:?}", block_size);
     }
 }
