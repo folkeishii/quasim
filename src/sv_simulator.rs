@@ -1,9 +1,5 @@
 use nalgebra::{Complex, DVector, Matrix2};
 use rand::distr::{Distribution, weighted::WeightedIndex};
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelRefIterator, IntoParallelRefMutIterator, ParallelIterator,
-};
-use rayon::slice::ParallelSliceMut;
 
 use crate::circuit::{CircuitBehaviour, HybridCircuit};
 use crate::ext::get_u_matrix2;
@@ -96,13 +92,6 @@ impl SVExecutor {
             .swap(base_index, base_index | target.get_bitstring());
     }
 
-    #[inline(always)]
-    fn p_apply_x(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
-        let tmp = *amp0;
-        *amp0 = *amp1;
-        *amp1 = tmp;
-    }
-
     // 0 -i
     // i  0
     #[inline(always)]
@@ -114,14 +103,6 @@ impl SVExecutor {
 
         state[base_index] = cart!(b.im, -b.re);
         state[flipped_index] = cart!(-a.im, a.re);
-    }
-
-    #[inline(always)]
-    fn p_apply_y(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
-        let a = *amp0;
-        let b = *amp1;
-        *amp0 = cart!(b.im, -b.re);
-        *amp1 = cart!(-a.im, a.re);
     }
 
     // 1  0
@@ -136,12 +117,6 @@ impl SVExecutor {
     }
 
     #[inline(always)]
-    fn p_apply_z(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
-        amp1.re = -amp1.re;
-        amp1.im = -amp1.im;
-    }
-
-    #[inline(always)]
     fn apply_h(&mut self, base_index: usize, target: QBits) {
         let flipped_index = base_index | target.get_bitstring();
         let state = self.state_vector.as_mut_slice();
@@ -151,15 +126,6 @@ impl SVExecutor {
 
         state[base_index] = (a + b) * inv_sqrt2;
         state[flipped_index] = (a - b) * inv_sqrt2;
-    }
-
-    #[inline(always)]
-    fn p_apply_h(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
-        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
-        let a = *amp0;
-        let b = *amp1;
-        *amp0 = (a + b) * inv_sqrt2;
-        *amp1 = (a - b) * inv_sqrt2;
     }
 
     // #[inline(always)]
@@ -183,13 +149,6 @@ impl SVExecutor {
     }
 
     #[inline(always)]
-    fn p_apply_s(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
-        let tmp = *amp1;
-        amp1.re = -tmp.im;
-        amp1.im = tmp.re;
-    }
-
-    #[inline(always)]
     fn apply_swap(&mut self, base_index: usize, targets: QBits) {
         let t0 = targets.get_indices()[0];
         let t1 = targets.get_indices()[1];
@@ -201,13 +160,6 @@ impl SVExecutor {
     }
 
     #[inline(always)]
-    fn p_apply_swap(amp01: &mut Complex<f64>, amp10: &mut Complex<f64>) {
-        let tmp = *amp01;
-        *amp01 = *amp10;
-        *amp10 = tmp;
-    }
-
-    #[inline(always)]
     fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f64>>, target: QBits) {
         let flipped_index = base_index | target.get_bitstring();
         let a = self.state_vector[base_index];
@@ -215,19 +167,6 @@ impl SVExecutor {
 
         self.state_vector[base_index] = u[(0, 0)] * a + u[(0, 1)] * b;
         self.state_vector[flipped_index] = u[(1, 0)] * a + u[(1, 1)] * b;
-    }
-
-    #[inline(always)]
-    fn p_apply_unitary2(
-        amp0: &mut Complex<f64>,
-        amp1: &mut Complex<f64>,
-        u: &Matrix2<Complex<f64>>,
-    ) {
-        let a = *amp0;
-        let b = *amp1;
-
-        *amp0 = u[(0, 0)] * a + u[(0, 1)] * b;
-        *amp1 = u[(1, 0)] * a + u[(1, 1)] * b;
     }
 
     fn gate(&mut self, gate: &Gate) {
@@ -259,58 +198,6 @@ impl SVExecutor {
             }
         }
 
-        self.pc_mut().increment();
-    }
-
-    fn p_gate(&mut self, gate: &Gate) {
-        let controls = gate.get_control_bits();
-        let targets = gate.get_target_bits();
-
-        let rev = targets.get_bitstring().reverse_bits();
-        let half = (rev & rev.wrapping_neg()).reverse_bits();
-        let block_size = half << 1;
-
-        // Rayon parallelization wip
-        self.state_vector
-            .as_mut_slice()
-            .par_chunks_mut(block_size)
-            .enumerate()
-            .for_each(|(block_idx, chunk)| {
-                let (lo, hi) = chunk.split_at_mut(half);
-
-                for n in 0..half {
-                    if !Self::controls_active(block_idx * block_size + n, controls) {
-                        continue;
-                    }
-
-                    let amp0 = &mut lo[n];
-                    let amp1 = &mut hi[n];
-
-                    match gate.get_type() {
-                        GateType::X => Self::p_apply_x(amp0, amp1),
-                        GateType::Y => Self::p_apply_y(amp0, amp1),
-                        GateType::Z => Self::p_apply_z(amp0, amp1),
-                        GateType::H => Self::p_apply_h(amp0, amp1),
-                        GateType::S => Self::p_apply_s(amp0, amp1),
-                        GateType::SWAP => {
-                            let lower_mask = 1 << targets.get_indices()[0];
-
-                            if (n & lower_mask) != 0 {
-                                continue;
-                            }
-
-                            let amp01 = &mut lo[n | lower_mask];
-                            let amp10 = &mut hi[n];
-
-                            Self::p_apply_swap(amp01, amp10)
-                        },
-                        GateType::U(theta, phi, lambda) => {
-                            Self::p_apply_unitary2(amp0, amp1, &get_u_matrix2(theta, phi, lambda))
-                        }
-                    }
-                }
-            });
-        
         self.pc_mut().increment();
     }
 
