@@ -201,10 +201,10 @@ impl SVExecutor {
     }
 
     #[inline(always)]
-    fn p_apply_swap(amp0: &mut Complex<f64>, amp1: &mut Complex<f64>) {
-        let tmp = *amp0;
-        *amp0 = *amp1;
-        *amp1 = tmp;
+    fn p_apply_swap(amp01: &mut Complex<f64>, amp10: &mut Complex<f64>) {
+        let tmp = *amp01;
+        *amp01 = *amp10;
+        *amp10 = tmp;
     }
 
     #[inline(always)]
@@ -279,7 +279,7 @@ impl SVExecutor {
                 let (lo, hi) = chunk.split_at_mut(half);
 
                 for n in 0..half {
-                    if !Self::controls_active(block_idx + n, controls) {
+                    if !Self::controls_active(block_idx * block_size + n, controls) {
                         continue;
                     }
 
@@ -292,7 +292,18 @@ impl SVExecutor {
                         GateType::Z => Self::p_apply_z(amp0, amp1),
                         GateType::H => Self::p_apply_h(amp0, amp1),
                         GateType::S => Self::p_apply_s(amp0, amp1),
-                        GateType::SWAP => Self::p_apply_swap(amp0, amp1),
+                        GateType::SWAP => {
+                            let lower_mask = 1 << targets.get_indices()[0];
+
+                            if (n & lower_mask) != 0 {
+                                continue;
+                            }
+
+                            let amp01 = &mut lo[n | lower_mask];
+                            let amp10 = &mut hi[n];
+
+                            Self::p_apply_swap(amp01, amp10)
+                        },
                         GateType::U(theta, phi, lambda) => {
                             Self::p_apply_unitary2(amp0, amp1, &get_u_matrix2(theta, phi, lambda))
                         }
@@ -373,7 +384,7 @@ impl SVExecutor {
 
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
-            Instruction::Gate(gate) => self.p_gate(gate),
+            Instruction::Gate(gate) => self.gate(gate),
             Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(*qbit, reg, *bit_pos),
             Instruction::MeasureAll(reg) => self.measure_all(reg),
             Instruction::Jump(pc) => self.jump(*pc),
