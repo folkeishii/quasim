@@ -1,5 +1,6 @@
 use cubecl::bytes::Bytes;
 use cubecl::prelude::*;
+use cubecl::server::Handle;
 use cubecl::wgpu::WgpuRuntime;
 use cubecl::{CubeCount, CubeDim, Runtime, cube};
 use nalgebra::{Complex, DVector};
@@ -17,9 +18,12 @@ use crate::{
     simulator::StoredCircuitSimulator,
 };
 
-#[derive(Debug, Clone)]
-pub struct GPUSVExecutor {
-    state_vector_bytes: Bytes,
+#[derive(Clone)]
+pub struct GPUSVExecutor<R: Runtime> {
+    client: ComputeClient<R>,
+
+    state_vector_cache: Bytes,
+    state_vector_handle: Handle,
     state_vector_len: usize,
 
     circuit: Circuit<HybridCircuit>,
@@ -27,18 +31,24 @@ pub struct GPUSVExecutor {
     registers: RegisterFile<Value>,
 }
 
-impl GPUSVExecutor {
+impl<R: Runtime> GPUSVExecutor<R> {
     fn new(circuit: Circuit<HybridCircuit>) -> Self {
         let size = 1 << circuit.n_qubits();
+
+        let client = R::client(&Default::default());
 
         // Bytes init
         let mut init_state: Vec<f64> = vec![0.0; size * 2]; // two floats for each complex number
         init_state[0] = 1.0; // Sets first complex re = 1.0
         let init_bytes = Bytes::from_elems(init_state);
 
+        let state_vector_handle = client.create_from_slice(&init_bytes);
+
         let registers = RegisterFile::from(circuit.registers());
         Self {
-            state_vector_bytes: init_bytes,
+            client: client,
+            state_vector_cache: init_bytes,
+            state_vector_handle: state_vector_handle,
             state_vector_len: size,
             circuit: circuit,
             pc: Default::default(),
@@ -74,18 +84,20 @@ impl GPUSVExecutor {
         dist.sample(&mut rng)
     }
 
+    pub fn sync_state_to_cpu(&mut self) {
+        self.state_vector_cache = self.client.read_one(self.state_vector_handle.clone());
+    }
+
     /// Get current state of the quantum system
     pub fn state_vector(&self) -> &[Complex<f64>] {
-        complex_from_bytes(&self.state_vector_bytes)
+        complex_from_bytes(&self.state_vector_cache)
     }
 
     pub fn state_vector_mut(&mut self) -> &mut [Complex<f64>] {
-        complex_from_bytes_mut(&mut self.state_vector_bytes)
+        complex_from_bytes_mut(&mut self.state_vector_cache)
     }
 
-    fn launch_batched_gate2<'a, R: Runtime>(&mut self, gates: &[&'a Gate]) {
-        let client = R::client(&Default::default());
-
+    fn launch_batched_gate2<'a>(&mut self, gates: &[&'a Gate]) {
         let n_gates = gates.len();
         let n_amplitudes = self.state_vector_len;
 
@@ -103,25 +115,24 @@ impl GPUSVExecutor {
             }
         }
 
-        let state_handle = client.create_from_slice(&self.state_vector_bytes);
-        let gate_data_handle = client.create_from_slice(bytes_from_complex(&gate_data));
-        let target_data_handle = client.create_from_slice(u32::as_bytes(&target_data));
-        let control_data_handle = client.create_from_slice(u32::as_bytes(&control_data));
+        let gate_data_handle = self.client.create_from_slice(bytes_from_complex(&gate_data));
+        let target_data_handle = self.client.create_from_slice(u32::as_bytes(&target_data));
+        let control_data_handle = self.client.create_from_slice(u32::as_bytes(&control_data));
+
+        let cube_dim = CubeDim::new_1d(128);
+        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, n_amplitudes, cube_dim);
 
         unsafe {
             let _ = batched_gate2_kernel::launch(
-                &client,
-                CubeCount::Static(1, 1, 1),
-                CubeDim::new_1d(n_amplitudes as u32),
-                ArrayArg::from_raw_parts::<f64>(&state_handle, n_amplitudes * 2, 1),
+                &self.client,
+                cube_count,
+                cube_dim,
+                ArrayArg::from_raw_parts::<f64>(&self.state_vector_handle, n_amplitudes * 2, 1),
                 ArrayArg::from_raw_parts::<u32>(&target_data_handle, n_gates, 1),
                 ArrayArg::from_raw_parts::<u32>(&control_data_handle, n_gates, 1),
                 ArrayArg::from_raw_parts::<f64>(&gate_data_handle, n_gates * 8, 1),
             );
         }
-
-        let bytes = client.read_one(state_handle);
-        self.state_vector_bytes = bytes;
     }
 
     fn get_batches<'a>(&mut self) -> Vec<Vec<&'a Gate>> {
@@ -129,11 +140,8 @@ impl GPUSVExecutor {
         let batch_count = 0;
 
         while let Some(Instruction::Gate(gate)) = &self.circuit.instruction(self.pc()) {
-            
-            
-
             self.pc_mut().increment();
-        };
+        }
 
         batches
     }
@@ -141,7 +149,7 @@ impl GPUSVExecutor {
     fn gate(&mut self, gate: &Gate) {
         let gates = &[gate];
 
-        self.launch_batched_gate2::<WgpuRuntime>(gates);
+        self.launch_batched_gate2(gates);
 
         self.pc_mut().increment();
     }
@@ -168,7 +176,8 @@ impl GPUSVExecutor {
         }
 
         // Renormalize state vector
-        let norm = self.state_vector()
+        let norm = self
+            .state_vector()
             .iter()
             .map(|x| x.norm_sqr())
             .sum::<f64>()
@@ -356,14 +365,24 @@ fn complex_from_bytes<T: CubeElement>(bytes: &[u8]) -> &[Complex<T>] {
 }
 
 fn bytes_from_complex_mut<T: CubeElement>(data: &mut [Complex<T>]) -> &mut [u8] {
-    unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, data.len() * size_of::<Complex<T>>()) }
+    unsafe {
+        std::slice::from_raw_parts_mut(
+            data.as_mut_ptr() as *mut u8,
+            data.len() * size_of::<Complex<T>>(),
+        )
+    }
 }
 
 fn complex_from_bytes_mut<T: CubeElement>(bytes: &mut Bytes) -> &mut [Complex<T>] {
-    unsafe { std::slice::from_raw_parts_mut(bytes.as_mut_ptr() as *mut Complex<T>, bytes.len() / size_of::<Complex<T>>()) }
+    unsafe {
+        std::slice::from_raw_parts_mut(
+            bytes.as_mut_ptr() as *mut Complex<T>,
+            bytes.len() / size_of::<Complex<T>>(),
+        )
+    }
 }
 
-impl StoredCircuitSimulator for GPUSVExecutor {
+impl<R: Runtime> StoredCircuitSimulator for GPUSVExecutor<R> {
     type B = HybridCircuit;
 
     fn circuit(&self) -> &Circuit<HybridCircuit> {
@@ -379,21 +398,32 @@ impl StoredCircuitSimulator for GPUSVExecutor {
 pub enum SVGPUError {}
 
 mod tests {
+    use cubecl::wgpu::WgpuRuntime;
     use nalgebra::DVector;
 
-    use crate::{circuit::Circuit, gpu_sv_simulator::GPUSVExecutor};
+    use crate::{circuit::Circuit, gpu_sv_simulator::GPUSVExecutor, simulator::{BuildSimulator, DebuggableSimulator}, sv_simulator::SVSimulatorDebugger};
 
     #[test]
     fn test() {
-        let circ = Circuit::new(4)
+        let mut circ = Circuit::new(26)
+            .new_reg("r0")
             .h(0)
             .cx(&[0], 1)
             .cx(&[0], 2)
             .cx(&[0], 3);
 
-        let mut exec = GPUSVExecutor::new(circ.into());
+        for i in 0..26 {
+            circ = circ.h(i % 26);
+        }
 
+        // let mut exec = SVSimulatorDebugger::build(circ.into()).unwrap();
+        // exec.cont();
+
+
+        let mut exec = GPUSVExecutor::<WgpuRuntime>::new(circ.into());
         exec.step_all();
-        println!("{}", DVector::from_row_slice(exec.state_vector()))
+
+        // exec.sync_state_to_cpu();
+        // println!("{}", DVector::from_row_slice(exec.state_vector()))
     }
 }
