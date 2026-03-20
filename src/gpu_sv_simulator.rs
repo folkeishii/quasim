@@ -1,3 +1,4 @@
+use cubecl::bytes::Bytes;
 use cubecl::prelude::*;
 use cubecl::wgpu::WgpuRuntime;
 use cubecl::{CubeCount, CubeDim, Runtime, cube};
@@ -18,7 +19,9 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct GPUSVExecutor {
-    state_vector: DVector<Complex<f64>>,
+    state_vector_bytes: Bytes,
+    state_vector_len: usize,
+
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile<Value>,
@@ -27,12 +30,16 @@ pub struct GPUSVExecutor {
 impl GPUSVExecutor {
     fn new(circuit: Circuit<HybridCircuit>) -> Self {
         let size = 1 << circuit.n_qubits();
-        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
-        init_state_vector[0] = cart![1.0];
+
+        // Bytes init
+        let mut init_state: Vec<f64> = vec![0.0; size * 2]; // two floats for each complex number
+        init_state[0] = 1.0; // Sets first complex re = 1.0
+        let init_bytes = Bytes::from_elems(init_state);
 
         let registers = RegisterFile::from(circuit.registers());
         Self {
-            state_vector: init_state_vector,
+            state_vector_bytes: init_bytes,
+            state_vector_len: size,
             circuit: circuit,
             pc: Default::default(),
             registers: registers,
@@ -40,14 +47,14 @@ impl GPUSVExecutor {
     }
 
     /// Step forward one instruction in the circuit
-    pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
+    pub fn step(&mut self) -> Option<&[Complex<f64>]> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             return None;
         };
 
         self.apply_instruction(&inst);
 
-        Some(&self.state_vector)
+        Some(self.state_vector())
     }
 
     /// Run the entire circuit
@@ -58,7 +65,7 @@ impl GPUSVExecutor {
 
     /// Gets a collapsed result from the current state vector
     pub fn get_collapsed_state(&self) -> usize {
-        let probs = self.state_vector.iter().map(|&c| c.norm_sqr());
+        let probs = self.state_vector().iter().map(|&c| c.norm_sqr());
 
         let dist = WeightedIndex::new(probs)
             .expect("Failed to create probability distribution. Invalid or empty state vector?");
@@ -68,26 +75,19 @@ impl GPUSVExecutor {
     }
 
     /// Get current state of the quantum system
-    pub fn state_vector(&self) -> &DVector<Complex<f64>> {
-        &self.state_vector
+    pub fn state_vector(&self) -> &[Complex<f64>] {
+        complex_from_bytes(&self.state_vector_bytes)
     }
-    #[inline(always)]
-    fn apply_swap(&mut self, base_index: usize, targets: QBits) {
-        let t0 = targets.get_indices()[0];
-        let t1 = targets.get_indices()[1];
 
-        let i01 = base_index | (1 << t0);
-        let i10 = base_index | (1 << t1);
-
-        self.state_vector.as_mut_slice().swap(i01, i10);
+    pub fn state_vector_mut(&mut self) -> &mut [Complex<f64>] {
+        complex_from_bytes_mut(&mut self.state_vector_bytes)
     }
 
     fn launch_batched_gate2<'a, R: Runtime>(&mut self, gates: &[&'a Gate]) {
         let client = R::client(&Default::default());
 
-        let state_vector = self.state_vector.as_mut_slice();
         let n_gates = gates.len();
-        let n_amplitudes = state_vector.len();
+        let n_amplitudes = self.state_vector_len;
 
         // Batch data
         let mut gate_data: Vec<Complex<f64>> = Vec::with_capacity(n_gates * 4); // 4 complex amps per gate
@@ -103,7 +103,7 @@ impl GPUSVExecutor {
             }
         }
 
-        let state_handle = client.create_from_slice(bytes_from_complex(state_vector));
+        let state_handle = client.create_from_slice(&self.state_vector_bytes);
         let gate_data_handle = client.create_from_slice(bytes_from_complex(&gate_data));
         let target_data_handle = client.create_from_slice(u32::as_bytes(&target_data));
         let control_data_handle = client.create_from_slice(u32::as_bytes(&control_data));
@@ -121,10 +121,21 @@ impl GPUSVExecutor {
         }
 
         let bytes = client.read_one(state_handle);
-        let result = complex_from_bytes::<f64>(&bytes);
-        let dvec = DVector::from_row_slice(result);
+        self.state_vector_bytes = bytes;
+    }
 
-        println!("{}", dvec);
+    fn get_batches<'a>(&mut self) -> Vec<Vec<&'a Gate>> {
+        let batches: Vec<Vec<&'a Gate>> = Vec::new();
+        let batch_count = 0;
+
+        while let Some(Instruction::Gate(gate)) = &self.circuit.instruction(self.pc()) {
+            
+            
+
+            self.pc_mut().increment();
+        };
+
+        batches
     }
 
     fn gate(&mut self, gate: &Gate) {
@@ -150,20 +161,19 @@ impl GPUSVExecutor {
         }
 
         // Go through state vector and remove amplitude for all states that do not align with measurement
-        for (i, amp) in self.state_vector.iter_mut().enumerate() {
+        for (i, amp) in self.state_vector_mut().iter_mut().enumerate() {
             if (i & mask) != measured_bit {
                 *amp = Complex::ZERO;
             }
         }
 
         // Renormalize state vector
-        let norm = self
-            .state_vector
+        let norm = self.state_vector()
             .iter()
             .map(|x| x.norm_sqr())
             .sum::<f64>()
             .sqrt();
-        self.state_vector.iter_mut().for_each(|x| *x /= norm);
+        self.state_vector_mut().iter_mut().for_each(|x| *x /= norm);
 
         self.pc_mut().increment();
     }
@@ -174,8 +184,8 @@ impl GPUSVExecutor {
         self.registers[reg] = Value::Int(measurement as i32);
 
         // Collapse whole state vector
-        self.state_vector.fill(cart!(0.0));
-        self.state_vector[measurement] = cart!(1.0);
+        self.state_vector_mut().fill(cart!(0.0));
+        self.state_vector_mut()[measurement] = cart!(1.0);
 
         self.pc_mut().increment();
     }
@@ -345,6 +355,14 @@ fn complex_from_bytes<T: CubeElement>(bytes: &[u8]) -> &[Complex<T>] {
     unsafe { std::slice::from_raw_parts(data.as_ptr() as *const Complex<T>, data.len() / 2) }
 }
 
+fn bytes_from_complex_mut<T: CubeElement>(data: &mut [Complex<T>]) -> &mut [u8] {
+    unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut u8, data.len() * size_of::<Complex<T>>()) }
+}
+
+fn complex_from_bytes_mut<T: CubeElement>(bytes: &mut Bytes) -> &mut [Complex<T>] {
+    unsafe { std::slice::from_raw_parts_mut(bytes.as_mut_ptr() as *mut Complex<T>, bytes.len() / size_of::<Complex<T>>()) }
+}
+
 impl StoredCircuitSimulator for GPUSVExecutor {
     type B = HybridCircuit;
 
@@ -361,14 +379,21 @@ impl StoredCircuitSimulator for GPUSVExecutor {
 pub enum SVGPUError {}
 
 mod tests {
+    use nalgebra::DVector;
+
     use crate::{circuit::Circuit, gpu_sv_simulator::GPUSVExecutor};
 
     #[test]
     fn test() {
-        let circ = Circuit::new(2).x(0).h(1);
+        let circ = Circuit::new(4)
+            .h(0)
+            .cx(&[0], 1)
+            .cx(&[0], 2)
+            .cx(&[0], 3);
 
         let mut exec = GPUSVExecutor::new(circ.into());
 
         exec.step_all();
+        println!("{}", DVector::from_row_slice(exec.state_vector()))
     }
 }
