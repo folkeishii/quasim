@@ -102,6 +102,18 @@ fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
     ]
 }
 
+pub fn get_gate2_data(gate: &Gate) -> Option<[Complex<f64>; 4]> {
+    match gate.get_type() {
+        GateType::X => Some(Gate::PAULI_X_DATA),
+        GateType::Y => Some(Gate::PAULI_Y_DATA),
+        GateType::Z => Some(Gate::PAULI_Z_DATA),
+        GateType::H => Some(Gate::HADAMARD_DATA),
+        GateType::U(theta, phi, lambda) => Some(u(theta, phi, lambda)),
+        GateType::S => Some(Gate::PHASE_S_DATA),
+        _ => None,
+    }
+}
+
 pub fn get_u_matrix2(theta: f64, phi: f64, lambda: f64) -> Matrix2<Complex<f64>> {
     Matrix2::from_row_slice(&u(theta, phi, lambda))
 }
