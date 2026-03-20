@@ -1,14 +1,11 @@
-use std::ops::{Add, Mul};
-
 use cubecl::prelude::*;
-use cubecl::server::Handle;
+use cubecl::wgpu::WgpuRuntime;
 use cubecl::{CubeCount, CubeDim, Runtime, cube};
-use nalgebra::{Complex, DVector, DVectorView, Matrix2};
+use nalgebra::{Complex, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
-use crate::circuit::{CircuitBehaviour, HybridCircuit};
-use crate::ext::{get_gate2_data, get_u_matrix2};
-use crate::gate::GateType;
+use crate::circuit::HybridCircuit;
+use crate::ext::get_gate2_data;
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
@@ -16,7 +13,7 @@ use crate::{
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
+    simulator::StoredCircuitSimulator,
 };
 
 #[derive(Debug, Clone)]
@@ -74,84 +71,6 @@ impl GPUSVExecutor {
     pub fn state_vector(&self) -> &DVector<Complex<f64>> {
         &self.state_vector
     }
-
-    /// Checks that all control bits are 1
-    fn controls_active(i: usize, controls: QBits) -> bool {
-        let control_mask = controls.get_bitstring();
-        (i & control_mask) == control_mask
-    }
-
-    /// Checks that all target bits are 0
-    fn is_block_base(i: usize, targets: QBits) -> bool {
-        let target_mask = targets.get_bitstring();
-        (i & target_mask) == 0
-    }
-
-    // 0 1
-    // 1 0
-    #[inline(always)]
-    fn apply_x(&mut self, base_index: usize, target: QBits) {
-        self.state_vector
-            .as_mut_slice()
-            .swap(base_index, base_index | target.get_bitstring());
-    }
-
-    // 0 -i
-    // i  0
-    #[inline(always)]
-    fn apply_y(&mut self, base_index: usize, target: QBits) {
-        let flipped_index = base_index | target.get_bitstring();
-        let state = self.state_vector.as_mut_slice();
-        let a = state[base_index];
-        let b = state[flipped_index];
-
-        state[base_index] = cart!(b.im, -b.re);
-        state[flipped_index] = cart!(-a.im, a.re);
-    }
-
-    // 1  0
-    // 0 -1
-    #[inline(always)]
-    fn apply_z(&mut self, base_index: usize, target: QBits) {
-        let i = base_index | target.get_bitstring();
-        let amp = &mut self.state_vector[i];
-
-        amp.re = -amp.re;
-        amp.im = -amp.im;
-    }
-
-    #[inline(always)]
-    fn apply_h(&mut self, base_index: usize, target: QBits) {
-        let flipped_index = base_index | target.get_bitstring();
-        let state = self.state_vector.as_mut_slice();
-        let a = state[base_index];
-        let b = state[flipped_index];
-        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
-
-        state[base_index] = (a + b) * inv_sqrt2;
-        state[flipped_index] = (a - b) * inv_sqrt2;
-    }
-
-    // #[inline(always)]
-    // fn apply_rx(&mut self, base_index: usize, target: QBits) {}
-
-    // #[inline(always)]
-    // fn apply_ry(&mut self, base_index: usize, target: QBits) {}
-
-    // #[inline(always)]
-    // fn apply_rz(&mut self, base_index: usize, target: QBits) {}
-
-    // #[inline(always)]
-    // fn apply_phase(&mut self, base_index: usize, target: QBits) {}
-
-    fn apply_s(&mut self, base_index: usize, target: QBits) {
-        let i = base_index | target.get_bitstring();
-        let amp = self.state_vector[i];
-
-        self.state_vector[i].re = -amp.im;
-        self.state_vector[i].im = amp.re;
-    }
-
     #[inline(always)]
     fn apply_swap(&mut self, base_index: usize, targets: QBits) {
         let t0 = targets.get_indices()[0];
@@ -163,44 +82,55 @@ impl GPUSVExecutor {
         self.state_vector.as_mut_slice().swap(i01, i10);
     }
 
-    #[inline(always)]
-    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f64>>, target: QBits) {
-        let flipped_index = base_index | target.get_bitstring();
-        let a = self.state_vector[base_index];
-        let b = self.state_vector[flipped_index];
+    fn launch_batched_gate2<'a, R: Runtime>(&mut self, gates: &[&'a Gate]) {
+        let client = R::client(&Default::default());
 
-        self.state_vector[base_index] = u[(0, 0)] * a + u[(0, 1)] * b;
-        self.state_vector[flipped_index] = u[(1, 0)] * a + u[(1, 1)] * b;
+        let state_vector = self.state_vector.as_mut_slice();
+        let n_gates = gates.len();
+        let n_amplitudes = state_vector.len();
+
+        // Batch data
+        let mut gate_data: Vec<Complex<f64>> = Vec::with_capacity(n_gates * 4); // 4 complex amps per gate
+        let mut target_data: Vec<u32> = Vec::with_capacity(n_gates);
+        let mut control_data: Vec<u32> = Vec::with_capacity(n_gates);
+
+        for &gate in gates {
+            // Only 2x2 gates are suppsed to be passed to this function, so this *should* always be Some
+            if let Some(data) = get_gate2_data(gate) {
+                gate_data.extend(data);
+                target_data.push(gate.get_target_bits().get_bitstring() as u32);
+                control_data.push(gate.get_control_bits().get_bitstring() as u32);
+            }
+        }
+
+        let state_handle = client.create_from_slice(bytes_from_complex(state_vector));
+        let gate_data_handle = client.create_from_slice(bytes_from_complex(&gate_data));
+        let target_data_handle = client.create_from_slice(u32::as_bytes(&target_data));
+        let control_data_handle = client.create_from_slice(u32::as_bytes(&control_data));
+
+        unsafe {
+            let _ = batched_gate2_kernel::launch(
+                &client,
+                CubeCount::Static(1, 1, 1),
+                CubeDim::new_1d(n_amplitudes as u32),
+                ArrayArg::from_raw_parts::<f64>(&state_handle, n_amplitudes * 2, 1),
+                ArrayArg::from_raw_parts::<u32>(&target_data_handle, n_gates, 1),
+                ArrayArg::from_raw_parts::<u32>(&control_data_handle, n_gates, 1),
+                ArrayArg::from_raw_parts::<f64>(&gate_data_handle, n_gates * 8, 1),
+            );
+        }
+
+        let bytes = client.read_one(state_handle);
+        let result = complex_from_bytes::<f64>(&bytes);
+        let dvec = DVector::from_row_slice(result);
+
+        println!("{}", dvec);
     }
 
     fn gate(&mut self, gate: &Gate) {
-        let controls = gate.get_control_bits();
-        let targets = gate.get_target_bits();
-        let n = self.state_vector.len();
+        let gates = &[gate];
 
-        // No parallelization
-        // State vector is length 2^n , n=num qubits
-        for i in 0..n {
-            if !Self::is_block_base(i, targets) {
-                continue;
-            }
-
-            if !Self::controls_active(i, controls) {
-                continue;
-            }
-
-            match gate.get_type() {
-                GateType::X => self.apply_x(i, targets),
-                GateType::Y => self.apply_y(i, targets),
-                GateType::Z => self.apply_z(i, targets),
-                GateType::H => self.apply_h(i, targets),
-                GateType::S => self.apply_s(i, targets),
-                GateType::SWAP => self.apply_swap(i, targets),
-                GateType::U(theta, phi, lambda) => {
-                    self.apply_unitary2(i, &get_u_matrix2(theta, phi, lambda), targets)
-                }
-            }
-        }
+        self.launch_batched_gate2::<WgpuRuntime>(gates);
 
         self.pc_mut().increment();
     }
@@ -319,22 +249,38 @@ impl ComplexF64 {
 #[cube(launch)]
 fn batched_gate2_kernel(
     state_vector: &mut Array<f64>,
-    target_data: &Array<usize>,
-    control_data: &Array<usize>,
+    target_data: &Array<u32>,
+    control_data: &Array<u32>,
     gate_data: &Array<f64>,
 ) {
     for i in 0..target_data.len() {
-        let target = target_data[i];
-        let control = control_data[i];
-        
-        apply_gate2(state_vector, target, control, gate_data, i * 8);
-        
+        let target = target_data[i] as usize;
+        let control = control_data[i] as usize;
+
+        apply_unitary2(state_vector, target, control, gate_data, i * 8);
+
         sync_storage();
     }
 }
 
+#[cube(launch)]
+fn single_gate2_kernel(
+    state_vector: &mut Array<f64>,
+    target: u32,
+    control: u32,
+    gate_data: &Array<f64>,
+) {
+    apply_unitary2(
+        state_vector,
+        target as usize,
+        control as usize,
+        gate_data,
+        0,
+    );
+}
+
 #[cube]
-fn apply_gate2(
+fn apply_unitary2(
     state_vector: &mut Array<f64>,
     target: usize,
     control: usize,
@@ -386,50 +332,6 @@ fn apply_gate2(
     }
 }
 
-fn launch_batched_gate2<'a, R: Runtime>(gates: &[&'a Gate]) {
-    let client = R::client(&Default::default());
-
-    let dv = DVector::from_element(128, cart![0.0]);
-
-    let num_gates = gates.len();
-
-    // Batch data
-    let mut gate_data: Vec<Complex<f64>> = Vec::with_capacity(num_gates * 4); // 4 complex amps per gate
-    let mut target_data: Vec<u32> = Vec::with_capacity(num_gates);
-    let mut control_data: Vec<u32> = Vec::with_capacity(num_gates);
-
-    for &gate in gates {
-        // Only 2x2 gates are suppsed to be passed to this function, so this *should* always be Some
-        if let Some(data) = get_gate2_data(gate) {
-            gate_data.extend(data);
-            target_data.push(gate.get_target_bits().get_bitstring() as u32);
-            control_data.push(gate.get_control_bits().get_bitstring() as u32);
-        }
-    }
-
-    let state_handle = client.create_from_slice(bytes_from_complex(dv.as_slice()));
-    let gate_data_handle = client.create_from_slice(bytes_from_complex(&gate_data));
-    let target_data_handle = client.create_from_slice(u32::as_bytes(&target_data));
-    let control_data_handle = client.create_from_slice(u32::as_bytes(&control_data));
-
-    unsafe {
-        let _ = batched_gate2_kernel::launch(
-            &client,
-            CubeCount::Static(1, 1, 1),
-            CubeDim::new_1d(128),
-            ArrayArg::from_raw_parts::<f64>(&state_handle, dv.len(), 1),
-            ArrayArg::from_raw_parts::<f64>(&gate_data_handle, num_gates * 8, 1),
-            ArrayArg::from_raw_parts::<u32>(&target_data_handle, num_gates, 1),
-            ArrayArg::from_raw_parts::<u32>(&control_data_handle, num_gates, 1),
-        );
-    }
-
-    let bytes = client.read_one(state_handle);
-    let result = complex_from_bytes::<f64>(&bytes);
-
-    println!("{:?}", result);
-}
-
 fn bytes_from_complex<T: CubeElement>(data: &[Complex<T>]) -> &[u8] {
     let flat: &[T] =
         unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len() * 2) };
@@ -459,15 +361,14 @@ impl StoredCircuitSimulator for GPUSVExecutor {
 pub enum SVGPUError {}
 
 mod tests {
-    use cubecl::{
-        Runtime,
-        wgpu::{WebGpu, WgpuRuntime},
-    };
-
-    use crate::gpu_sv_simulator::launch_batched_gate2;
+    use crate::{circuit::Circuit, gpu_sv_simulator::GPUSVExecutor};
 
     #[test]
     fn test() {
-        // launch_batched_gate2::<WgpuRuntime>(&Default::default());
+        let circ = Circuit::new(2).x(0).h(1);
+
+        let mut exec = GPUSVExecutor::new(circ.into());
+
+        exec.step_all();
     }
 }
