@@ -6,13 +6,13 @@ use cubecl::{CubeCount, CubeDim, Runtime, cube};
 use nalgebra::{Complex, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
-use crate::circuit::HybridCircuit;
+use crate::circuit::{CircuitBehaviour, HybridCircuit};
 use crate::ext::get_gate2_data;
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
-    gate::{Gate, QBits},
+    gate::{Gate, GateType, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
     simulator::StoredCircuitSimulator,
@@ -115,12 +115,15 @@ impl<R: Runtime> GPUSVExecutor<R> {
             }
         }
 
-        let gate_data_handle = self.client.create_from_slice(bytes_from_complex(&gate_data));
+        let gate_data_handle = self
+            .client
+            .create_from_slice(bytes_from_complex(&gate_data));
         let target_data_handle = self.client.create_from_slice(u32::as_bytes(&target_data));
         let control_data_handle = self.client.create_from_slice(u32::as_bytes(&control_data));
 
         let cube_dim = CubeDim::new_1d(128);
-        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, n_amplitudes, cube_dim);
+        let cube_count =
+            cubecl::calculate_cube_count_elemwise(&self.client, n_amplitudes, cube_dim);
 
         unsafe {
             let _ = batched_gate2_kernel::launch(
@@ -147,9 +150,25 @@ impl<R: Runtime> GPUSVExecutor<R> {
     }
 
     fn gate(&mut self, gate: &Gate) {
-        let gates = &[gate];
+        if gate.get_type() == GateType::SWAP {
+            let mut controls = gate.get_controls();
+            let targets = gate.get_targets();
+            let t0 = targets[0];
+            let t1 = targets[1];
 
-        self.launch_batched_gate2(gates);
+            controls.push(t1);
+
+            let g0 = Gate::new(GateType::X, &[t0], &[t1]).unwrap();
+            let g1 = Gate::new(GateType::X, &controls, &[t0]).unwrap();
+
+            let gates = &[&g0, &g1, &g0];
+
+            self.launch_batched_gate2(gates);
+        } else {
+            let gates = &[gate];
+
+            self.launch_batched_gate2(gates);
+        }
 
         self.pc_mut().increment();
     }
@@ -401,29 +420,28 @@ mod tests {
     use cubecl::wgpu::WgpuRuntime;
     use nalgebra::DVector;
 
-    use crate::{circuit::Circuit, gpu_sv_simulator::GPUSVExecutor, simulator::{BuildSimulator, DebuggableSimulator}, sv_simulator::SVSimulatorDebugger};
+    use crate::{
+        circuit::Circuit,
+        gpu_sv_simulator::GPUSVExecutor,
+        simulator::{BuildSimulator, DebuggableSimulator},
+        sv_simulator::SVSimulatorDebugger,
+    };
 
     #[test]
     fn test() {
-        let mut circ = Circuit::new(26)
-            .new_reg("r0")
-            .h(0)
-            .cx(&[0], 1)
-            .cx(&[0], 2)
-            .cx(&[0], 3);
+        let mut circ = Circuit::new(2).h(0).swap(0, 1);
 
-        for i in 0..26 {
-            circ = circ.h(i % 26);
-        }
+        // for i in 0..26 {
+        //     circ = circ.h(i % 26);
+        // }
 
         // let mut exec = SVSimulatorDebugger::build(circ.into()).unwrap();
         // exec.cont();
 
-
         let mut exec = GPUSVExecutor::<WgpuRuntime>::new(circ.into());
         exec.step_all();
 
-        // exec.sync_state_to_cpu();
-        // println!("{}", DVector::from_row_slice(exec.state_vector()))
+        exec.sync_state_to_cpu();
+        println!("{}", DVector::from_row_slice(exec.state_vector()))
     }
 }
