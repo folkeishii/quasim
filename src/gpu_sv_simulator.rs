@@ -1,18 +1,18 @@
 use cubecl::bytes::Bytes;
 use cubecl::prelude::*;
 use cubecl::server::Handle;
-use cubecl::wgpu::WgpuRuntime;
 use cubecl::{CubeCount, CubeDim, Runtime, cube};
 use nalgebra::{Complex, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
-use crate::circuit::{CircuitBehaviour, HybridCircuit};
+use crate::circuit::{HybridCircuit};
 use crate::ext::get_gate2_data;
+use crate::simulator::{RunnableSimulator};
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
-    gate::{Gate, GateType, QBits},
+    gate::{Gate, GateType},
     instruction::Instruction,
     register_file::RegisterFile,
     simulator::StoredCircuitSimulator,
@@ -413,8 +413,38 @@ impl<R: Runtime> StoredCircuitSimulator for GPUSVExecutor<R> {
     }
 }
 
+pub struct GPUSVSimulator<R: Runtime> {
+    circuit: Circuit<HybridCircuit>,
+    _runtime: std::marker::PhantomData<R>,
+}
+
+impl<R: Runtime> TryFrom<Circuit<HybridCircuit>> for GPUSVSimulator<R> {
+    type Error = GPUSVError;
+
+    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
+        Ok(Self { circuit: value, _runtime: std::marker::PhantomData })
+    }
+}
+
+impl<R: Runtime> RunnableSimulator for GPUSVSimulator<R>
+{
+    fn run(&self) -> usize {
+        let mut exec = GPUSVExecutor::<R>::new(self.circuit.clone());
+        exec.step_all();
+        exec.sync_state_to_cpu();
+        exec.get_collapsed_state()
+    }
+
+    fn final_state(&self) -> DVector<Complex<f64>> {
+        let mut exec = GPUSVExecutor::<R>::new(self.circuit.clone());
+        exec.step_all();
+        exec.sync_state_to_cpu();
+        DVector::from_row_slice(exec.state_vector())
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
-pub enum SVGPUError {}
+pub enum GPUSVError {}
 
 mod tests {
     use cubecl::wgpu::WgpuRuntime;
@@ -422,26 +452,24 @@ mod tests {
 
     use crate::{
         circuit::Circuit,
-        gpu_sv_simulator::GPUSVExecutor,
-        simulator::{BuildSimulator, DebuggableSimulator},
-        sv_simulator::SVSimulatorDebugger,
+        gpu_sv_simulator::{GPUSVExecutor, GPUSVSimulator},
+        simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator},
+        sv_simulator::{SVSimulator, SVSimulatorDebugger},
     };
 
     #[test]
     fn test() {
-        let mut circ = Circuit::new(2).h(0).swap(0, 1);
+        let mut circ = Circuit::new(23).h(0).swap(0, 1);
 
-        // for i in 0..26 {
-        //     circ = circ.h(i % 26);
-        // }
+        for i in 0..23 {
+            circ = circ.h(i % 23);
+        }
 
-        // let mut exec = SVSimulatorDebugger::build(circ.into()).unwrap();
-        // exec.cont();
+        let sim = SVSimulator::build(circ).unwrap();
+        // let sim = GPUSVSimulator::<WgpuRuntime>::build(circ.into()).unwrap();
+        sim.run();
 
-        let mut exec = GPUSVExecutor::<WgpuRuntime>::new(circ.into());
-        exec.step_all();
-
-        exec.sync_state_to_cpu();
-        println!("{}", DVector::from_row_slice(exec.state_vector()))
+        // exec.sync_state_to_cpu();
+        // println!("{}", DVector::from_row_slice(exec.state_vector()))
     }
 }

@@ -114,6 +114,10 @@ pub fn get_gate2_data(gate: &Gate) -> Option<[Complex<f64>; 4]> {
     }
 }
 
+pub fn get_gate2_matrix(gate: &Gate) -> Option<Matrix2<Complex<f64>>> {
+    get_gate2_data(gate).map(|d| Matrix2::from_row_slice(&d))
+}
+
 pub fn get_u_matrix2(theta: f64, phi: f64, lambda: f64) -> Matrix2<Complex<f64>> {
     Matrix2::from_row_slice(&u(theta, phi, lambda))
 }
