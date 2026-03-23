@@ -5,9 +5,9 @@ use cubecl::{CubeCount, CubeDim, Runtime, cube};
 use nalgebra::{Complex, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
-use crate::circuit::{HybridCircuit};
+use crate::circuit::HybridCircuit;
 use crate::ext::get_gate2_data;
-use crate::simulator::{RunnableSimulator};
+use crate::simulator::RunnableSimulator;
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
@@ -422,12 +422,14 @@ impl<R: Runtime> TryFrom<Circuit<HybridCircuit>> for GPUSVSimulator<R> {
     type Error = GPUSVError;
 
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
-        Ok(Self { circuit: value, _runtime: std::marker::PhantomData })
+        Ok(Self {
+            circuit: value,
+            _runtime: std::marker::PhantomData,
+        })
     }
 }
 
-impl<R: Runtime> RunnableSimulator for GPUSVSimulator<R>
-{
+impl<R: Runtime> RunnableSimulator for GPUSVSimulator<R> {
     fn run(&self) -> usize {
         let mut exec = GPUSVExecutor::<R>::new(self.circuit.clone());
         exec.step_all();

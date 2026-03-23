@@ -1,6 +1,10 @@
 use cubecl::{cpu::CpuRuntime, wgpu::WgpuRuntime};
 use quasim::{
-    circuit::{Circuit, HybridCircuit}, debug_simulator::DebugSimulator, gpu_sv_simulator::GPUSVSimulator, simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator}, sv_simulator::{SVSimulator, SVSimulatorDebugger}
+    circuit::{Circuit, HybridCircuit},
+    debug_simulator::DebugSimulator,
+    gpu_sv_simulator::GPUSVSimulator,
+    simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
+    sv_simulator::{SVSimulator, SVSimulatorDebugger},
 };
 
 extern crate quasim;
@@ -46,7 +50,6 @@ where
     let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
     sim.cont();
 }
-
 
 #[divan::bench(
     types = [SVSimulator, GPUSVSimulator<WgpuRuntime>],
