@@ -370,20 +370,6 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    pub fn next_break(&self, pc: &CircuitPc) -> Option<(CircuitPc, bool)> {
-        let brk = self.breakpoints.next_break(pc.pc())?;
-        Some((CircuitPc::new(brk.pc()), brk.enabled()))
-    }
-
-    pub fn next_enabled_break(&self, pc: &CircuitPc) -> Option<CircuitPc> {
-        while let Some((pc, enabled)) = self.next_break(pc) {
-            if enabled {
-                return Some(pc);
-            }
-        }
-        None
-    }
-
     pub fn breakpoint_at(&self, pc: &CircuitPc) -> Option<&Breakpoint> {
         self.breakpoints.get(pc.pc())
     }
