@@ -14,7 +14,6 @@ pub fn double_sub<
     D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
 >() {
     // Keep for sub circuits
-    return;
     const N: usize = 2;
     let sub = Circuit::new(N)
         // Step 1
