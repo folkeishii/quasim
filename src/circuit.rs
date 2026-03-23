@@ -371,7 +371,11 @@ impl<B: CircuitBehaviour> Circuit<B> {
     }
 
     pub fn breakpoint_at(&self, pc: &CircuitPc) -> Option<&Breakpoint> {
-        self.breakpoints.get(pc.pc())
+        if let Some((name, pc)) = pc.next_sub_pc() {
+            self.sub_circuit(name).breakpoint_at(pc)
+        } else {
+            self.breakpoints.get(pc.pc())
+        }
     }
 
     pub fn enabled_breakpoint_at(&self, pc: &CircuitPc) -> bool {
@@ -381,19 +385,35 @@ impl<B: CircuitBehaviour> Circuit<B> {
     }
 
     pub fn insert_breakpoint(&mut self, pc: &CircuitPc) -> IEBreakpoint {
-        self.breakpoints.insert_or_enable(pc.pc())
+        if let Some((name, pc)) = pc.next_sub_pc() {
+            self.sub_circuit_mut(name).insert_breakpoint(pc)
+        } else {
+            self.breakpoints.insert_or_enable(pc.pc())
+        }
     }
 
     pub fn enable_breakpoint(&mut self, pc: &CircuitPc) -> bool {
-        self.breakpoints.enable(pc.pc())
+        if let Some((name, pc)) = pc.next_sub_pc() {
+            self.sub_circuit_mut(name).enable_breakpoint(pc)
+        } else {
+            self.breakpoints.enable(pc.pc())
+        }
     }
 
     pub fn disable_breakpoint(&mut self, pc: &CircuitPc) -> bool {
-        self.breakpoints.disable(pc.pc())
+        if let Some((name, pc)) = pc.next_sub_pc() {
+            self.sub_circuit_mut(name).disable_breakpoint(pc)
+        } else {
+            self.breakpoints.disable(pc.pc())
+        }
     }
 
     pub fn delete_breakpoint(&mut self, pc: &CircuitPc) -> bool {
-        self.breakpoints.delete(pc.pc())
+        if let Some((name, pc)) = pc.next_sub_pc() {
+            self.sub_circuit_mut(name).delete_breakpoint(pc)
+        } else {
+            self.breakpoints.delete(pc.pc())
+        }
     }
 
     // Sub circuits
@@ -430,6 +450,14 @@ impl<B: CircuitBehaviour> Circuit<B> {
     /// Panics if `name` has not been registered on the current circuit
     pub fn sub_circuit(&self, name: &str) -> &Circuit {
         &self.sub_circuits[name]
+    }
+
+    /// Private for now
+    fn sub_circuit_mut(&mut self, name: &str) -> &mut Circuit {
+        match self.sub_circuits.get_mut(name) {
+            Some(v) => v,
+            None => panic!("Trying to access unregistered sub circuit {}", name)
+        }
     }
 
     /// ## Arguments
