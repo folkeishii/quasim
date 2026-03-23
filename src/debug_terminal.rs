@@ -51,9 +51,13 @@ where
         let mut input_buffer = String::default();
 
         loop {
-            match self.simulator.current_instruction() {
-                (_, None) => print!(stdout; "[end] qdb> ")?,
-                (step, Some(_)) => print!(stdout; "{} qdb> ", step)?,
+            let (pc, inst) = self.simulator.current_instruction();
+            let (sc, pc) = pc.current();
+            match (sc, pc, inst) {
+                (None, _, None) => print!(stdout; "[end] qdb> ")?,
+                (None, pc, Some(_)) => print!(stdout; "[{}] qdb> ", pc)?,
+                (Some(sc), _, None) => print!(stdout; "[{}; end] qdb> ", sc)?,
+                (Some(sc), pc, Some(_)) => print!(stdout; "[{}; {}] qdb> ", sc, pc)?,
             };
             input_buffer.clear();
             stdin.read_line(&mut input_buffer)?;

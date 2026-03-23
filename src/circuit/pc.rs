@@ -94,11 +94,19 @@ impl CircuitPc {
         self.lsq
     }
 
-    pub fn current(&self) -> &CircuitPc {
-        if let Some((_, pc)) = self.sub.as_ref() {
-            pc.current()
+    pub fn current(&self) -> (Option<&str>, usize) {
+        if let Some((name, pc)) = self.sub.as_ref() {
+            pc.current_aux(name)
         } else {
-            self
+            (None, self.pc)
+        }
+    }
+
+    fn current_aux<'a>(&'a self, with_name: &'a str) -> (Option<&'a str>, usize) {
+        if let Some((name, pc)) = self.sub.as_ref() {
+            pc.current_aux(name)
+        } else {
+            (Some(with_name), self.pc)
         }
     }
 }
@@ -107,8 +115,13 @@ impl PartialEq for CircuitPc {
         self.pc == other.pc
     }
 }
+
 impl Display for CircuitPc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "[{}]", self.pc)
+        let (sc, pc) = self.current();
+        match (sc, pc) {
+            (None, pc) => write!(f, "[{}] qdb> ", pc),
+            (Some(sc), pc) => write!(f, "[{}; {}] qdb> ", sc, pc),
+        }
     }
 }
