@@ -110,6 +110,16 @@ impl Circuit {
             }
         }
     }
+
+    /// ## Returns
+    /// Returns the circuit pointed at by `circuit_pc`
+    pub fn current_circuit(&self, circuit_pc: &CircuitPc) -> &Circuit {
+        if let Some((name, pc)) = circuit_pc.next_sub_pc() {
+            self.sub_circuits[name].current_circuit(pc)
+        } else {
+            self
+        }
+    }
 }
 
 // Hybrid specific
@@ -411,6 +421,29 @@ impl<B: CircuitBehaviour> Circuit<B> {
             log::warn!("Inserted sub circuit replaced an already defined circuit")
         }
         self
+    }
+
+    /// ## Returns
+    /// If `circuit_pc` is pointing at a sub circuit, that sub cirucit will be returned.
+    ///
+    /// Otherwise if `circuit_pc` points at main, then `None` will be returned
+    ///
+    /// ## Panics
+    /// Panics if `circuit_pc` points at an invalid `sub_circuit`
+    pub fn current_sub_circuit(&self, circuit_pc: &CircuitPc) -> Option<&Circuit> {
+        if let Some((name, pc)) = circuit_pc.next_sub_pc() {
+            Some(self.sub_circuits[name].current_circuit(pc))
+        } else {
+            None
+        }
+    }
+
+    /// ## Returns
+    /// `Circuit` specified with `name`
+    /// ## Panics
+    /// Panics if `name` has not been registered on the current circuit
+    pub fn sub_circuit(&self, name: &str) -> &Circuit {
+        &self.sub_circuits[name]
     }
 
     /// ## Arguments

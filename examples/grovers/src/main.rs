@@ -1,10 +1,34 @@
-use quasim::circuit::Circuit;
+use std::env;
+
+use quasim::circuit::{Circuit, HybridCircuit};
+use quasim::debug_terminal::DebugTerminal;
 use quasim::expr_dsl::Value;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
 fn check_quantum(func: &[usize]) -> bool {
+    let mut sim = SVSimulatorDebugger::build(circuit(func)).unwrap();
+    sim.cont();
+
+    let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
+
+    match sim.register("res") {
+        Value::Int(x) => {
+            let res = x == fun_res as i32;
+            res
+        }
+        Value::Float(_) => {
+            panic!("Unexpected float register")
+        }
+        Value::Bool(_) => {
+            panic!("Unexpected bool register")
+        }
+    }
+}
+
+fn circuit(func: &[usize]) -> Circuit<HybridCircuit> {
     let bits: usize = func.len();
+
     let n = 1 << bits;
     let mut circuit = Circuit::new(bits)
         .new_reg("res")
@@ -26,24 +50,7 @@ fn check_quantum(func: &[usize]) -> bool {
     }
 
     circuit = circuit.measure("res");
-
-    let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.cont();
-
-    let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
-
-    match sim.register("res") {
-        Value::Int(x) => {
-            let res = x == fun_res as i32;
-            res
-        }
-        Value::Float(_) => {
-            panic!("Unexpected float register")
-        }
-        Value::Bool(_) => {
-            panic!("Unexpected bool register")
-        }
-    }
+    circuit
 }
 
 fn create_oracle(func: &[usize]) -> Circuit {
@@ -91,6 +98,13 @@ fn create_diffusion(func: &[usize]) -> Circuit {
 }
 
 fn main() {
+    for arg in env::args().skip(1) {
+        if arg == "debug" {
+            debug_main();
+            return;
+        }
+    }
+
     let func: &[usize] = &[1, 0, 0]; // f(x) written as b_x,b_(x-1),...,b_0
 
     let iter = 1000;
@@ -103,6 +117,14 @@ fn main() {
     }
 
     println!("True count: {}", true_count);
+}
+
+fn debug_main() {
+    let func: &[usize] = &[1, 0, 0]; // f(x) written as b_x,b_(x-1),...,b_0
+    let circ = circuit(func);
+    let sim: SVSimulatorDebugger = SVSimulatorDebugger::build(circ).expect("Could not build simulator");
+    let mut term = DebugTerminal::from_simulator(sim);
+    term.run().unwrap()
 }
 
 #[cfg(test)]

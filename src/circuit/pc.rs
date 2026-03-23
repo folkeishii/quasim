@@ -93,6 +93,14 @@ impl CircuitPc {
     pub fn lsq(&self) -> usize {
         self.lsq
     }
+
+    pub fn current(&self) -> &CircuitPc {
+        if let Some((_, pc)) = self.sub.as_ref() {
+            pc.current()
+        } else {
+            self
+        }
+    }
 }
 impl PartialEq for CircuitPc {
     fn eq(&self, other: &Self) -> bool {
