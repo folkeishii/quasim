@@ -64,4 +64,31 @@ pub fn double_sub<
         ],
         0.001
     ));
+
+    if sim.double_ended() {
+        while sim.prev().is_some() {}
+        println!("{}", sim.current_state());
+        assert!(equal_to_matrix_c(
+            sim.current_state(),
+            &dvector![
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+                cart!(0),
+            ],
+            0.001
+        ));
+    }
 }
