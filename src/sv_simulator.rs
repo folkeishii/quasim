@@ -324,7 +324,7 @@ impl DebuggableSimulator for SVSimulatorDebugger {
     }
 
     fn double_ended(&self) -> bool {
-        true
+        false
     }
 }
 
