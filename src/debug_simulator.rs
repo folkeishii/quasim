@@ -570,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn almost_grovers() {
-        common_test::almost_grovers::<DebugSimulator>();
+    fn double_sub() {
+        common_test::double_sub::<DebugSimulator>();
     }
 }
