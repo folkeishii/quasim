@@ -11,6 +11,7 @@ use crate::{
 type NodeId = usize;
 type BatchId = usize;
 
+#[derive(Debug)]
 struct GateNode {
     // Not sure if we will need these ids directly on this struct but we will see...
     // id: NodeId,
@@ -21,6 +22,7 @@ struct GateNode {
     n_gates: usize,
     // prev: Vec<NodeId>,
 }
+
 
 impl GateNode {
     fn new(batchid: BatchId, init: &Gate) -> Self {
@@ -44,6 +46,7 @@ fn matrix2(gate2: &Gate) -> Matrix2<Complex<f64>> {
     get_gate2_matrix(gate2).expect("gate size mismatch")
 }
 
+#[derive(Debug)]
 struct GateBatch {
     id: BatchId,
     nodes: Vec<NodeId>,
@@ -62,7 +65,8 @@ impl GateBatch {
     }
 }
 
-struct CircuitIR {
+#[derive(Debug)]
+pub struct CircuitIR {
     // qubit -> NodeId  (the frontier node for that qubit)
     frontier: HashMap<usize, NodeId>,
 
@@ -85,51 +89,32 @@ impl CircuitIR {
         }
     }
 
-    fn new_batch(&mut self) -> BatchId {
-        let id = self.batches.len();
-        self.batches.push(GateBatch::new(id));
-        id
-    }
+    pub fn from_pure_circuit(circuit: Circuit<PureCircuit>, max_targets_per_batch: usize) -> Self {
+        let mut circuit_ir = CircuitIR::new(max_targets_per_batch);
 
-    fn new_node(&mut self, batch_id: BatchId, gate: &Gate) -> NodeId {
-        let id = self.nodes.len();
-        let batch = &mut self.batches[batch_id];
+        for gate in circuit.instructions() {
+            // Special case for SWAP
+            // represent swap as three CNOTs
+            if gate.get_type() == GateType::SWAP {
+                let mut controls = gate.get_controls();
+                let targets = gate.get_targets();
+                let t0 = targets[0];
+                let t1 = targets[1];
 
-        self.nodes.push(GateNode::new(batch_id, gate));
-        batch.nodes.push(id);
-        batch.target_union = batch.target_union.union(gate.get_target_bits());
+                controls.push(t1);
 
-        id
-    }
+                let g0 = Gate::new(GateType::X, &[t0], &[t1]).unwrap();
+                let g1 = Gate::new(GateType::X, &controls, &[t0]).unwrap();
 
-    fn update_frontier(&mut self, qubits: &[usize], to: NodeId) {
-        for &q in qubits {
-            self.frontier.insert(q, to);
-        }
-    }
-
-    fn merge_batches(&mut self, batches: &[BatchId]) -> BatchId {
-        let merged_batchid = self.new_batch();
-
-        let (old_batches, merged_tail) = self.batches.split_at_mut(merged_batchid);
-        let merged_batch = &mut merged_tail[0];
-
-        // Add all nodes of batches to new merged batch, and retire old batches
-        for &batchid in batches {
-            let old_batch = &mut old_batches[batchid];
-
-            merged_batch.nodes.append(&mut old_batch.nodes);
-            merged_batch.target_union = merged_batch.target_union.union(old_batch.target_union);
-
-            old_batch.retired = true;
+                circuit_ir.add_gate(&g0);
+                circuit_ir.add_gate(&g1);
+                circuit_ir.add_gate(&g0);
+            } else {
+                circuit_ir.add_gate(gate);
+            }
         }
 
-        // Update batch_id on all moved nodes
-        for &node_id in &merged_batch.nodes {
-            self.nodes[node_id].batch_id = merged_batchid;
-        }
-
-        merged_batchid
+        circuit_ir
     }
 
     /* Adding a gate
@@ -150,7 +135,7 @@ impl CircuitIR {
      * 3. Merge all involved batches into one (lower id absorbs).
      *    Create new node in merged batch, prev = [all distinct frontier nodes], update frontier.
      */
-    fn add_gate(&mut self, gate: &Gate) {
+    pub fn add_gate(&mut self, gate: &Gate) {
         let gate_target = gate.get_target_bits();
         let gate_control = gate.get_control_bits();
         let gate_qubits = gate_target.union(gate_control);
@@ -219,6 +204,53 @@ impl CircuitIR {
         let new_node_id = self.new_node(merged_batch, gate);
         self.update_frontier(&touched_qubits, new_node_id);
     }
+
+    fn new_batch(&mut self) -> BatchId {
+        let id = self.batches.len();
+        self.batches.push(GateBatch::new(id));
+        id
+    }
+
+    fn new_node(&mut self, batch_id: BatchId, gate: &Gate) -> NodeId {
+        let id = self.nodes.len();
+        let batch = &mut self.batches[batch_id];
+
+        self.nodes.push(GateNode::new(batch_id, gate));
+        batch.nodes.push(id);
+        batch.target_union = batch.target_union.union(gate.get_target_bits());
+
+        id
+    }
+
+    fn update_frontier(&mut self, qubits: &[usize], to: NodeId) {
+        for &q in qubits {
+            self.frontier.insert(q, to);
+        }
+    }
+
+    fn merge_batches(&mut self, batches: &[BatchId]) -> BatchId {
+        let merged_batchid = self.new_batch();
+
+        let (old_batches, merged_tail) = self.batches.split_at_mut(merged_batchid);
+        let merged_batch = &mut merged_tail[0];
+
+        // Add all nodes of batches to new merged batch, and retire old batches
+        for &batchid in batches {
+            let old_batch = &mut old_batches[batchid];
+
+            merged_batch.nodes.append(&mut old_batch.nodes);
+            merged_batch.target_union = merged_batch.target_union.union(old_batch.target_union);
+
+            old_batch.retired = true;
+        }
+
+        // Update batch_id on all moved nodes
+        for &node_id in &merged_batch.nodes {
+            self.nodes[node_id].batch_id = merged_batchid;
+        }
+
+        merged_batchid
+    }
 }
 
 /** Getting batch matrix data
@@ -234,30 +266,31 @@ impl CircuitIR {
 
 impl From<Circuit<PureCircuit>> for CircuitIR {
     fn from(value: Circuit<PureCircuit>) -> Self {
-        let mut circuit_ir = CircuitIR::new(3);
+        // Choose some default max target qubit value
+        CircuitIR::from_pure_circuit(value, 3)
+    }
+}
 
-        for gate in value.instructions() {
-            // Special case for SWAP
-            // represent swap as three CNOTs
-            if gate.get_type() == GateType::SWAP {
-                let mut controls = gate.get_controls();
-                let targets = gate.get_targets();
-                let t0 = targets[0];
-                let t1 = targets[1];
+mod tests {
+    use crate::{circuit::Circuit, circuit_ir::CircuitIR};
 
-                controls.push(t1);
+    #[test]
+    fn example_test_circuit() {
+        let circ = Circuit::new(3)
+            .x(0)
+            .x(2)
+            .y(0)
+            .cx(&[1], 0)
+            .swap(0, 2)
+            .cy(&[0], 2);
 
-                let g0 = Gate::new(GateType::X, &[t0], &[t1]).unwrap();
-                let g1 = Gate::new(GateType::X, &controls, &[t0]).unwrap();
+        let circ_ir = CircuitIR::from_pure_circuit(circ, 2);
 
-                circuit_ir.add_gate(&g0);
-                circuit_ir.add_gate(&g1);
-                circuit_ir.add_gate(&g0);
-            } else {
-                circuit_ir.add_gate(gate);
-            }
-        }
-
-        circuit_ir
+        assert!(circ_ir.nodes.len() == 6);
+        assert_eq!(circ_ir.batches[0].retired, true);
+        assert_eq!(circ_ir.batches[1].retired, true);
+        assert_eq!(circ_ir.batches[2].retired, false);
+        assert_eq!(circ_ir.batches[2].nodes, vec![0, 2, 1, 3, 4, 5]);
+        assert_eq!(circ_ir.frontier.get(&1), Some(&2));
     }
 }
