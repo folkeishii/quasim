@@ -42,6 +42,10 @@ pub fn double_sub<
 
     let mut sim = D::build(circuit.into()).expect("Could not build simulator");
 
+    while sim.next().is_some() {
+        println!("{}", sim.current_state());
+    }
+
     assert!(equal_to_matrix_c(
         sim.cont(),
         &dvector![
@@ -65,8 +69,11 @@ pub fn double_sub<
         0.001
     ));
 
+    println!("-----------------------------");
     if sim.double_ended() {
-        while sim.prev().is_some() {}
+        while sim.prev().is_some() {
+            println!("{}", sim.current_state());
+        }
         println!("{}", sim.current_state());
         assert!(equal_to_matrix_c(
             sim.current_state(),

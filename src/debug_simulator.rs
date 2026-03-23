@@ -106,9 +106,11 @@ impl DebuggableSimulator for DebugSimulator {
             return None;
         }
 
+        // Will happen if doing prev into a sub circuit
+        // i.e. we are at the end of a sub circuit
         let Some(inst) = self.circuit.instruction(self.pc()) else {
-            // Should not happen
-            return None;
+            // Pc already decremented: do nothing
+            return Some(&self.current_state);
         };
 
         match inst {
@@ -122,7 +124,11 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::Call(name, lsq) => self.pc_mut().jump_and_link(name, lsq),
+            Instruction::Call(name, lsq) => {
+                let inst_count = self.circuit.sub_circuit(&name).instructions().len();
+                self.pc_mut().jump_and_link(name, lsq);
+                self.pc_mut().jump(inst_count - 1); // Place pc at end of sub circuit
+            }
         }
         Some(&self.current_state)
     }
