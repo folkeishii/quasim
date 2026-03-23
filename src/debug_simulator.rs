@@ -61,7 +61,7 @@ impl DebuggableSimulator for DebugSimulator {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
             if self.pc_mut().ret() {
-                return Some(&self.current_state)
+                return Some(&self.current_state);
             }
 
             // Could not return: End of circuit
@@ -99,7 +99,7 @@ impl DebuggableSimulator for DebugSimulator {
         if !self.pc_mut().decrement() {
             // Beginnning of (sub) circuit: Try to return
             if self.pc_mut().ret_backwards() {
-                return Some(&self.current_state)
+                return Some(&self.current_state);
             }
 
             // Could not return: Beginning of circuit

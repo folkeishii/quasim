@@ -11,15 +11,14 @@ pub enum Instruction {
     JumpIf(Expr, usize),
     Assign(Expr, String),
     /// `Call(name, lsq)`
-    Call(String, usize)
+    Call(String, usize),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PureInstruction {
     Gate(Gate),
     /// `Call(name, lsq)`
-    Call(String, usize)
-
+    Call(String, usize),
 }
 impl From<Gate> for PureInstruction {
     fn from(value: Gate) -> Self {

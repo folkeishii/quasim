@@ -16,11 +16,7 @@ impl CircuitPc {
     }
 
     pub fn with_lsq(pc: usize, lsq: usize) -> Self {
-        CircuitPc {
-            pc,
-            lsq,
-            sub: None,
-        }
+        CircuitPc { pc, lsq, sub: None }
     }
 
     pub fn increment(&mut self) {

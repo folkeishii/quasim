@@ -653,8 +653,8 @@ mod tests {
     use crate::{
         cart,
         circuit::Circuit,
-        instruction::PureInstruction,
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
+        instruction::PureInstruction,
         simulator::{BuildSimulator, RunnableSimulator},
         sv_simulator::SVSimulator,
     };
