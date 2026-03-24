@@ -42,12 +42,13 @@ pub fn double_sub<
 
     let mut sim = D::build(circuit.into()).expect("Could not build simulator");
 
+    let mut forward_steps = 0;
     while sim.next().is_some() {
-        println!("{}", sim.current_state());
+        forward_steps += 1;
     }
 
     assert!(equal_to_matrix_c(
-        sim.cont(),
+        sim.current_state(),
         &dvector![
             cart!(0.25),
             cart!(0.25),
@@ -69,16 +70,16 @@ pub fn double_sub<
         0.001
     ));
 
-    println!("-----------------------------");
     if sim.double_ended() {
+        let mut backward_steps = 0;
         while sim.prev().is_some() {
-            println!("{}", sim.current_state());
+            backward_steps+= 1;
         }
-        println!("{}", sim.current_state());
+        assert_eq!(forward_steps, backward_steps);
         assert!(equal_to_matrix_c(
             sim.current_state(),
             &dvector![
-                cart!(0),
+                cart!(1),
                 cart!(0),
                 cart!(0),
                 cart!(0),

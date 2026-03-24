@@ -125,9 +125,12 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
             Instruction::Call(name, lsq) => {
-                let inst_count = self.circuit.sub_circuit(&name).instructions().len();
+                let inst_count = match self.circuit.current_sub_circuit(self.pc()) {
+                    Some(sub_circuit) => sub_circuit.sub_circuit(&name).instructions().len(),
+                    None => self.circuit.sub_circuit(&name).instructions().len()
+                };
                 self.pc_mut().jump_and_link(name, lsq);
-                self.pc_mut().jump(inst_count - 1); // Place pc at end of sub circuit
+                self.pc_mut().jump(inst_count); // Place pc at end of sub circuit
             }
         }
         Some(&self.current_state)

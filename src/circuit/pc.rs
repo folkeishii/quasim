@@ -25,12 +25,12 @@ impl CircuitPc {
 
     pub fn decrement(&mut self) -> bool {
         let old_pc = self.pc();
-        *self.pc_mut() = self.pc.saturating_sub(1);
+        *self.pc_mut() = old_pc.saturating_sub(1);
         old_pc != self.pc()
     }
 
     pub fn jump(&mut self, pc: usize) {
-        self.pc = pc
+        *self.pc_mut() = pc
     }
 
     pub fn jump_and_link(&mut self, name: String, lsq: usize) {
@@ -56,7 +56,7 @@ impl CircuitPc {
 
     pub fn ret_backwards(&mut self) -> bool {
         if let Some((_, sub_pc)) = &mut self.sub {
-            let is_leaf = !sub_pc.ret();
+            let is_leaf = !sub_pc.ret_backwards();
             if is_leaf {
                 self.sub = None;
             }
@@ -91,7 +91,11 @@ impl CircuitPc {
     }
 
     pub fn lsq(&self) -> usize {
-        self.lsq
+        if let Some((_, pc)) = self.next_sub_pc() {
+            pc.lsq()
+        } else {
+            self.lsq
+        }
     }
 
     pub fn current(&self) -> (Option<&str>, usize) {
@@ -120,8 +124,8 @@ impl Display for CircuitPc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let (sc, pc) = self.current();
         match (sc, pc) {
-            (None, pc) => write!(f, "[{}] qdb> ", pc),
-            (Some(sc), pc) => write!(f, "[{}; {}] qdb> ", sc, pc),
+            (None, pc) => write!(f, "[{}]", pc),
+            (Some(sc), pc) => write!(f, "[{}; {}]", sc, pc),
         }
     }
 }
