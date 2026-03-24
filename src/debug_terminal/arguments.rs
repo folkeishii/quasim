@@ -297,9 +297,10 @@ impl CollapseArgs {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum ShowArgs {
-    Circuit,
+    All,
+    Reg(String),
 }
 impl ShowArgs {
     pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
@@ -307,32 +308,7 @@ impl ShowArgs {
         let arg = if let Some(token) = tokens.next() {
             token
         } else {
-            return Ok(ShowArgs::Circuit);
-        };
-
-        if let Some(token) = tokens.next() {
-            return Err(ParseError::UnexpectedArgument(token.into()));
-        }
-
-        match arg {
-            "circuit" => Ok(ShowArgs::Circuit),
-            arg => Err(ParseError::UnexpectedArgument(arg.into())),
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub enum RegArgs {
-    All,
-    Reg(String),
-}
-impl RegArgs {
-    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
-        let mut tokens = tokens;
-        let arg = if let Some(token) = tokens.next() {
-            token
-        } else {
-            return Ok(RegArgs::All);
+            return Ok(ShowArgs::All);
         };
 
         if let Some(token) = tokens.next() {
@@ -343,6 +319,6 @@ impl RegArgs {
             return Err(ParseError::ExpectedArgument("".into()));
         }
 
-        Ok(RegArgs::Reg(arg.into()))
+        Ok(ShowArgs::Reg(arg.into()))
     }
 }
