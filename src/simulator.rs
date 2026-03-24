@@ -54,7 +54,7 @@ pub trait DebuggableSimulator {
         let (after, _) = self.current_instruction();
         let mut after_depth = after.depth();
 
-        while before_depth != after_depth {
+        while before_depth < after_depth {
             // Inside sub circuit
             ret_some = self.next().is_some();
 
