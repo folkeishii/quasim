@@ -99,6 +99,10 @@ pub trait HybridSimulator<T: Copy> {
     fn register(&self, register: &str) -> T {
         self.registers()[register]
     }
+
+    fn get_register(&self, register: &str) -> Option<&T> {
+        self.registers().get(register)
+    }
 }
 
 #[cfg(test)]
