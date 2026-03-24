@@ -418,7 +418,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
     // Sub circuits
 
-    pub fn new_sub_circuit<I: Into<String>>(mut self, name: I, pure_circuit: Circuit) -> Self {
+    pub fn new_sub_circuit<S: Into<String>>(mut self, name: S, pure_circuit: Circuit) -> Self {
         if self
             .sub_circuits
             .insert(name.into(), pure_circuit)
@@ -485,7 +485,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     ///  - `name`: Name of registered sub circuit
     ///  - `pure_circuit`: Definition of specified circuit
     ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
-    pub fn call_new<I: Into<String>>(self, name: I, pure_circuit: Circuit, lsq: usize) -> Self {
+    pub fn call_new<S: Into<String>>(self, name: S, pure_circuit: Circuit, lsq: usize) -> Self {
         let name = name.into();
         self.new_sub_circuit(name.clone(), pure_circuit)
             .call(name, lsq)
