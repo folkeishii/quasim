@@ -131,6 +131,20 @@ pub fn collapse(state: &[Complex<f64>]) -> usize {
     dist.sample(&mut rng)
 }
 
+/// Collapse a density matrix into a value
+///
+/// The trace of the matrix should equal to one
+pub fn collapse_matrix(state: &DMatrix<Complex<f64>>) -> usize {
+    let diag = state.diagonal();
+    let probs = diag.iter().map(|&c| c.re);
+
+    let dist = WeightedIndex::new(probs)
+        .expect("Failed to create probability distribution. Invalid or empty state vector?");
+    let mut rng = rand::rng();
+
+    dist.sample(&mut rng)
+}
+
 /// # measure_and_observe_sv
 /// Returns a probable state vector after measurement.
 pub fn measure_and_observe_sv(
