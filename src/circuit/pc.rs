@@ -114,7 +114,7 @@ impl CircuitPc {
         }
     }
 
-    pub fn depth<'a>(&'a self) -> usize {
+    pub fn depth(&self) -> usize {
         if let Some((_, pc)) = self.sub.as_ref() {
             pc.depth() + 1
         } else {
