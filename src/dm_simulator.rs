@@ -6,9 +6,9 @@ use crate::{
     gate::Gate,
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::StoredCircuitSimulator,
+    simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
-use nalgebra::{Complex, DMatrix};
+use nalgebra::{Complex, DMatrix, DVector};
 
 #[derive(Debug, Clone)]
 pub struct DMSimulator {
@@ -16,6 +16,7 @@ pub struct DMSimulator {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile<Value>,
+    diagonal: DVector<Complex<f64>>,
 }
 
 impl TryFrom<Circuit<PureCircuit>> for DMSimulator {
@@ -50,13 +51,8 @@ impl TryFrom<Circuit<HybridCircuit>> for DMSimulator {
         Ok(sim)
     }
 }
-
-fn panic_rev(op: &str) {
-    panic!("{} is an irreversible operation.", op);
-}
-
-impl DMSimulator {
-    fn next(&mut self) -> Option<&DMatrix<Complex<f64>>> {
+impl DebuggableSimulator for DMSimulator {
+    fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             return None;
         };
@@ -72,18 +68,18 @@ impl DMSimulator {
             Instruction::JumpIf(expr, pc) => self.jump_if(&expr, pc),
             Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
         }
-        Some(&self.current_state)
+        Some(&self.diagonal)
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
         (self.pc(), self.circuit.instruction(self.pc()))
     }
 
-    fn current_state(&self) -> &DMatrix<Complex<f64>> {
-        &self.current_state
+    fn current_state(&self) -> &DVector<Complex<f64>> {
+        todo!()
     }
 
-    fn prev(&mut self) -> Option<&DMatrix<Complex<f64>>> {
+    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
         if !self.pc_mut().decrement() {
             return None;
         }
@@ -95,15 +91,21 @@ impl DMSimulator {
 
         match inst {
             Instruction::Gate(gate) => self.apply_gate_inv(gate),
-            Instruction::MeasureBit(_, _) => panic_rev("Measure bit"),
-            Instruction::MeasureAll(_) => panic_rev("Measure all"),
-            Instruction::Jump(_) => panic_rev("Jump"),
-            Instruction::JumpIf(_, _) => panic_rev("Jump if"),
-            Instruction::Assign(_, _) => panic_rev("Assign"),
+            Instruction::MeasureBit(_, _) => todo!(),
+            Instruction::MeasureAll(_) => todo!(),
+            Instruction::Jump(_) => todo!(),
+            Instruction::JumpIf(_, _) => todo!(),
+            Instruction::Assign(_, _) => todo!(),
         }
-        Some(&self.current_state)
+        Some(&self.diagonal)
     }
 
+    fn double_ended(&self) -> bool {
+        true
+    }
+}
+
+impl DMSimulator {
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
         let (measurement, new_state) =
             measure_and_observe_dm(target, &self.current_state, self.n_qubits());
@@ -157,10 +159,6 @@ impl DMSimulator {
         self.pc_mut().increment();
     }
 
-    fn double_ended(&self) -> bool {
-        true
-    }
-
     fn pc(&self) -> &CircuitPc {
         &self.pc
     }
@@ -191,6 +189,7 @@ impl DMSimulator {
         let registers = RegisterFile::from(circuit.registers());
 
         DMSimulator {
+            diagonal: init_state.diagonal(),
             current_state: init_state,
             circuit: circuit,
             pc: Default::default(),
@@ -224,6 +223,7 @@ mod tests {
         circuit::Circuit,
         dm_simulator::DMSimulator,
         expr_dsl::{Value, expr_helpers::r},
+        simulator::DebuggableSimulator,
     };
     use nalgebra::{Complex, DMatrix, dmatrix};
 

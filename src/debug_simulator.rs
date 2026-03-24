@@ -69,7 +69,8 @@ impl DebuggableSimulator for DebugSimulator {
                 self.pc_mut().increment();
             }
             Instruction::MeasureBit(qbit, _) => {
-                self.current_state = measure_and_observe_sv(qbit, &self.current_state, self.circuit.n_qubits());
+                self.current_state =
+                    measure_and_observe_sv(qbit, &self.current_state, self.circuit.n_qubits());
                 self.pc_mut().increment();
             }
             Instruction::MeasureAll(_) => todo!(),
@@ -148,7 +149,10 @@ pub enum DebugSimulatorError {
 #[cfg(test)]
 mod tests {
     use crate::common_test;
-    use crate::ext::{collapse, expand_matrix, expand_matrix_from_gate, get_gate_matrix, measure_and_observe_sv, equal_to_matrix_c};
+    use crate::ext::{
+        collapse, equal_to_matrix_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
+        measure_and_observe_sv,
+    };
     use crate::{
         cart,
         circuit::Circuit,
