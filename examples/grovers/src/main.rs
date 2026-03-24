@@ -1,6 +1,7 @@
 use std::env;
 
 use quasim::circuit::{Circuit, HybridCircuit};
+use quasim::debug_simulator::DebugSimulator;
 use quasim::debug_terminal::DebugTerminal;
 use quasim::expr_dsl::Value;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
@@ -122,7 +123,7 @@ fn main() {
 fn debug_main() {
     let func: &[usize] = &[1, 0, 0]; // f(x) written as b_x,b_(x-1),...,b_0
     let circ = circuit(func);
-    let sim: SVSimulatorDebugger = SVSimulatorDebugger::build(circ).expect("Could not build simulator");
+    let sim: DebugSimulator = DebugSimulator::build(circ).expect("Could not build simulator");
     let mut term = DebugTerminal::from_simulator(sim);
     term.run().unwrap()
 }

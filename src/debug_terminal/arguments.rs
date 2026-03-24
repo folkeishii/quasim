@@ -66,8 +66,28 @@ impl ContinueArgs {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub enum StepArgs {
+    Count(usize),
+}
+impl StepArgs {
+    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
+        let mut tokens = tokens;
+        let arg = if let Some(token) = tokens.next() {
+            token
+        } else {
+            return Ok(StepArgs::Count(1));
+        };
+
+        if let Some(token) = tokens.next() {
+            return Err(ParseError::UnexpectedArgument(token.into()));
+        }
+
+        Ok(StepArgs::Count(parse_usize!(arg)?))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum NextArgs {
-    Step,
     Count(usize),
 }
 impl NextArgs {
@@ -76,7 +96,7 @@ impl NextArgs {
         let arg = if let Some(token) = tokens.next() {
             token
         } else {
-            return Ok(NextArgs::Step);
+            return Ok(NextArgs::Count(1));
         };
 
         if let Some(token) = tokens.next() {
