@@ -5,7 +5,8 @@
 use std::{
     fmt::Display,
     io::{self, Write},
-    iter::repeat, usize,
+    iter::repeat,
+    usize,
 };
 
 use crossterm::style::ContentStyle;
@@ -40,9 +41,17 @@ where
     let (pc, _) = simulator.current_instruction();
     let main_circuit = simulator.circuit();
     let instructions = if let Some(sub_circuit) = main_circuit.current_sub_circuit(pc) {
-        sub_circuit.instructions().iter().map(|inst| Instruction::from(inst.clone())).collect::<Vec<_>>()
+        sub_circuit
+            .instructions()
+            .iter()
+            .map(|inst| Instruction::from(inst.clone()))
+            .collect::<Vec<_>>()
     } else {
-        main_circuit.instructions().iter().cloned().collect::<Vec<_>>()
+        main_circuit
+            .instructions()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
     };
 
     for instruction in instructions {
@@ -624,7 +633,7 @@ impl Column {
             }
             Instruction::MeasureAll(_) => {
                 Self::from_measurements(simulator.n_qubits(), usize::MAX.into())
-            },
+            }
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
@@ -639,15 +648,22 @@ impl Column {
                 let (nqubits, called_circuit) = if let Some(csc) = current_sub_circuit {
                     (csc.n_qubits(), csc.sub_circuit(sub_circuit_name))
                 } else {
-                    (main_circuit.n_qubits(), main_circuit.sub_circuit(sub_circuit_name))
+                    (
+                        main_circuit.n_qubits(),
+                        main_circuit.sub_circuit(sub_circuit_name),
+                    )
                 };
                 let target_count = called_circuit.n_qubits();
-
 
                 //               ____target_count___|___lsq_____
                 // targets = 00001111111111111111111100000000000
                 let targets = !(usize::MAX << target_count) << lsq;
-                Self::from_common_gate(nqubits, String::from(sub_circuit_name), targets.into(), 0.into())
+                Self::from_common_gate(
+                    nqubits,
+                    String::from(sub_circuit_name),
+                    targets.into(),
+                    0.into(),
+                )
             }
         }
     }

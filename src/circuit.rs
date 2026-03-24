@@ -456,7 +456,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     fn sub_circuit_mut(&mut self, name: &str) -> &mut Circuit {
         match self.sub_circuits.get_mut(name) {
             Some(v) => v,
-            None => panic!("Trying to access unregistered sub circuit {}", name)
+            None => panic!("Trying to access unregistered sub circuit {}", name),
         }
     }
 

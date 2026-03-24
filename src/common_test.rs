@@ -73,7 +73,7 @@ pub fn double_sub<
     if sim.double_ended() {
         let mut backward_steps = 0;
         while sim.prev().is_some() {
-            backward_steps+= 1;
+            backward_steps += 1;
         }
         assert_eq!(forward_steps, backward_steps);
         assert!(equal_to_matrix_c(
