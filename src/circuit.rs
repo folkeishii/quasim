@@ -306,7 +306,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
     /// Appends a circuit implementing a quantum phase oracle for a given classical function.
     pub fn phase_oracle(self, input_qubits: Vec<usize>, target: usize, classic_fn: impl Fn(&usize) -> bool) -> Self {
-        let truth_table = fn_to_truth_table(&classic_fn, self.n_qubits());
+        let truth_table = fn_to_truth_table(&classic_fn, input_qubits.len());
         let anf_coefs = truth_table_to_anf_coefs(truth_table);
         append_phase_oracle(self, input_qubits, target, anf_coefs)
     }
