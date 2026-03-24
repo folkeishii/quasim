@@ -113,6 +113,14 @@ impl CircuitPc {
             (Some(with_name), self.pc)
         }
     }
+
+    pub fn depth<'a>(&'a self) -> usize{
+        if let Some((_, pc)) = self.sub.as_ref() {
+            pc.depth() + 1
+        } else {
+            1
+        }
+    }
 }
 impl PartialEq for CircuitPc {
     fn eq(&self, other: &Self) -> bool {

@@ -42,6 +42,32 @@ pub trait RunnableSimulator {
 /// one gate at a time should implement this trait
 pub trait DebuggableSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>>;
+    /// Unlike `next`, `next_over` will execute all instructions
+    /// inside a sub circuit
+    fn next_over(&mut self) -> Option<&DVector<Complex<f64>>> {
+        let (before, _) = self.current_instruction();
+        let before_depth = before.depth();
+
+        // Allways do at least one next
+        let mut ret_some = self.next().is_some();
+
+        let (after, _) = self.current_instruction();
+        let mut after_depth = after.depth();
+
+        while before_depth != after_depth {
+            // Inside sub circuit
+            ret_some = self.next().is_some();
+
+            let (after, _) = self.current_instruction();
+            after_depth = after.depth();
+        }
+
+        if ret_some {
+            Some(self.current_state())
+        } else {
+            None
+        }
+    }
     /// Not guaranteed to be implemented for every simulator
     ///
     /// `prev` should be implemented if `fn double_ended(&self)`
