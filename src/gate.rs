@@ -89,7 +89,6 @@ impl BitOrAssign for QBits {
     }
 }
 
-
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum GateType {
     X,

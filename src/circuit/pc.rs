@@ -20,11 +20,21 @@ impl CircuitPc {
     }
 
     pub fn with_lsq(pc: usize, lsq: usize) -> Self {
-        CircuitPc { pc, lsq, ctrl: 0.into(), sub: None }
+        CircuitPc {
+            pc,
+            lsq,
+            ctrl: 0.into(),
+            sub: None,
+        }
     }
 
     pub fn with_ctrl(pc: usize, lsq: usize, ctrl: QBits) -> Self {
-        CircuitPc { pc, lsq, ctrl, sub: None }
+        CircuitPc {
+            pc,
+            lsq,
+            ctrl,
+            sub: None,
+        }
     }
 
     pub fn increment(&mut self) {
@@ -45,7 +55,10 @@ impl CircuitPc {
         if let Some((_, sub_pc)) = &mut self.sub {
             sub_pc.jump_and_link(name, lsq, ctrl);
         } else {
-            self.sub = Some((name, Box::from(CircuitPc::with_ctrl(0, self.lsq + lsq, self.ctrl | ctrl))));
+            self.sub = Some((
+                name,
+                Box::from(CircuitPc::with_ctrl(0, self.lsq + lsq, self.ctrl | ctrl)),
+            ));
         }
     }
 
