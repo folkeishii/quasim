@@ -1,14 +1,13 @@
-use quasim::circuit::{self, Circuit};
-use quasim::expr_dsl::Value;
+use quasim::circuit::Circuit;
+use std::f64::consts::PI;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 use gcd::Gcd;
 use rand::RngExt;
 
-
 // Expects a QFT'd register of n qubits
 fn adder(a: usize, n: usize) -> Circuit {
-    let n_bits = (n as f32).log2().ceil() as usize;
+    let n_bits = (n as f64).log2().ceil() as usize;
     let mut c = Circuit::new(n+1);
     // Bitwise representation of a in the computational basis
     let a_bit_array = (0..n_bits)
@@ -20,7 +19,7 @@ fn adder(a: usize, n: usize) -> Circuit {
     for i in 0..n {
         for j in a_bit_array[i..].iter() {
             if *j {
-                let theta = 2.0 * std::f64::consts::PI / (1 << (i)) as f64;
+                let theta = 2.0 * PI / (1 << (i+1)) as f64;
                 c = c.rz(theta, i);
             }
         }
@@ -30,7 +29,7 @@ fn adder(a: usize, n: usize) -> Circuit {
 }
 
 fn mod_adder (a: usize, n: usize, circuit: Circuit) -> Circuit {
-    let n_bits = (n as f32).log2().ceil() as usize;
+    let n_bits = (n as f64).log2().ceil() as usize;
     let c_array = (0..n_bits - 1).collect::<Vec<usize>>();
 
     circuit.adder(a,n);
@@ -53,7 +52,7 @@ fn mod_adder (a: usize, n: usize, circuit: Circuit) -> Circuit {
 }
 
 fn cmult (a: usize, n: usize, circuit: Circuit) -> Circuit {
-    let n_bits = (n as f32).log2().ceil() as usize;
+    let n_bits = (n as f64).log2().ceil() as usize;
     let c_array = (0..n_bits - 1).collect::<Vec<usize>>();
 
     circuit.qft(bottom_n_register);
@@ -66,7 +65,7 @@ fn cmult (a: usize, n: usize, circuit: Circuit) -> Circuit {
 }
 
 fn u_a (a: usize, n: usize, circuit: Circuit) -> Circuit {
-    let n_bits = (n as f32).log2().ceil() as usize;
+    let n_bits = (n as f64).log2().ceil() as usize;
     let c_array = (0..n_bits - 1).collect::<Vec<usize>>();
 
     circuit.cmult(a, n);
@@ -75,14 +74,42 @@ fn u_a (a: usize, n: usize, circuit: Circuit) -> Circuit {
 }
 
 fn quantum(n: usize, a: usize) -> usize {
-    let n_bits: usize = (n as f32).log2().ceil() as usize;
-    let mut bit_array: Vec<usize> = vec![Default::default();2*n_bits];
+    let n_bits: usize = (n as f64).log2().ceil() as usize;
+    let mut final_bit_array: Vec<usize> = vec![Default::default();2*n_bits];
 
     let mut circuit = Circuit::new(2*n_bits+3).new_reg("res");
 
     circuit = circuit.h(0);
     circuit = circuit.u_a(a, n);
     circuit = circuit.h(0);
+    circuit = circuit.measure_bit(0, "reg");
+    final_bit_array[0] = circuit.register("res").into_int().unwrap() as usize;
+
+    for i in 0..2*n_bits-1 {
+
+        // Check previous bit and apply X if 1
+        if final_bit_array[i] == 1 {
+            circuit = circuit.x(0);
+        }
+
+        circuit = circuit.h(0);
+        circuit = circuit.u_a(a.pow(2.pow(i+1)), n);
+
+        // R gates based on previous bits
+        for j in 1..i+2 {
+            if final_bit_array[j-1] == 1 {
+                let theta = 2.0 * PI / (1 << (j+1)) as f64;
+                circuit = circuit.rz(theta, 0);
+            }
+        }
+
+        // Measure the next bit and store it in the result register
+        circuit = circuit.measure_bit(0, "reg");
+        final_bit_array[i+1] = circuit.register("res").into_int().unwrap() as usize;
+    }
+
+    // Return the measured bits as a number
+    final_bit_array.iter().rev().enumerate().map(|(i, &b)| b << i).sum()
 }
 
 fn shors(n: usize, init_a: usize) -> Vec<usize> {
