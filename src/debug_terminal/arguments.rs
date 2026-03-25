@@ -298,6 +298,22 @@ impl CollapseArgs {
 }
 
 #[derive(Debug, Clone)]
+pub enum CircuitArgs {
+    Circuit,
+}
+impl CircuitArgs {
+    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
+        let mut tokens = tokens;
+
+        if let Some(token) = tokens.next() {
+            return Err(ParseError::UnexpectedArgument(token.into()));
+        }
+
+        Ok(CircuitArgs::Circuit)
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum ShowArgs {
     All,
     Reg(String),

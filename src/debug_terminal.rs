@@ -91,7 +91,7 @@ where
                 Command::Collapse(collapse_args) => {
                     self.handle_collapse(&mut stdout, &collapse_args)?
                 }
-                Command::Circuit => self.handle_show(&mut stdout)?,
+                Command::Circuit(circuit_args) => self.handle_show(&mut stdout, &circuit_args)?,
                 Command::Show(reg_args) => self.handle_reg(&mut stdout, &reg_args)?,
             }
         }
@@ -554,8 +554,14 @@ where
         Ok(())
     }
 
-    fn handle_show<W: Write>(&mut self, stdout: &mut W) -> io::Result<()> {
-        show_circuit(stdout, &self.simulator)
+    fn handle_show<W: Write>(
+        &mut self,
+        stdout: &mut W,
+        circuit_args: &CircuitArgs,
+    ) -> io::Result<()> {
+        match circuit_args {
+            CircuitArgs::Circuit => show_circuit(stdout, &self.simulator),
+        }
     }
 
     fn handle_reg<W: Write>(&mut self, stdout: &mut W, reg_args: &ShowArgs) -> io::Result<()> {
@@ -563,14 +569,17 @@ where
             ShowArgs::All => {
                 println!(stdout; "{}", self.simulator.registers())?;
             }
-            ShowArgs::Reg(r) => match self.simulator.get_register(r.as_str()) {
-                None => {
-                    println!(stdout; "Register does not exists")?;
+            ShowArgs::Reg(r) => {
+                let registers = self.simulator.registers();
+                match registers.get(r) {
+                    None => {
+                        errorln!(stdout; "Register does not exists")?;
+                    }
+                    Some(reg) => {
+                        println!(stdout; "{}", reg)?;
+                    }
                 }
-                Some(reg) => {
-                    println!(stdout; "{}", reg)?;
-                }
-            },
+            }
         }
 
         Ok(())

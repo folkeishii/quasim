@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
 use crate::debug_terminal::{
-    BreakArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs,
-    ShowArgs, StateArgs,
+    BreakArgs, CircuitArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs,
+    NextArgs, PrevArgs, ShowArgs, StateArgs,
     parse::{ParseError, ParseResult, Token, TokenIterator},
 };
 
@@ -104,7 +104,7 @@ pub enum Command {
     ///
     /// Usage:
     /// circuit    # Draws the current circuit
-    Circuit,
+    Circuit(CircuitArgs),
 
     /// Show the value of registers
     ///
@@ -129,13 +129,7 @@ impl Command {
             CommandIdent::Disable => Command::Disable(DisableArgs::parse_arguments(tokens)?),
             CommandIdent::State => Command::State(StateArgs::parse_arguments(tokens)?),
             CommandIdent::Collapse => Command::Collapse(CollapseArgs::parse_arguments(tokens)?),
-            CommandIdent::Circuit => {
-                if let Some(token) = tokens.next() {
-                    return Err(ParseError::UnexpectedArgument(token.into()));
-                } else {
-                    Command::Circuit
-                }
-            }
+            CommandIdent::Circuit => Command::Circuit(CircuitArgs::parse_arguments(tokens)?),
             CommandIdent::Show => Command::Show(ShowArgs::parse_arguments(tokens)?),
             CommandIdent::Quit => {
                 if let Some(token) = tokens.next() {
