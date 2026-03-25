@@ -29,7 +29,6 @@ pub fn truth_table_to_anf_coefs(mut truth_table: Vec<bool>) -> Vec<bool> {
 
 /// Converts the ANF coefficients back to a function that can be evaluated on inputs.
 fn anf_coefs_to_fn(anf_coefs: Vec<bool>) -> Box<dyn Fn(&usize) -> bool> {
-
     let f = move |x: &usize| {
         let mut classical_result = false;
 
@@ -63,7 +62,12 @@ fn controls_from_bit_mask(possible_controls: &[usize], mut bit_mask: usize) -> V
 }
 
 /// Appends a phase oracle to the given circuit based on the provided ANF coefficients.
-pub fn append_phase_oracle<B: CircuitBehaviour>(mut circuit: Circuit<B>, input_qubits: Vec<usize>, target: usize, anf_coefs: Vec<bool>) -> Circuit<B> {
+pub fn append_phase_oracle<B: CircuitBehaviour>(
+    mut circuit: Circuit<B>,
+    input_qubits: Vec<usize>,
+    target: usize,
+    anf_coefs: Vec<bool>,
+) -> Circuit<B> {
     for (i, coef) in anf_coefs.iter().enumerate() {
         if !coef {
             continue; // Skip if the coefficient is not part of the expression
@@ -71,10 +75,10 @@ pub fn append_phase_oracle<B: CircuitBehaviour>(mut circuit: Circuit<B>, input_q
 
         if i == 0 {
             // Apply Z gate for the constant term
-            circuit = circuit.z(target); 
+            circuit = circuit.z(target);
             continue;
-        } 
-        
+        }
+
         // Apply a multi-controlled Z gate for the term corresponding to index i
         let control_qubits = controls_from_bit_mask(&input_qubits, i);
         circuit = circuit.cz(&control_qubits, target);

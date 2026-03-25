@@ -32,10 +32,13 @@ fn circuit_in_start_state(n: usize, mut starting_qubits_mask: usize) -> Circuit 
 fn main() {
     const N: usize = 7; // Number of qubits to input into the oracle
     let input_qubits: Vec<usize> = (0..N).collect();
-    
-    println!("Testing primality oracle for numbers 0 to {}:", (1 << N) - 1);
+
+    println!(
+        "Testing primality oracle for numbers 0 to {}:",
+        (1 << N) - 1
+    );
     for i in 0..(1 << N) {
-        let circuit = circuit_in_start_state(N+1, i)
+        let circuit = circuit_in_start_state(N + 1, i)
             .h(N)
             .phase_oracle(input_qubits.clone(), N, is_prime)
             .h(N);
@@ -43,7 +46,7 @@ fn main() {
             Ok(sim) => sim,
             Err(e) => panic!("Error building simulator: {}", e),
         };
-        
+
         let result = sim.run();
         let flipped = result & (1 << N) != 0;
         println!("For i={}:  {:#010b}, Flipped: {}", i, result, flipped);
