@@ -1,9 +1,11 @@
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
+    expr_dsl::Value,
     ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
-    simulator::{DebuggableSimulator, StoredCircuitSimulator},
+    register_file::RegisterFile,
+    simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 use nalgebra::{Complex, DVector};
 
@@ -12,6 +14,7 @@ pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
+    registers: RegisterFile<Value>,
 }
 
 impl TryFrom<Circuit<PureCircuit>> for DebugSimulator {
@@ -46,19 +49,34 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
         let mut init_state = vec![cart!(0.0); 1 << k];
         init_state[0] = cart!(1.0);
 
+        let registers = RegisterFile::from(circuit.registers());
+
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),
             circuit: circuit,
             pc: Default::default(),
+            registers: registers,
         };
 
         Ok(sim)
     }
 }
 
+impl HybridSimulator<Value> for DebugSimulator {
+    fn registers(&self) -> &RegisterFile<Value> {
+        &self.registers
+    }
+}
+
 impl DebuggableSimulator for DebugSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // End of (sub) circuit: Try to return
+            if self.pc_mut().ret() {
+                return Some(&self.current_state);
+            }
+
+            // Could not return: End of circuit
             return None;
         };
 
@@ -76,6 +94,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
+            Instruction::Call(name, lsq) => self.pc_mut().jump_and_link(name, lsq),
         }
         Some(&self.current_state)
     }
@@ -90,12 +109,20 @@ impl DebuggableSimulator for DebugSimulator {
 
     fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
         if !self.pc_mut().decrement() {
+            // Beginnning of (sub) circuit: Try to return
+            if self.pc_mut().ret_backwards() {
+                return Some(&self.current_state);
+            }
+
+            // Could not return: Beginning of circuit
             return None;
         }
 
+        // Will happen if doing prev into a sub circuit
+        // i.e. we are at the end of a sub circuit
         let Some(inst) = self.circuit.instruction(self.pc()) else {
-            // Should not happen
-            return None;
+            // Pc already decremented: do nothing
+            return Some(&self.current_state);
         };
 
         match inst {
@@ -109,6 +136,14 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
+            Instruction::Call(name, lsq) => {
+                let inst_count = match self.circuit.current_sub_circuit(self.pc()) {
+                    Some(sub_circuit) => sub_circuit.sub_circuit(&name).instructions().len(),
+                    None => self.circuit.sub_circuit(&name).instructions().len(),
+                };
+                self.pc_mut().jump_and_link(name, lsq);
+                self.pc_mut().jump(inst_count); // Place pc at end of sub circuit
+            }
         }
         Some(&self.current_state)
     }
@@ -556,7 +591,12 @@ mod tests {
     }
 
     #[test]
-    fn almost_grovers() {
-        common_test::almost_grovers::<DebugSimulator>();
+    fn double_sub() {
+        common_test::double_sub::<DebugSimulator>();
+    }
+
+    #[test]
+    fn deep_sub() {
+        common_test::deep_sub::<DebugSimulator>();
     }
 }

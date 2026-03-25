@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Sub};
 
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,22 @@ pub enum Value {
     Int(i32),
     Float(f32),
     Bool(bool),
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Int(i) => {
+                write!(f, "{}", i)
+            }
+            Value::Float(fl) => {
+                write!(f, "{}", fl)
+            }
+            Value::Bool(b) => {
+                write!(f, "{}", b)
+            }
+        }
+    }
 }
 
 impl Default for Value {
