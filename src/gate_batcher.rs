@@ -6,9 +6,8 @@ use std::{
 use nalgebra::{Complex, Matrix2};
 
 use crate::{
-    circuit::{Circuit, HybridCircuit, PureCircuit},
     ext::get_gate2_matrix,
-    gate::{Gate, GateType, QBits}, instruction::Instruction,
+    gate::{Gate, GateType, QBits},
 };
 
 type NodeId = usize;
@@ -69,6 +68,7 @@ pub struct GateBatchData {
     target_data: Vec<usize>,
     control_data: Vec<usize>,
     len: usize,
+    indices: Vec<usize>,
 }
 
 impl GateBatchData {
@@ -78,6 +78,7 @@ impl GateBatchData {
             target_data: Vec::new(),
             control_data: Vec::new(),
             len: 0,
+            indices: Vec::new(),
         }
     }
 
@@ -87,14 +88,32 @@ impl GateBatchData {
             target_data: Vec::with_capacity(nodes),
             control_data: Vec::with_capacity(nodes),
             len: 0,
+            indices: Vec::with_capacity(nodes),
         }
     }
 
     pub fn append(&mut self, mut other: GateBatchData) {
+        self.indices.push(self.len());
         self.gate_data.append(&mut other.gate_data);
         self.target_data.append(&mut other.target_data);
         self.control_data.append(&mut other.control_data);
         self.len += other.len;
+    }
+
+    pub fn gate_data(&self) -> &[Complex<f64>] {
+        &self.gate_data
+    }
+
+    pub fn target_data(&self) -> &[usize] {
+        &self.target_data
+    }
+
+    pub fn control_data(&self) -> &[usize] {
+        &self.control_data
+    }
+
+    pub fn indices(&self) -> &[usize] {
+        &self.indices
     }
 
     pub fn len(&self) -> usize {
@@ -102,7 +121,8 @@ impl GateBatchData {
     }
 
     fn push_gate_node_data(&mut self, gate_node: &GateNode) {
-        self.gate_data.extend_from_slice(gate_node.matrix.as_slice());
+        self.gate_data
+            .extend_from_slice(gate_node.matrix.as_slice());
         self.target_data.push(gate_node.target.get_bitstring());
         self.control_data.push(gate_node.control.get_bitstring());
         self.len += 1;
@@ -124,26 +144,25 @@ pub struct GateBatcher {
 }
 
 impl GateBatcher {
-    pub fn new(max_targets_per_batch: usize) -> Self {
+    pub fn new(max_target_qubits: usize) -> Self {
         Self {
             frontier: HashMap::new(),
             batches: Vec::new(),
             nodes: Vec::new(),
-            max_target_qubits: max_targets_per_batch,
+            max_target_qubits,
         }
     }
 
     /* TODO Getting batch matrix data
-    *
-    * Go through the nodes vec for each batch in order and create a contigous vec of
-    * matrix data, target data, control data, which will be passed to the gpu once on simulator init.
-    * Then i will pass a command specifying offset in matrix and target/control data and size of batch
-    * in order to execute the batch on the gpu.
-    *
-    * Since nodes are always appended after their predecessors during construction,
-    * iterating the vec in order is a valid execution sequence.
-    */
-
+     *
+     * Go through the nodes vec for each batch in order and create a contigous vec of
+     * matrix data, target data, control data, which will be passed to the gpu once on simulator init.
+     * Then i will pass a command specifying offset in matrix and target/control data and size of batch
+     * in order to execute the batch on the gpu.
+     *
+     * Since nodes are always appended after their predecessors during construction,
+     * iterating the vec in order is a valid execution sequence.
+     */
 
     pub fn add_gate(&mut self, gate: &Gate) {
         match gate.get_type() {
@@ -152,9 +171,10 @@ impl GateBatcher {
         }
     }
 
-    /// Subsequent gate additions will be added to new batches
-    /// Returns all closing batches
-    pub fn close_batches(&mut self) -> GateBatchData {
+    /// Clears frontier. Subsequent gate additions will be added to new batches.
+    /// 
+    /// Returns all flushed batches as a `GateBatchData`
+    pub fn flush_batches(&mut self) -> GateBatchData {
         let frontier = mem::take(&mut self.frontier);
         let batches: BTreeSet<BatchId> = frontier
             .into_values()
@@ -332,22 +352,6 @@ impl GateBatcher {
         }
 
         merged_batchid
-    }
-}
-
-pub struct BatchHandle {
-    anchor: NodeId,
-}
-
-impl BatchHandle {
-    fn from_parts(node_id: NodeId) -> Self {
-        Self {
-            anchor: node_id
-        }
-    }
-
-    fn id(&self, batcher: &GateBatcher) -> Option<BatchId> {
-        batcher.nodes.get(self.anchor).and_then(|n| Some(n.batch_id))
     }
 }
 
