@@ -1,6 +1,6 @@
-use std::fmt::Display;
+use std::{cmp::Ordering, fmt::Display};
 
-#[derive(Debug, Clone, Default, Hash)]
+#[derive(Debug, Clone, Default, Hash, Eq)]
 pub struct CircuitPc {
     pc: usize,
     lsq: usize,
@@ -31,6 +31,11 @@ impl CircuitPc {
 
     pub fn jump(&mut self, pc: usize) {
         *self.pc_mut() = pc
+    }
+
+    pub fn jump_with_offset(&mut self, offset: isize) {
+        let nn = self.pc() as isize + offset;
+        *self.pc_mut() = nn as usize;
     }
 
     pub fn jump_and_link(&mut self, name: String, lsq: usize) {
@@ -125,6 +130,47 @@ impl CircuitPc {
 impl PartialEq for CircuitPc {
     fn eq(&self, other: &Self) -> bool {
         self.pc == other.pc
+            && self.lsq == other.lsq
+            && self.sub.is_some() == other.sub.is_some()
+            // Check that sub pc is the same
+            && self.sub.as_ref().zip(other.sub.as_ref()).map(|((sname, ssub),(oname, osub))| {
+                sname == oname && ssub.eq(osub)
+            }).unwrap_or(true)
+    }
+}
+
+impl PartialOrd for CircuitPc {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        // Cannot order pcs who don't share call stack
+        if self.lsq != other.lsq {
+            return None;
+        }
+
+        // Only check subs if top level is equal
+        match self.pc.cmp(&other.pc) {
+            Ordering::Equal => (),
+            ord => return Some(ord),
+        }
+
+        match (self.sub.as_ref(), other.sub.as_ref()) {
+            (None, None) => return Some(Ordering::Equal),
+
+            // other is deeper in the program, i.e. self < other
+            (None, Some(_)) => Some(Ordering::Less),
+
+            // self is deeper in the program, i.e. self > other
+            (Some(_), None) => Some(Ordering::Greater),
+
+            // Both go deeper: Recursion
+            (Some((sname, ssub)), Some((oname, osub))) => {
+                // Cannot order pcs who don't share call stack
+                if sname != oname {
+                    None
+                } else {
+                    ssub.partial_cmp(osub)
+                }
+            }
+        }
     }
 }
 

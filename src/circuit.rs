@@ -120,6 +120,25 @@ impl Circuit {
             self
         }
     }
+
+    /// ## Returns
+    /// Returns an iterator that iterates over all instructions and hides the call instructions
+    pub fn as_flat(
+        &self,
+        start: CircuitPc,
+        end: Option<CircuitPc>,
+    ) -> FlatCircuit<'_, PureCircuit> {
+        let end = end.unwrap_or_else(|| {
+            let mut t = start.clone();
+            t.jump(self.instructions().len());
+            t
+        });
+        FlatCircuit {
+            circuit: self,
+            pc: start,
+            end,
+        }
+    }
 }
 
 // Hybrid specific
@@ -140,6 +159,25 @@ impl Circuit<HybridCircuit> {
                 )),
                 rst => rst.cloned(),
             }
+        }
+    }
+
+    /// ## Returns
+    /// Returns an iterator that iterates over all instructions and hides the call instructions
+    pub fn as_flat(
+        &self,
+        start: CircuitPc,
+        end: Option<CircuitPc>,
+    ) -> FlatCircuit<'_, HybridCircuit> {
+        let end = end.unwrap_or_else(|| {
+            let mut t = start.clone();
+            t.jump(self.instructions().len());
+            t
+        });
+        FlatCircuit {
+            circuit: self,
+            pc: start,
+            end,
         }
     }
 }
@@ -703,11 +741,84 @@ pub trait CircuitBehaviour {
     fn from_pure(instruction: PureInstruction) -> Self::InstructionTy;
 }
 
+pub struct FlatCircuit<'a, B: CircuitBehaviour> {
+    circuit: &'a Circuit<B>,
+    pc: CircuitPc,
+    /// Is part of the same sub circuit as pc
+    end: CircuitPc,
+}
+
+impl<'a> Iterator for FlatCircuit<'a, PureCircuit> {
+    type Item = PureInstruction;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pc >= self.end {
+            return None;
+        }
+
+        let inst = self.circuit.instruction(&self.pc);
+        match inst {
+            Some(PureInstruction::Call(name, lsq)) => {
+                self.pc.jump_and_link(name, lsq);
+                // Take next instruction inside sub circuit
+                self.next()
+            }
+            Some(inst) => {
+                self.pc.increment();
+                Some(inst)
+            }
+            None => {
+                // Try to return
+                if self.pc.ret() {
+                    // Could return: Return next
+                    self.next()
+                } else {
+                    // Could not return: end of circuit
+                    None
+                }
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for FlatCircuit<'a, HybridCircuit> {
+    type Item = Instruction;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pc >= self.end {
+            return None;
+        }
+
+        let inst = self.circuit.instruction(&self.pc);
+        match inst {
+            Some(Instruction::Call(name, lsq)) => {
+                self.pc.jump_and_link(name, lsq);
+                // Take next instruction inside sub circuit
+                self.next()
+            }
+            Some(inst) => {
+                self.pc.increment();
+                Some(inst)
+            }
+            None => {
+                // Try to return
+                if self.pc.ret() {
+                    // Could return: Return next
+                    self.next()
+                } else {
+                    // Could not return: end of circuit
+                    None
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         cart,
-        circuit::Circuit,
+        circuit::{Circuit, pc::CircuitPc},
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{BuildSimulator, RunnableSimulator},
@@ -783,5 +894,77 @@ mod tests {
 
         assert!(!circuit.has_unresolved_labels());
         assert_eq!(circuit.instructions()[0], Instruction::Jump(2));
+    }
+
+    #[test]
+    fn flatten() {
+        let sub1 = Circuit::new(2).h(0).h(1);
+        let sub2 = Circuit::new(4)
+            .h(0)
+            .call_new("sub1", sub1, 0)
+            .h(2)
+            .call("sub1", 2);
+
+        let circuit = Circuit::new(6)
+            .new_reg("tt")
+            .h(0)
+            .call_new("sub2", sub2, 0)
+            .measure("tt")
+            .call("sub2", 2)
+            .h(2);
+
+
+        let correct = Circuit::new(6)
+            .new_reg("tt")
+            // main
+            .h(0) // 0
+            // sub2 @ 0
+            .h(0) // 1
+            // sub1 @ 0
+            .h(0) // 2
+            .h(1) // 3
+            // end
+            .h(2) // 4
+            // sub1 @ 2
+            .h(2) // 5
+            .h(3) // 6
+            // end
+            // end
+            .measure("tt") // 7
+            // sub2 @ 2
+            .h(2) // 8
+            // sub1 @ 2
+            .h(2) // 9
+            .h(3) // 10
+            // end
+            .h(4) // 11
+            // sub1 @ 4
+            .h(4) // 12
+            .h(5) // 13
+            // end
+            // end
+            .h(2)
+            .instructions;
+
+        let mut as_flat1 = circuit.as_flat(CircuitPc::new(0), None);
+        for i in 0..correct.len() {
+            assert_eq!(as_flat1.next(), Some(correct[i].clone()))
+        }
+        assert!(as_flat1.next().is_none());
+
+        let mut as_flat2 = circuit.as_flat(CircuitPc::new(2), None);
+        for i in 7..correct.len() {
+            assert_eq!(as_flat2.next(), Some(correct[i].clone()))
+        }
+        assert!(as_flat2.next().is_none());
+
+        let mut end = CircuitPc::new(0);
+        end.jump_with_offset(2);
+        let mut as_flat3 = circuit.as_flat(CircuitPc::new(0), Some(end));
+        for i in 0..7 {
+            assert_eq!(as_flat3.next(), Some(correct[i].clone()))
+        }
+        assert!(as_flat3.next().is_none());
+
     }
 }
