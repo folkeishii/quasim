@@ -1,9 +1,12 @@
 use std::fmt::Display;
 
+use crate::gate::QBits;
+
 #[derive(Debug, Clone, Default, Hash)]
 pub struct CircuitPc {
     pc: usize,
     lsq: usize,
+    ctrl: QBits,
     sub: Option<(String, Box<CircuitPc>)>,
 }
 impl CircuitPc {
@@ -11,12 +14,17 @@ impl CircuitPc {
         CircuitPc {
             pc,
             lsq: 0,
+            ctrl: 0.into(),
             sub: None,
         }
     }
 
     pub fn with_lsq(pc: usize, lsq: usize) -> Self {
-        CircuitPc { pc, lsq, sub: None }
+        CircuitPc { pc, lsq, ctrl: 0.into(), sub: None }
+    }
+
+    pub fn with_ctrl(pc: usize, lsq: usize, ctrl: QBits) -> Self {
+        CircuitPc { pc, lsq, ctrl, sub: None }
     }
 
     pub fn increment(&mut self) {
