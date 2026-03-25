@@ -9,9 +9,11 @@ mod state;
 pub use arguments::*;
 pub use command::*;
 
+use crate::debug_simulator::DebugSimulator;
+use crate::expr_dsl::Value;
+use crate::simulator::HybridSimulator;
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
-    debug_simulator::DebugSimulator,
     debug_terminal::{parse::into_tokens, show_circuit::show_circuit},
     ext::collapse,
     simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
@@ -27,7 +29,7 @@ pub struct DebugTerminal<S = DebugSimulator> {
 
 impl<S> DebugTerminal<S>
 where
-    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit>,
+    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit> + HybridSimulator<Value>,
 {
     pub fn new<B: CircuitBehaviour>(
         circuit: Circuit<B>,
@@ -88,6 +90,9 @@ where
                 Command::State(state_args) => self.handle_state(&mut stdout, &state_args)?,
                 Command::Collapse(collapse_args) => {
                     self.handle_collapse(&mut stdout, &collapse_args)?
+                }
+                Command::Circuit(circuit_args) => {
+                    self.handle_circuit(&mut stdout, &circuit_args)?
                 }
                 Command::Show(show_args) => self.handle_show(&mut stdout, &show_args)?,
             }
@@ -182,8 +187,15 @@ where
                         'collapse' - Collapse the current state once and show the count of each value.
                         'collapse 3' - Collapse the current state 3 times and show the count of each value."
                     }
+                    CommandIdent::Circuit => {
+                        "Show the circuit diagram."
+                    }
                     CommandIdent::Show => {
-                        "Show information about the circuit or current state. E.g. show the circuit diagram."
+                        "Show the contents of classical registers.
+
+                        EXAMPLES
+                        'show' - Show the contents of all registers
+                        'show a0' - Show the contents of register `a0`"
                     }
                     CommandIdent::Help => {
                         "Show this help message. Optionally specify a command to get more specific help.
@@ -211,7 +223,8 @@ where
                     state - Show the current state. Optionally specify to show only a specific part of the state.
                     collapse (cl) - Collapse the current state into a single value and show the count of each value. \
                     Optionally specify to collapse multiple times for a more even distribution of collapsed values.
-                    show - Show information about the circuit or current state. E.g. show the circuit diagram.
+                    circuit - Show information about the circuit diagram.
+                    show (s) - Show the contents of classical registers.
                     help (h) - Show this help message. Optionally specify a command to get more specific help.
                     quit (q) - Exit the debugger.";
 
@@ -543,9 +556,34 @@ where
         Ok(())
     }
 
+    fn handle_circuit<W: Write>(
+        &mut self,
+        stdout: &mut W,
+        circuit_args: &CircuitArgs,
+    ) -> io::Result<()> {
+        match circuit_args {
+            CircuitArgs::Circuit => show_circuit(stdout, &self.simulator),
+        }
+    }
+
     fn handle_show<W: Write>(&mut self, stdout: &mut W, show_args: &ShowArgs) -> io::Result<()> {
         match show_args {
-            ShowArgs::Circuit => show_circuit(stdout, &self.simulator),
+            ShowArgs::All => {
+                println!(stdout; "{}", self.simulator.registers())?;
+            }
+            ShowArgs::Reg(r) => {
+                let registers = self.simulator.registers();
+                match registers.get(r) {
+                    None => {
+                        errorln!(stdout; "Register does not exists")?;
+                    }
+                    Some(reg) => {
+                        println!(stdout; "{}", reg)?;
+                    }
+                }
+            }
         }
+
+        Ok(())
     }
 }

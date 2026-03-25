@@ -1,8 +1,8 @@
 use std::fmt::Display;
 
 use crate::debug_terminal::{
-    BreakArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs, NextArgs, PrevArgs,
-    ShowArgs, StateArgs,
+    BreakArgs, CircuitArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs,
+    NextArgs, PrevArgs, ShowArgs, StateArgs,
     parse::{ParseError, ParseResult, Token, TokenIterator},
 };
 
@@ -100,11 +100,17 @@ pub enum Command {
     /// collapse [n]    # Collapse the current state n number of times
     Collapse(CollapseArgs),
 
-    /// Show specified object in terminal
+    /// Show circuit in terminal
     ///
     /// Usage:
-    /// show            # Short-hand for show circuit
-    /// show circuit    # Draws the current circuit
+    /// circuit    # Draws the current circuit
+    Circuit(CircuitArgs),
+
+    /// Show the value of registers
+    ///
+    /// Usage: (show can be substituted with `s`)
+    /// show        # Display value of all registers
+    /// show [r]    # Display value of register r
     Show(ShowArgs),
 }
 impl Command {
@@ -123,6 +129,7 @@ impl Command {
             CommandIdent::Disable => Command::Disable(DisableArgs::parse_arguments(tokens)?),
             CommandIdent::State => Command::State(StateArgs::parse_arguments(tokens)?),
             CommandIdent::Collapse => Command::Collapse(CollapseArgs::parse_arguments(tokens)?),
+            CommandIdent::Circuit => Command::Circuit(CircuitArgs::parse_arguments(tokens)?),
             CommandIdent::Show => Command::Show(ShowArgs::parse_arguments(tokens)?),
             CommandIdent::Quit => {
                 if let Some(token) = tokens.next() {
@@ -166,7 +173,9 @@ pub enum CommandIdent {
     State,
     /// collapse
     Collapse,
-    /// show
+    /// circuit
+    Circuit,
+    /// show or s
     Show,
 }
 impl CommandIdent {
@@ -191,6 +200,7 @@ impl CommandIdent {
             CommandIdent::Disable => "disable".into(),
             CommandIdent::State => "state".into(),
             CommandIdent::Collapse => "collapse".into(),
+            CommandIdent::Circuit => "circuit".into(),
             CommandIdent::Show => "show".into(),
         }
     }
@@ -212,7 +222,8 @@ impl TryFrom<Token<'_>> for CommandIdent {
             "disable" => Ok(Self::Disable),
             "state" => Ok(Self::State),
             "collapse" | "cl" => Ok(Self::Collapse),
-            "show" => Ok(Self::Show),
+            "circuit" => Ok(Self::Circuit),
+            "show" | "s" => Ok(Self::Show),
             _ => Err(ParseError::ExpectedCommand(value.into())),
         }
     }
