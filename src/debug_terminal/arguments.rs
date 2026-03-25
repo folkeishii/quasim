@@ -331,10 +331,6 @@ impl ShowArgs {
             return Err(ParseError::UnexpectedArgument(token.into()));
         }
 
-        if arg.is_empty() {
-            return Err(ParseError::ExpectedArgument("".into()));
-        }
-
         Ok(ShowArgs::Reg(arg.into()))
     }
 }
