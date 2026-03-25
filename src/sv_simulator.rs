@@ -41,6 +41,12 @@ impl SVExecutor {
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // End of (sub) circuit: Try to return
+            if self.pc_mut().ret() {
+                return Some(&self.state_vector);
+            }
+
+            // Could not return: End of circuit
             return None;
         };
 
@@ -277,6 +283,7 @@ impl SVExecutor {
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
+            Instruction::Call(name, lsq) => self.pc_mut().jump_and_link(name.clone(), *lsq),
         }
     }
 
@@ -376,7 +383,7 @@ impl DebuggableSimulator for SVSimulatorDebugger {
     }
 
     fn double_ended(&self) -> bool {
-        true
+        false
     }
 }
 
@@ -474,23 +481,34 @@ mod tests {
     #[allow(unreachable_code)]
     #[test]
     fn test_sub() {
-        // Keep for sub circuits
-        return;
-        // let sub = Circuit::new(1)
-        //     .new_reg("tmp")
-        //     .assign("tmp".into(), 0.into())
-        //     .h(0)
-        //     .breakpoint()
-        //     .measure_bit(0, "tmp")
-        //     .apply_if(r("tmp").gt(0))
-        //     .x(0);
-        let circuit = Circuit::new(4).new_reg("tmp");
-        // .new_sub_circuit("U", sub);
-        // Init random state
-        // .call("U", 0)
-        // .call("U", 1)
-        // .call("U", 2)
-        // .call("U", 3);
+        let sub = Circuit::new(1).h(0).breakpoint();
+        let circuit = Circuit::new(4)
+            .new_reg("tmp")
+            .new_sub_circuit("U", sub)
+            // Hybrid check
+            .assign("tmp", 0.into())
+            .call("U", 0)
+            .measure_bit(0, ("tmp", 0))
+            .apply_if(r("tmp").gt(0))
+            .x(0)
+            // Hybrid check
+            .assign("tmp", 0.into())
+            .call("U", 1)
+            .measure_bit(1, ("tmp", 0))
+            .apply_if(r("tmp").gt(0))
+            .x(1)
+            // Hybrid check
+            .assign("tmp", 0.into())
+            .call("U", 2)
+            .measure_bit(2, ("tmp", 0))
+            .apply_if(r("tmp").gt(0))
+            .x(2)
+            // Hybrid check
+            .assign("tmp", 0.into())
+            .call("U", 3)
+            .measure_bit(3, ("tmp", 0))
+            .apply_if(r("tmp").gt(0))
+            .x(3);
 
         let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
 
@@ -650,8 +668,13 @@ mod tests {
     }
 
     #[test]
-    fn almost_grovers() {
-        common_test::almost_grovers::<SVSimulatorDebugger>();
+    fn double_sub() {
+        common_test::double_sub::<SVSimulatorDebugger>();
+    }
+
+    #[test]
+    fn deep_sub() {
+        common_test::deep_sub::<SVSimulatorDebugger>();
     }
 
     #[test]

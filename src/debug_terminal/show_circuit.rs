@@ -6,6 +6,7 @@ use std::{
     fmt::Display,
     io::{self, Write},
     iter::repeat,
+    usize,
 };
 
 use crossterm::style::ContentStyle;
@@ -37,8 +38,24 @@ where
     cols[li].extend_east(&mut ncol);
     cols.push(ncol);
 
-    for instruction in simulator.instructions() {
-        let mut ncol = Column::from_instruction(simulator, instruction);
+    let (pc, _) = simulator.current_instruction();
+    let main_circuit = simulator.circuit();
+    let instructions = if let Some(sub_circuit) = main_circuit.current_sub_circuit(pc) {
+        sub_circuit
+            .instructions()
+            .iter()
+            .map(|inst| Instruction::from(inst.clone()))
+            .collect::<Vec<_>>()
+    } else {
+        main_circuit
+            .instructions()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>()
+    };
+
+    for instruction in instructions {
+        let mut ncol = Column::from_instruction(simulator, &instruction);
         let li = cols.len() - 1;
         cols[li].extend_east(&mut ncol);
         cols.push(ncol);
@@ -612,27 +629,61 @@ impl Column {
         match instruction {
             Instruction::Gate(gate) => Self::from_gate(simulator.n_qubits(), gate),
             Instruction::MeasureBit(qbit, _) => {
-                let mut qbits = 1 << qbit;
-                let mut column = if qbits & 1 == 1 {
-                    Column::init_with_gate(String::from("╭─╱─╮"))
-                } else {
-                    Column::init_with_track(String::from("╭─╱─╮"))
-                };
-                for _ in 1..simulator.n_qubits() {
-                    qbits >>= 1;
-                    if qbits & 1 == 1 {
-                        column.close_with_gate();
-                    } else {
-                        column.close_with_track();
-                    }
-                }
-                column
+                Self::from_measurements(simulator.n_qubits(), (1 << qbit).into())
             }
-            Instruction::MeasureAll(_) => todo!(),
+            Instruction::MeasureAll(_) => {
+                Self::from_measurements(simulator.n_qubits(), usize::MAX.into())
+            }
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
+            Instruction::Call(sub_circuit_name, lsq) => {
+                let lsq = *lsq;
+                let (pc, _) = simulator.current_instruction();
+
+                //  main_circuit/current_sub_circuit
+                //  ----------------------------------| sub_circuit_name |--------------
+                let main_circuit = simulator.circuit();
+                let current_sub_circuit = main_circuit.current_sub_circuit(pc);
+                let (nqubits, called_circuit) = if let Some(csc) = current_sub_circuit {
+                    (csc.n_qubits(), csc.sub_circuit(sub_circuit_name))
+                } else {
+                    (
+                        main_circuit.n_qubits(),
+                        main_circuit.sub_circuit(sub_circuit_name),
+                    )
+                };
+                let target_count = called_circuit.n_qubits();
+
+                //               ____target_count___|___lsq_____
+                // targets = 00001111111111111111111100000000000
+                let targets = !(usize::MAX << target_count) << lsq;
+                Self::from_common_gate(
+                    nqubits,
+                    String::from(sub_circuit_name),
+                    targets.into(),
+                    0.into(),
+                )
+            }
         }
+    }
+
+    pub fn from_measurements(nqubits: usize, targets: QBits) -> Self {
+        let mut targets = targets;
+        let mut column = if targets & 1 == 1.into() {
+            Column::init_with_gate(String::from("╭─╱─╮"))
+        } else {
+            Column::init_with_track(String::from("╭─╱─╮"))
+        };
+        for _ in 1..nqubits {
+            targets >>= 1;
+            if targets & 1 == 1.into() {
+                column.close_with_gate();
+            } else {
+                column.close_with_track();
+            }
+        }
+        column
     }
 
     pub fn from_gate(nqubits: usize, gate: &Gate) -> Self {
