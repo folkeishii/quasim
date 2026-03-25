@@ -1,11 +1,14 @@
-use std::collections::{HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    mem,
+};
 
 use nalgebra::{Complex, Matrix2};
 
 use crate::{
-    circuit::{Circuit, PureCircuit},
+    circuit::{Circuit, HybridCircuit, PureCircuit},
     ext::get_gate2_matrix,
-    gate::{Gate, GateType, QBits},
+    gate::{Gate, GateType, QBits}, instruction::Instruction,
 };
 
 type NodeId = usize;
@@ -13,16 +16,12 @@ type BatchId = usize;
 
 #[derive(Debug)]
 struct GateNode {
-    // Not sure if we will need these ids directly on this struct but we will see...
-    // id: NodeId,
     batch_id: BatchId,
     matrix: Matrix2<Complex<f64>>,
     target: QBits,
     control: QBits,
     n_gates: usize,
-    // prev: Vec<NodeId>,
 }
-
 
 impl GateNode {
     fn new(batchid: BatchId, init: &Gate) -> Self {
@@ -65,8 +64,53 @@ impl GateBatch {
     }
 }
 
+pub struct GateBatchData {
+    gate_data: Vec<Complex<f64>>,
+    target_data: Vec<usize>,
+    control_data: Vec<usize>,
+    len: usize,
+}
+
+impl GateBatchData {
+    pub fn new() -> Self {
+        Self {
+            gate_data: Vec::new(),
+            target_data: Vec::new(),
+            control_data: Vec::new(),
+            len: 0,
+        }
+    }
+
+    pub fn with_capacity(nodes: usize) -> Self {
+        Self {
+            gate_data: Vec::with_capacity(nodes * 4),
+            target_data: Vec::with_capacity(nodes),
+            control_data: Vec::with_capacity(nodes),
+            len: 0,
+        }
+    }
+
+    pub fn append(&mut self, mut other: GateBatchData) {
+        self.gate_data.append(&mut other.gate_data);
+        self.target_data.append(&mut other.target_data);
+        self.control_data.append(&mut other.control_data);
+        self.len += other.len;
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    fn push_gate_node_data(&mut self, gate_node: &GateNode) {
+        self.gate_data.extend_from_slice(gate_node.matrix.as_slice());
+        self.target_data.push(gate_node.target.get_bitstring());
+        self.control_data.push(gate_node.control.get_bitstring());
+        self.len += 1;
+    }
+}
+
 #[derive(Debug)]
-pub struct CircuitIR {
+pub struct GateBatcher {
     // qubit -> NodeId  (the frontier node for that qubit)
     frontier: HashMap<usize, NodeId>,
 
@@ -79,7 +123,7 @@ pub struct CircuitIR {
     max_target_qubits: usize,
 }
 
-impl CircuitIR {
+impl GateBatcher {
     pub fn new(max_targets_per_batch: usize) -> Self {
         Self {
             frontier: HashMap::new(),
@@ -89,32 +133,66 @@ impl CircuitIR {
         }
     }
 
-    pub fn from_pure_circuit(circuit: Circuit<PureCircuit>, max_targets_per_batch: usize) -> Self {
-        let mut circuit_ir = CircuitIR::new(max_targets_per_batch);
+    /* TODO Getting batch matrix data
+    *
+    * Go through the nodes vec for each batch in order and create a contigous vec of
+    * matrix data, target data, control data, which will be passed to the gpu once on simulator init.
+    * Then i will pass a command specifying offset in matrix and target/control data and size of batch
+    * in order to execute the batch on the gpu.
+    *
+    * Since nodes are always appended after their predecessors during construction,
+    * iterating the vec in order is a valid execution sequence.
+    */
 
-        for gate in circuit.instructions() {
-            // Special case for SWAP
-            // represent swap as three CNOTs
-            if gate.get_type() == GateType::SWAP {
-                let mut controls = gate.get_controls();
-                let targets = gate.get_targets();
-                let t0 = targets[0];
-                let t1 = targets[1];
 
-                controls.push(t1);
+    pub fn add_gate(&mut self, gate: &Gate) {
+        match gate.get_type() {
+            GateType::SWAP => self.add_swap(gate),
+            _ => self.add_gate2(gate),
+        }
+    }
 
-                let g0 = Gate::new(GateType::X, &[t0], &[t1]).unwrap();
-                let g1 = Gate::new(GateType::X, &controls, &[t0]).unwrap();
+    /// Subsequent gate additions will be added to new batches
+    /// Returns all closing batches
+    pub fn close_batches(&mut self) -> GateBatchData {
+        let frontier = mem::take(&mut self.frontier);
+        let batches: BTreeSet<BatchId> = frontier
+            .into_values()
+            .map(|frontier_node| self.nodes[frontier_node].batch_id)
+            .collect();
 
-                circuit_ir.add_gate(&g0);
-                circuit_ir.add_gate(&g1);
-                circuit_ir.add_gate(&g0);
-            } else {
-                circuit_ir.add_gate(gate);
+        // Create batch data from all nodes
+        let total_nodes = batches
+            .iter()
+            .map(|&batch_id| self.batches[batch_id].nodes.len())
+            .sum();
+        let mut batch_data = GateBatchData::with_capacity(total_nodes);
+
+        for batch_id in batches {
+            for &node_id in &self.batches[batch_id].nodes {
+                batch_data.push_gate_node_data(&self.nodes[node_id])
             }
         }
 
-        circuit_ir
+        batch_data
+    }
+
+    fn add_swap(&mut self, gate: &Gate) {
+        // This function only handles swap
+        assert_eq!(gate.get_type(), GateType::SWAP, "expected SWAP gate");
+
+        let mut controls = gate.get_controls();
+        let targets = gate.get_targets();
+        let (t0, t1) = (targets[0], targets[1]);
+
+        controls.push(t1);
+
+        let g0 = Gate::new(GateType::X, &[t0], &[t1]).unwrap();
+        let g1 = Gate::new(GateType::X, &controls, &[t0]).unwrap();
+
+        self.add_gate2(&g0);
+        self.add_gate2(&g1);
+        self.add_gate2(&g0);
     }
 
     /* Adding a gate
@@ -135,12 +213,13 @@ impl CircuitIR {
      * 3. Merge all involved batches into one (lower id absorbs).
      *    Create new node in merged batch, prev = [all distinct frontier nodes], update frontier.
      */
-    pub fn add_gate(&mut self, gate: &Gate) {
+    fn add_gate2(&mut self, gate: &Gate) {
+        // This function only handles single qubit gates
+        assert_eq!(gate.get_type().arity(), 1, "expected single qubit gates");
+
         let gate_target = gate.get_target_bits();
         let gate_control = gate.get_control_bits();
-        let gate_qubits = gate_target.union(gate_control);
-
-        let touched_qubits = gate_qubits.get_indices();
+        let touched_qubits = gate_target.union(gate_control).get_indices();
 
         let mut frontier_nodes: HashMap<NodeId, BatchId> = HashMap::new();
         for &q in &touched_qubits {
@@ -160,6 +239,7 @@ impl CircuitIR {
             let new_batch_id = self.new_batch();
             let new_node_id = self.new_node(new_batch_id, gate);
             self.update_frontier(&touched_qubits, new_node_id);
+
             return;
         }
 
@@ -183,6 +263,7 @@ impl CircuitIR {
             // was first created, so no frontier update is needed here
             if siganture_match {
                 self.nodes[node_id].mul(gate);
+
                 return;
             }
             // Otherwise we append a new node to the same batch and make it the
@@ -191,6 +272,7 @@ impl CircuitIR {
             else {
                 let new_node_id = self.new_node(batch_id, gate);
                 self.update_frontier(&touched_qubits, new_node_id);
+
                 return;
             }
         }
@@ -253,26 +335,24 @@ impl CircuitIR {
     }
 }
 
-/** Getting batch matrix data
- *
- * Go through the nodes vec for each batch in order and create a contigous vec of
- * matrix data, target data, control data, which will be passed to the gpu once on simulator init.
- * Then i will pass a command specifying offset in matrix and target/control data and size of batch
- * in order to execute the batch on the gpu.
- *
- * Since nodes are always appended after their predecessors during construction,
- * iterating the vec in order is a valid execution sequence.
- */
+pub struct BatchHandle {
+    anchor: NodeId,
+}
 
-impl From<Circuit<PureCircuit>> for CircuitIR {
-    fn from(value: Circuit<PureCircuit>) -> Self {
-        // Choose some default max target qubit value
-        CircuitIR::from_pure_circuit(value, 3)
+impl BatchHandle {
+    fn from_parts(node_id: NodeId) -> Self {
+        Self {
+            anchor: node_id
+        }
+    }
+
+    fn id(&self, batcher: &GateBatcher) -> Option<BatchId> {
+        batcher.nodes.get(self.anchor).and_then(|n| Some(n.batch_id))
     }
 }
 
 mod tests {
-    use crate::{circuit::Circuit, circuit_ir::CircuitIR};
+    use crate::{circuit::Circuit, gate_batcher::GateBatcher};
 
     #[test]
     fn example_test_circuit() {
@@ -284,7 +364,11 @@ mod tests {
             .swap(0, 2)
             .cy(&[0], 2);
 
-        let circ_ir = CircuitIR::from_pure_circuit(circ, 2);
+        let mut circ_ir = GateBatcher::new(2);
+
+        for gate in circ.instructions() {
+            circ_ir.add_gate(gate);
+        }
 
         assert!(circ_ir.nodes.len() == 6);
         assert_eq!(circ_ir.batches[0].retired, true);
