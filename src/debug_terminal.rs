@@ -91,8 +91,8 @@ where
                 Command::Collapse(collapse_args) => {
                     self.handle_collapse(&mut stdout, &collapse_args)?
                 }
-                Command::Circuit(circuit_args) => self.handle_show(&mut stdout, &circuit_args)?,
-                Command::Show(reg_args) => self.handle_reg(&mut stdout, &reg_args)?,
+                Command::Circuit(circuit_args) => self.handle_circuit(&mut stdout, &circuit_args)?,
+                Command::Show(show_args) => self.handle_show(&mut stdout, &show_args)?,
             }
         }
         Ok(())
@@ -554,7 +554,7 @@ where
         Ok(())
     }
 
-    fn handle_show<W: Write>(
+    fn handle_circuit<W: Write>(
         &mut self,
         stdout: &mut W,
         circuit_args: &CircuitArgs,
@@ -564,8 +564,8 @@ where
         }
     }
 
-    fn handle_reg<W: Write>(&mut self, stdout: &mut W, reg_args: &ShowArgs) -> io::Result<()> {
-        match reg_args {
+    fn handle_show<W: Write>(&mut self, stdout: &mut W, show_args: &ShowArgs) -> io::Result<()> {
+        match show_args {
             ShowArgs::All => {
                 println!(stdout; "{}", self.simulator.registers())?;
             }
