@@ -57,7 +57,11 @@ impl CircuitPc {
         } else {
             self.sub = Some((
                 name,
-                Box::from(CircuitPc::with_ctrl(0, self.lsq + lsq, self.ctrl | ctrl)),
+                Box::from(CircuitPc::with_ctrl(
+                    0,
+                    self.lsq + lsq,
+                    self.ctrl | ctrl << self.lsq,
+                )),
             ));
         }
     }

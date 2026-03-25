@@ -621,4 +621,9 @@ mod tests {
     fn deep_sub() {
         common_test::deep_sub::<SVSimulatorDebugger>();
     }
+
+    #[test]
+    fn deep_ctrl_sub() {
+        common_test::deep_ctrl_sub::<SVSimulatorDebugger>();
+    }
 }

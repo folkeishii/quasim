@@ -105,6 +105,7 @@ impl Circuit {
                 Some(PureInstruction::Gate(gate)) => {
                     let mut gate = gate.clone() << circuit_pc.lsq();
                     *gate.control_mut() |= circuit_pc.ctrl();
+                    println!("{:#b}", gate.get_control_bits().get_bitstring());
                     Some(gate.into())
                 }
                 rst => rst.cloned(),
@@ -133,7 +134,9 @@ impl Circuit<HybridCircuit> {
         } else {
             match self.instructions().get(circuit_pc.pc()) {
                 Some(Instruction::Gate(gate)) => {
-                    Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
+                    let mut gate = gate.clone() << circuit_pc.lsq();
+                    *gate.control_mut() |= circuit_pc.ctrl();
+                    Some(Instruction::Gate(gate))
                 }
                 Some(Instruction::MeasureBit(target, register)) => Some(Instruction::MeasureBit(
                     *target << circuit_pc.lsq(),
@@ -506,7 +509,13 @@ impl<B: CircuitBehaviour> Circuit<B> {
     ///  - `pure_circuit`: Definition of specified circuit
     ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
     ///  - `ctrl`: Control bits for sub circuit
-    pub fn ccall_new<S: Into<String>>(self, name: S, pure_circuit: Circuit, lsq: usize, controls: &[usize]) -> Self {
+    pub fn ccall_new<S: Into<String>>(
+        self,
+        name: S,
+        pure_circuit: Circuit,
+        lsq: usize,
+        controls: &[usize],
+    ) -> Self {
         let name = name.into();
         self.new_sub_circuit(name.clone(), pure_circuit)
             .ccall(name, lsq, controls)
