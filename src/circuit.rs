@@ -913,7 +913,6 @@ mod tests {
             .call("sub2", 2)
             .h(2);
 
-
         let correct = Circuit::new(6)
             .new_reg("tt")
             // main
@@ -965,6 +964,5 @@ mod tests {
             assert_eq!(as_flat3.next(), Some(correct[i].clone()))
         }
         assert!(as_flat3.next().is_none());
-
     }
 }
