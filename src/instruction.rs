@@ -1,4 +1,4 @@
-use crate::{expr_dsl::Expr, gate::Gate};
+use crate::{expr_dsl::Expr, gate::{Gate, QBits}};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
@@ -10,14 +10,14 @@ pub enum Instruction {
     Jump(usize),
     JumpIf(Expr, usize),
     Assign(Expr, String),
-    /// `Call(name, lsq)`
-    Call(String, usize),
+    /// `Call(name, lsq, ctrl)`
+    Call(String, usize, QBits),
 }
 impl From<PureInstruction> for Instruction {
     fn from(value: PureInstruction) -> Self {
         match value {
             PureInstruction::Gate(gate) => Self::Gate(gate),
-            PureInstruction::Call(name, lsq) => Self::Call(name, lsq),
+            PureInstruction::Call(name, lsq, ctrl) => Self::Call(name, lsq, ctrl),
         }
     }
 }
@@ -25,8 +25,8 @@ impl From<PureInstruction> for Instruction {
 #[derive(Debug, Clone, PartialEq)]
 pub enum PureInstruction {
     Gate(Gate),
-    /// `Call(name, lsq)`
-    Call(String, usize),
+    /// `Call(name, lsq, ctrl)`
+    Call(String, usize, QBits),
 }
 impl From<Gate> for PureInstruction {
     fn from(value: Gate) -> Self {

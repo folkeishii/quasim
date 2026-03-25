@@ -637,7 +637,8 @@ impl Column {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::Call(sub_circuit_name, lsq) => {
+            Instruction::Call(sub_circuit_name, lsq, _) => {
+                todo!();
                 let lsq = *lsq;
                 let (pc, _) = simulator.current_instruction();
 

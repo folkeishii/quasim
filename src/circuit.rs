@@ -81,9 +81,9 @@ impl Circuit {
                 PureInstruction::Gate(gate) => {
                     inverted_circuit.instructions.push(gate.inverse().into())
                 }
-                PureInstruction::Call(name, lsq) => inverted_circuit
+                PureInstruction::Call(name, lsq, ctrl) => inverted_circuit
                     .instructions
-                    .push(PureInstruction::Call(name.clone(), *lsq)),
+                    .push(PureInstruction::Call(name.clone(), *lsq, *ctrl)),
             }
         }
 
@@ -103,10 +103,11 @@ impl Circuit {
         } else {
             match self.instructions().get(circuit_pc.pc()) {
                 Some(PureInstruction::Gate(gate)) => {
-                    Some((gate.clone() << circuit_pc.lsq()).into())
+                    let mut gate = gate.clone() << circuit_pc.lsq();
+                    *gate.control_mut() |= circuit_pc.ctrl();
+                    Some(gate.into())
                 }
-                Some(inst) => Some(inst.clone()),
-                None => None,
+                rst => rst.cloned()
             }
         }
     }
@@ -477,7 +478,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
             );
         }
         self.instructions
-            .push(B::from_pure(PureInstruction::Call(name, lsq)));
+            .push(B::from_pure(PureInstruction::Call(name, lsq, Default::default())));
         self
     }
 
@@ -686,7 +687,7 @@ impl CircuitBehaviour for HybridCircuit {
     fn from_pure(instruction: PureInstruction) -> Self::InstructionTy {
         match instruction {
             PureInstruction::Gate(gate) => Instruction::Gate(gate),
-            PureInstruction::Call(name, lsq) => Instruction::Call(name, lsq),
+            PureInstruction::Call(name, lsq, ctrl) => Instruction::Call(name, lsq, ctrl),
         }
     }
 }
