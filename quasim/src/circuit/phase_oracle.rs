@@ -88,72 +88,77 @@ pub fn append_phase_oracle<B: CircuitBehaviour>(
 }
 
 #[cfg(test)]
-fn test_isomorphism(name: &str, f: &dyn Fn(&usize) -> bool) {
-    const N: usize = 12; // Number of bits for the truth table
+mod anf_conversion_tests {
 
-    let truth_table = fn_to_truth_table(&f, N);
-    println!("Truth Table for {}: {:?}", name, truth_table);
-    let coefs = truth_table_to_anf_coefs(truth_table);
-    println!("ANF Coefficients for {}: {:?}", name, coefs);
-    let f_reconstructed = anf_coefs_to_fn(coefs);
-    for i in 0..(1 << N) {
-        assert_eq!(
-            f(&i),
-            f_reconstructed(&i),
-            "Mismatch for function {} at input {}",
-            name,
-            i
-        );
-    }
-    println!("All tests passed for function: {}\n", name);
-}
+    use super::*;
 
-#[test]
-fn test_is_constant_zero() {
-    fn is_constant_zero(_: &usize) -> bool {
-        return false;
-    }
+    fn test_isomorphism(name: &str, f: &dyn Fn(&usize) -> bool) {
+        const N: usize = 12; // Number of bits for the truth table
 
-    test_isomorphism("is_constant_zero", &is_constant_zero);
-}
-
-#[test]
-fn test_is_constant_one() {
-    fn is_constant_one(_: &usize) -> bool {
-        return true;
-    }
-
-    test_isomorphism("is_constant_one", &is_constant_one);
-}
-
-#[test]
-fn test_is_divisible_by_3() {
-    fn is_divisible_by_3(x: &usize) -> bool {
-        return x % 3 == 0;
-    }
-
-    test_isomorphism("is_divisible_by_3", &is_divisible_by_3);
-}
-
-#[test]
-fn test_is_prime() {
-    fn is_prime(x: &usize) -> bool {
-        for i in 2..=(*x as f64).sqrt() as usize {
-            if x % i == 0 {
-                return false;
-            }
+        let truth_table = fn_to_truth_table(&f, N);
+        println!("Truth Table for {}: {:?}", name, truth_table);
+        let coefs = truth_table_to_anf_coefs(truth_table);
+        println!("ANF Coefficients for {}: {:?}", name, coefs);
+        let f_reconstructed = anf_coefs_to_fn(coefs);
+        for i in 0..(1 << N) {
+            assert_eq!(
+                f(&i),
+                f_reconstructed(&i),
+                "Mismatch for function {} at input {}",
+                name,
+                i
+            );
         }
-        return true;
+        println!("All tests passed for function: {}\n", name);
     }
 
-    test_isomorphism("is_prime", &is_prime);
-}
+    #[test]
+    fn is_constant_zero() {
+        fn is_constant_zero(_: &usize) -> bool {
+            return false;
+        }
 
-#[test]
-fn test_is_greater_than_42() {
-    fn is_greater_than_42(x: &usize) -> bool {
-        return *x > 42;
+        test_isomorphism("is_constant_zero", &is_constant_zero);
     }
 
-    test_isomorphism("is_greater_than_42", &is_greater_than_42);
+    #[test]
+    fn is_constant_one() {
+        fn is_constant_one(_: &usize) -> bool {
+            return true;
+        }
+
+        test_isomorphism("is_constant_one", &is_constant_one);
+    }
+
+    #[test]
+    fn is_divisible_by_3() {
+        fn is_divisible_by_3(x: &usize) -> bool {
+            return x % 3 == 0;
+        }
+
+        test_isomorphism("is_divisible_by_3", &is_divisible_by_3);
+    }
+
+    #[test]
+    fn is_prime() {
+        fn is_prime(x: &usize) -> bool {
+            for i in 2..=(*x as f64).sqrt() as usize {
+                if x % i == 0 {
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        test_isomorphism("is_prime", &is_prime);
+    }
+
+    #[test]
+    fn is_greater_than_42() {
+        fn is_greater_than_42(x: &usize) -> bool {
+            return *x > 42;
+        }
+
+        test_isomorphism("is_greater_than_42", &is_greater_than_42);
+    }
 }
