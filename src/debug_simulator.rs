@@ -582,4 +582,9 @@ mod tests {
     fn double_sub() {
         common_test::double_sub::<DebugSimulator>();
     }
+
+    #[test]
+    fn deep_sub() {
+        common_test::deep_sub::<DebugSimulator>();
+    }
 }
