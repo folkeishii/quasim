@@ -91,7 +91,9 @@ where
                 Command::Collapse(collapse_args) => {
                     self.handle_collapse(&mut stdout, &collapse_args)?
                 }
-                Command::Circuit(circuit_args) => self.handle_circuit(&mut stdout, &circuit_args)?,
+                Command::Circuit(circuit_args) => {
+                    self.handle_circuit(&mut stdout, &circuit_args)?
+                }
                 Command::Show(show_args) => self.handle_show(&mut stdout, &show_args)?,
             }
         }
