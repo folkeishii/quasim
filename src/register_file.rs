@@ -34,3 +34,9 @@ impl<T> IndexMut<&str> for RegisterFile<T> {
             .expect(&format!("Unknown register {}", index))
     }
 }
+
+impl<T: Clone> From<&RegisterFile<T>> for HashMap<String, T> {
+    fn from(value: &RegisterFile<T>) -> Self {
+        value.0.clone()
+    }
+}
