@@ -7,7 +7,7 @@ use nalgebra::Complex;
 
 use crate::cart;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default)]
 pub struct QBits(usize);
 
 impl QBits {
