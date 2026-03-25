@@ -2,7 +2,7 @@ use cubecl::{cpu::CpuRuntime, wgpu::WgpuRuntime};
 use quasim::{
     circuit::{Circuit, HybridCircuit},
     debug_simulator::DebugSimulator,
-    gpu_sv_simulator::GPUSVSimulator,
+    gpu_sv_simulator::GpuStateVectorSimulator,
     simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
     sv_simulator::{SVSimulator, SVSimulatorDebugger},
 };
@@ -52,7 +52,7 @@ where
 }
 
 #[divan::bench(
-    types = [SVSimulator, GPUSVSimulator<WgpuRuntime>],
+    types = [SVSimulator, GpuStateVectorSimulator<WgpuRuntime>],
     args = [19,20,21,22,23,24],
     sample_count = 10,
 )]
@@ -71,7 +71,7 @@ where
 }
 
 #[divan::bench(
-    types = [SVSimulator, GPUSVSimulator<WgpuRuntime>],
+    types = [SVSimulator, GpuStateVectorSimulator<WgpuRuntime>],
     args = [250, 500, 1000, 2000],
     sample_count = 10,
 )]

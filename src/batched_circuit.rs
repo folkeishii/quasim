@@ -1,58 +1,39 @@
 use std::collections::BTreeMap;
 
 use crate::{
-    circuit::{Circuit, HybridCircuit, PureCircuit},
-    gate_batcher::{GateBatchData, GateBatcher},
+    circuit::{Circuit, CircuitBehaviour, HybridCircuit},
+    gate_batcher::{BatchCommand, GateBatchData, GateBatcher},
     instruction::Instruction,
 };
 
+#[derive(Clone)]
 pub struct BatchedCircuit {
     batcher: GateBatcher,
     instruction_lookup: BTreeMap<usize, BatchedCircuitOp>,
     data: GateBatchData,
 }
 
+#[derive(Clone)]
 pub enum BatchedCircuitOp {
-    BatchOffsets(Vec<usize>),
+    BatchCommands(Vec<BatchCommand>),
     Instruction(Instruction),
 }
 
 impl BatchedCircuit {
     const DEFAULT_MAX_TARGET_QUBITS: usize = 3;
 
-    fn flush_batches(&mut self, to_inst_index: usize) {
-        let batch_data = self.batcher.flush_batches();
-        self.instruction_lookup.insert(
-            to_inst_index,
-            BatchedCircuitOp::BatchOffsets(batch_data.indices().to_vec()),
-        );
-    }
-
-    pub fn from_pure_circuit(circuit: Circuit<PureCircuit>, max_target_qubits: usize) -> Self {
+    pub fn from_circuit<B>(circuit: Circuit<B>, max_target_qubits: usize) -> Self
+    where
+        B: CircuitBehaviour,
+        Circuit<B>: Into<Circuit<HybridCircuit>>,
+    {
         let mut batched_circuit = Self {
             batcher: GateBatcher::new(max_target_qubits),
             instruction_lookup: BTreeMap::new(),
             data: GateBatchData::new(),
         };
 
-        for gate in circuit.instructions() {
-            batched_circuit.batcher.add_gate(gate);
-        }
-
-        batched_circuit.flush_batches(0);
-
-        batched_circuit
-    }
-
-    pub fn from_hybrid_circuit(
-        circuit: Circuit<HybridCircuit>,
-        max_targets_per_batch: usize,
-    ) -> Self {
-        let mut batched_circuit = Self {
-            batcher: GateBatcher::new(max_targets_per_batch),
-            instruction_lookup: BTreeMap::new(),
-            data: GateBatchData::new(),
-        };
+        let circuit = circuit.into();
 
         let mut batch_start_inst_index = 0;
 
@@ -74,17 +55,32 @@ impl BatchedCircuit {
         batched_circuit
     }
 
+    pub fn data(&self) -> &GateBatchData {
+        &self.data
+    }
 
-}
+    pub fn operation(&self, index: usize) -> Option<&BatchedCircuitOp> {
+        self.instruction_lookup
+            .range(index..)
+            .next()
+            .and_then(|(_, op)| Some(op))
+    }
 
-impl From<Circuit<PureCircuit>> for BatchedCircuit {
-    fn from(value: Circuit<PureCircuit>) -> Self {
-        BatchedCircuit::from_pure_circuit(value, BatchedCircuit::DEFAULT_MAX_TARGET_QUBITS)
+    fn flush_batches(&mut self, to_inst_index: usize) {
+        let batch_data = self.batcher.flush_batches();
+        self.instruction_lookup.insert(
+            to_inst_index,
+            BatchedCircuitOp::BatchCommands(batch_data.commands().to_vec()),
+        );
     }
 }
 
-impl From<Circuit<HybridCircuit>> for BatchedCircuit {
-    fn from(value: Circuit<HybridCircuit>) -> Self {
-        BatchedCircuit::from_hybrid_circuit(value, BatchedCircuit::DEFAULT_MAX_TARGET_QUBITS)
+impl<B> From<Circuit<B>> for BatchedCircuit
+where
+    B: CircuitBehaviour,
+    Circuit<B>: Into<Circuit<HybridCircuit>>,
+{
+    fn from(value: Circuit<B>) -> Self {
+        BatchedCircuit::from_circuit(value, BatchedCircuit::DEFAULT_MAX_TARGET_QUBITS)
     }
 }

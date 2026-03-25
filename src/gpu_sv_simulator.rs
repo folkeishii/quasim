@@ -1,41 +1,52 @@
 use cubecl::bytes::Bytes;
 use cubecl::prelude::*;
 use cubecl::server::Handle;
-use cubecl::{CubeCount, CubeDim, Runtime, cube};
+use cubecl::{CubeDim, Runtime, cube};
 use nalgebra::{Complex, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
+use crate::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
 use crate::circuit::HybridCircuit;
-use crate::ext::get_gate2_data;
+use crate::gate_batcher::BatchCommand;
 use crate::simulator::RunnableSimulator;
 use crate::{
     cart,
-    circuit::{Circuit, pc::CircuitPc},
+    circuit::Circuit,
     expr_dsl::{Expr, Value},
-    gate::{Gate, GateType},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::StoredCircuitSimulator,
 };
 
 #[derive(Clone)]
-pub struct GPUSVExecutor<R: Runtime> {
+pub struct GpuStateVectorExecutor<R: Runtime> {
     client: ComputeClient<R>,
 
     state_vector_cache: Bytes,
-    state_vector_handle: Handle,
     state_vector_len: usize,
+    state_vector_handle: Handle,
+    gate_data_handle: Handle,
+    target_data_handle: Handle,
+    control_data_handle: Handle,
 
-    circuit: Circuit<HybridCircuit>,
-    pc: CircuitPc,
+    batched_circuit: BatchedCircuit,
+    pc: usize,
     registers: RegisterFile<Value>,
 }
 
-impl<R: Runtime> GPUSVExecutor<R> {
+impl<R: Runtime> GpuStateVectorExecutor<R> {
     fn new(circuit: Circuit<HybridCircuit>) -> Self {
         let size = 1 << circuit.n_qubits();
-
+        let registers = RegisterFile::from(circuit.registers());
         let client = R::client(&Default::default());
+        let batched_circuit = BatchedCircuit::from_circuit(circuit, 3);
+
+        let gate_data = batched_circuit.data().gate_data();
+        let target_data = batched_circuit.data().target_data();
+        let control_data = batched_circuit.data().control_data();
+
+        let gate_data_handle = client.create_from_slice(bytes_from_complex(gate_data));
+        let target_data_handle = client.create_from_slice(u32::as_bytes(target_data));
+        let control_data_handle = client.create_from_slice(u32::as_bytes(control_data));
 
         // Bytes init
         let mut init_state: Vec<f64> = vec![0.0; size * 2]; // two floats for each complex number
@@ -44,32 +55,36 @@ impl<R: Runtime> GPUSVExecutor<R> {
 
         let state_vector_handle = client.create_from_slice(&init_bytes);
 
-        let registers = RegisterFile::from(circuit.registers());
         Self {
-            client: client,
+            client,
             state_vector_cache: init_bytes,
-            state_vector_handle: state_vector_handle,
             state_vector_len: size,
-            circuit: circuit,
+            state_vector_handle,
+            gate_data_handle,
+            target_data_handle,
+            control_data_handle,
+            batched_circuit,
             pc: Default::default(),
-            registers: registers,
+            registers,
         }
-    }
-
-    /// Step forward one instruction in the circuit
-    pub fn step(&mut self) -> Option<&[Complex<f64>]> {
-        let Some(inst) = self.circuit.instruction(self.pc()) else {
-            return None;
-        };
-
-        self.apply_instruction(&inst);
-
-        Some(self.state_vector())
     }
 
     /// Run the entire circuit
     pub fn step_all(&mut self) -> &Self {
-        while let Some(_) = self.step() {}
+        while let Some(op) = self.batched_circuit.operation(self.pc) {
+            match op {
+                BatchedCircuitOp::BatchCommands(commands) => {
+                    for command in commands {
+                        self.gpu_batch_command(command);
+                        self.pc += command.size as usize;
+                    }
+                },
+                BatchedCircuitOp::Instruction(instruction) => {
+                    self.apply_instruction(&instruction.clone());
+                },
+            }
+        }
+
         self
     }
 
@@ -97,29 +112,9 @@ impl<R: Runtime> GPUSVExecutor<R> {
         complex_from_bytes_mut(&mut self.state_vector_cache)
     }
 
-    fn launch_batched_gate2<'a>(&mut self, gates: &[&'a Gate]) {
-        let n_gates = gates.len();
+    fn gpu_batch_command(&self, command: &BatchCommand) {
         let n_amplitudes = self.state_vector_len;
-
-        // Batch data
-        let mut gate_data: Vec<Complex<f64>> = Vec::with_capacity(n_gates * 4); // 4 complex amps per gate
-        let mut target_data: Vec<u32> = Vec::with_capacity(n_gates);
-        let mut control_data: Vec<u32> = Vec::with_capacity(n_gates);
-
-        for &gate in gates {
-            // Only 2x2 gates are suppsed to be passed to this function, so this *should* always be Some
-            if let Some(data) = get_gate2_data(gate) {
-                gate_data.extend(data);
-                target_data.push(gate.get_target_bits().get_bitstring() as u32);
-                control_data.push(gate.get_control_bits().get_bitstring() as u32);
-            }
-        }
-
-        let gate_data_handle = self
-            .client
-            .create_from_slice(bytes_from_complex(&gate_data));
-        let target_data_handle = self.client.create_from_slice(u32::as_bytes(&target_data));
-        let control_data_handle = self.client.create_from_slice(u32::as_bytes(&control_data));
+        let data_length = self.batched_circuit.data().len();
 
         let cube_dim = CubeDim::new_1d(128);
         let cube_count =
@@ -131,46 +126,13 @@ impl<R: Runtime> GPUSVExecutor<R> {
                 cube_count,
                 cube_dim,
                 ArrayArg::from_raw_parts::<f64>(&self.state_vector_handle, n_amplitudes * 2, 1),
-                ArrayArg::from_raw_parts::<u32>(&target_data_handle, n_gates, 1),
-                ArrayArg::from_raw_parts::<u32>(&control_data_handle, n_gates, 1),
-                ArrayArg::from_raw_parts::<f64>(&gate_data_handle, n_gates * 8, 1),
+                ArrayArg::from_raw_parts::<u32>(&self.target_data_handle, data_length, 1),
+                ArrayArg::from_raw_parts::<u32>(&self.control_data_handle, data_length, 1),
+                ArrayArg::from_raw_parts::<f64>(&self.gate_data_handle, data_length * 8, 1),
+                ScalarArg::new(command.start_index),
+                ScalarArg::new(command.size),
             );
         }
-    }
-
-    fn get_batches<'a>(&mut self) -> Vec<Vec<&'a Gate>> {
-        let batches: Vec<Vec<&'a Gate>> = Vec::new();
-        let batch_count = 0;
-
-        while let Some(Instruction::Gate(gate)) = &self.circuit.instruction(self.pc()) {
-            self.pc_mut().increment();
-        }
-
-        batches
-    }
-
-    fn gate(&mut self, gate: &Gate) {
-        if gate.get_type() == GateType::SWAP {
-            let mut controls = gate.get_controls();
-            let targets = gate.get_targets();
-            let t0 = targets[0];
-            let t1 = targets[1];
-
-            controls.push(t1);
-
-            let g0 = Gate::new(GateType::X, &[t0], &[t1]).unwrap();
-            let g1 = Gate::new(GateType::X, &controls, &[t0]).unwrap();
-
-            let gates = &[&g0, &g1, &g0];
-
-            self.launch_batched_gate2(gates);
-        } else {
-            let gates = &[gate];
-
-            self.launch_batched_gate2(gates);
-        }
-
-        self.pc_mut().increment();
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
@@ -203,7 +165,7 @@ impl<R: Runtime> GPUSVExecutor<R> {
             .sqrt();
         self.state_vector_mut().iter_mut().for_each(|x| *x /= norm);
 
-        self.pc_mut().increment();
+        self.pc += 1;
     }
 
     fn measure_all(&mut self, reg: &str) {
@@ -215,17 +177,17 @@ impl<R: Runtime> GPUSVExecutor<R> {
         self.state_vector_mut().fill(cart!(0.0));
         self.state_vector_mut()[measurement] = cart!(1.0);
 
-        self.pc_mut().increment();
+        self.pc += 1;
     }
 
     fn jump(&mut self, label_pc: usize) {
-        self.pc_mut().jump(label_pc);
+        self.pc = label_pc;
     }
 
     fn jump_if(&mut self, expr: &Expr, label_pc: usize) {
         match expr.eval(&self.registers) {
             Ok(Value::Bool(true)) => self.jump(label_pc),
-            Ok(Value::Bool(false)) => self.pc_mut().increment(),
+            Ok(Value::Bool(false)) => self.pc += 1,
             Err(err) => panic!("{}", err),
             _ => panic!(
                 "Expression was expected to evaluate to boolean type but got something else."
@@ -238,30 +200,23 @@ impl<R: Runtime> GPUSVExecutor<R> {
             Ok(value) => self.registers[reg] = value,
             Err(err) => panic!("{}", err),
         }
-        self.pc_mut().increment();
+        self.pc += 1
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
-            Instruction::Gate(gate) => self.gate(gate),
+            Instruction::Gate(gate) => todo!(),
             Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(*qbit, reg, *bit_pos),
             Instruction::MeasureAll(reg) => self.measure_all(reg),
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
+            Instruction::Call(_, _) => todo!(),
         }
-    }
-
-    fn pc(&self) -> &CircuitPc {
-        &self.pc
-    }
-
-    fn pc_mut(&mut self) -> &mut CircuitPc {
-        &mut self.pc
     }
 }
 
-#[derive(CubeType, CubeLaunch, Clone, Copy)]
+#[derive(CubeType, Clone, Copy)]
 struct ComplexF64 {
     re: f64,
     im: f64,
@@ -290,12 +245,16 @@ fn batched_gate2_kernel(
     target_data: &Array<u32>,
     control_data: &Array<u32>,
     gate_data: &Array<f64>,
+    start_index: u32,
+    size: u32,
 ) {
-    for i in 0..target_data.len() {
-        let target = target_data[i] as usize;
-        let control = control_data[i] as usize;
+    for i in 0..size {
+        let data_index = (start_index + i) as usize;
 
-        apply_unitary2(state_vector, target, control, gate_data, i * 8);
+        let target = target_data[data_index] as usize;
+        let control = control_data[data_index] as usize;
+
+        apply_unitary2(state_vector, target, control, gate_data, data_index * 8);
 
         sync_storage();
     }
@@ -401,24 +360,12 @@ fn complex_from_bytes_mut<T: CubeElement>(bytes: &mut Bytes) -> &mut [Complex<T>
     }
 }
 
-impl<R: Runtime> StoredCircuitSimulator for GPUSVExecutor<R> {
-    type B = HybridCircuit;
-
-    fn circuit(&self) -> &Circuit<HybridCircuit> {
-        &self.circuit
-    }
-
-    fn circuit_mut(&mut self) -> &mut Circuit<HybridCircuit> {
-        &mut self.circuit
-    }
-}
-
-pub struct GPUSVSimulator<R: Runtime> {
+pub struct GpuStateVectorSimulator<R: Runtime> {
     circuit: Circuit<HybridCircuit>,
     _runtime: std::marker::PhantomData<R>,
 }
 
-impl<R: Runtime> TryFrom<Circuit<HybridCircuit>> for GPUSVSimulator<R> {
+impl<R: Runtime> TryFrom<Circuit<HybridCircuit>> for GpuStateVectorSimulator<R> {
     type Error = GPUSVError;
 
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
@@ -429,16 +376,16 @@ impl<R: Runtime> TryFrom<Circuit<HybridCircuit>> for GPUSVSimulator<R> {
     }
 }
 
-impl<R: Runtime> RunnableSimulator for GPUSVSimulator<R> {
+impl<R: Runtime> RunnableSimulator for GpuStateVectorSimulator<R> {
     fn run(&self) -> usize {
-        let mut exec = GPUSVExecutor::<R>::new(self.circuit.clone());
+        let mut exec = GpuStateVectorExecutor::<R>::new(self.circuit.clone());
         exec.step_all();
         exec.sync_state_to_cpu();
         exec.get_collapsed_state()
     }
 
     fn final_state(&self) -> DVector<Complex<f64>> {
-        let mut exec = GPUSVExecutor::<R>::new(self.circuit.clone());
+        let mut exec = GpuStateVectorExecutor::<R>::new(self.circuit.clone());
         exec.step_all();
         exec.sync_state_to_cpu();
         DVector::from_row_slice(exec.state_vector())
@@ -454,7 +401,7 @@ mod tests {
 
     use crate::{
         circuit::Circuit,
-        gpu_sv_simulator::{GPUSVExecutor, GPUSVSimulator},
+        gpu_sv_simulator::{GpuStateVectorExecutor, GpuStateVectorSimulator},
         simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator},
         sv_simulator::{SVSimulator, SVSimulatorDebugger},
     };

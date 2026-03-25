@@ -13,7 +13,7 @@ use crate::{
 type NodeId = usize;
 type BatchId = usize;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct GateNode {
     batch_id: BatchId,
     matrix: Matrix2<Complex<f64>>,
@@ -44,7 +44,7 @@ fn matrix2(gate2: &Gate) -> Matrix2<Complex<f64>> {
     get_gate2_matrix(gate2).expect("gate size mismatch")
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct GateBatch {
     id: BatchId,
     nodes: Vec<NodeId>,
@@ -63,12 +63,19 @@ impl GateBatch {
     }
 }
 
+#[derive(Clone)]
+pub struct BatchCommand {
+    pub start_index: u32,
+    pub size: u32,
+}
+
+#[derive(Clone)]
 pub struct GateBatchData {
     gate_data: Vec<Complex<f64>>,
-    target_data: Vec<usize>,
-    control_data: Vec<usize>,
+    target_data: Vec<u32>,
+    control_data: Vec<u32>,
     len: usize,
-    indices: Vec<usize>,
+    commands: Vec<BatchCommand>,
 }
 
 impl GateBatchData {
@@ -78,7 +85,7 @@ impl GateBatchData {
             target_data: Vec::new(),
             control_data: Vec::new(),
             len: 0,
-            indices: Vec::new(),
+            commands: Vec::new(),
         }
     }
 
@@ -88,48 +95,59 @@ impl GateBatchData {
             target_data: Vec::with_capacity(nodes),
             control_data: Vec::with_capacity(nodes),
             len: 0,
-            indices: Vec::with_capacity(nodes),
+            commands: Vec::with_capacity(nodes),
         }
     }
 
     pub fn append(&mut self, mut other: GateBatchData) {
-        self.indices.push(self.len());
         self.gate_data.append(&mut other.gate_data);
         self.target_data.append(&mut other.target_data);
         self.control_data.append(&mut other.control_data);
         self.len += other.len;
+        self.commands.append(&mut other.commands);
     }
 
     pub fn gate_data(&self) -> &[Complex<f64>] {
         &self.gate_data
     }
 
-    pub fn target_data(&self) -> &[usize] {
+    pub fn target_data(&self) -> &[u32] {
         &self.target_data
     }
 
-    pub fn control_data(&self) -> &[usize] {
+    pub fn control_data(&self) -> &[u32] {
         &self.control_data
     }
 
-    pub fn indices(&self) -> &[usize] {
-        &self.indices
+    pub fn commands(&self) -> &[BatchCommand] {
+        &self.commands
     }
 
     pub fn len(&self) -> usize {
         self.len
     }
 
-    fn push_gate_node_data(&mut self, gate_node: &GateNode) {
-        self.gate_data
-            .extend_from_slice(gate_node.matrix.as_slice());
-        self.target_data.push(gate_node.target.get_bitstring());
-        self.control_data.push(gate_node.control.get_bitstring());
-        self.len += 1;
+    fn insert_from(&mut self, gate_batch: &GateBatch, gate_nodes: &[GateNode]) {
+        self.commands.push(BatchCommand {
+            start_index: self.len as u32,
+            size: gate_batch.nodes.len() as u32,
+        });
+
+        for &node_id in &gate_batch.nodes {
+            let gate_node = &gate_nodes[node_id];
+
+            self.gate_data
+                .extend_from_slice(gate_node.matrix.as_slice());
+            self.target_data
+                .push(gate_node.target.get_bitstring() as u32);
+            self.control_data
+                .push(gate_node.control.get_bitstring() as u32);
+            self.len += 1;
+        }
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GateBatcher {
     // qubit -> NodeId  (the frontier node for that qubit)
     frontier: HashMap<usize, NodeId>,
@@ -172,7 +190,7 @@ impl GateBatcher {
     }
 
     /// Clears frontier. Subsequent gate additions will be added to new batches.
-    /// 
+    ///
     /// Returns all flushed batches as a `GateBatchData`
     pub fn flush_batches(&mut self) -> GateBatchData {
         let frontier = mem::take(&mut self.frontier);
@@ -186,12 +204,11 @@ impl GateBatcher {
             .iter()
             .map(|&batch_id| self.batches[batch_id].nodes.len())
             .sum();
+
         let mut batch_data = GateBatchData::with_capacity(total_nodes);
 
         for batch_id in batches {
-            for &node_id in &self.batches[batch_id].nodes {
-                batch_data.push_gate_node_data(&self.nodes[node_id])
-            }
+            batch_data.insert_from(&self.batches[batch_id], &self.nodes);
         }
 
         batch_data
@@ -371,7 +388,10 @@ mod tests {
         let mut circ_ir = GateBatcher::new(2);
 
         for gate in circ.instructions() {
-            circ_ir.add_gate(gate);
+            match &gate {
+                crate::instruction::PureInstruction::Gate(gate) => circ_ir.add_gate(gate),
+                crate::instruction::PureInstruction::Call(_, _) => todo!(),
+            }
         }
 
         assert!(circ_ir.nodes.len() == 6);
