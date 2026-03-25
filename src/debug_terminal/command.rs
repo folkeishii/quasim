@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use crate::debug_terminal::{
     BreakArgs, CircuitArgs, CollapseArgs, ContinueArgs, DeleteArgs, DisableArgs, HelpArgs,
-    NextArgs, PrevArgs, ShowArgs, StateArgs,
+    NextArgs, PrevArgs, ShowArgs, StateArgs, StepArgs,
     parse::{ParseError, ParseResult, Token, TokenIterator},
 };
 
@@ -30,7 +30,7 @@ pub enum Command {
 
     /// TODO
     ///
-    /// Executes a set number of gates.
+    /// Executes a circuit until a breakpoint
     ///
     /// Usage: (continue can be substituted with `c`)
     /// continue            # Continue until next breakpoint
@@ -39,12 +39,17 @@ pub enum Command {
     /// run                 # Continue and ignore all breakpoints
     Continue(ContinueArgs),
 
-    /// TODO
+    /// Executes a set number of instructions, and steps into sub circuits.
     ///
-    /// Executes a set number of gates.
+    /// Usage: (step can be substituted with `s`)
+    /// step            # Execute the next instruction
+    /// step [count]    # Executes next `count` times
+    Step(StepArgs),
+
+    /// Executes a set number of instructions, and steps over sub circuits.
     ///
     /// Usage: (next can be substituted with `n`)
-    /// next            # Execute the next gate
+    /// next            # Execute the next instruction
     /// next [count]    # Executes next `count` times
     Next(NextArgs),
 
@@ -108,7 +113,7 @@ pub enum Command {
 
     /// Show the value of registers
     ///
-    /// Usage: (show can be substituted with `s`)
+    /// Usage:
     /// show        # Display value of all registers
     /// show [r]    # Display value of register r
     Show(ShowArgs),
@@ -121,6 +126,7 @@ impl Command {
             CommandIdent::Help => Command::Help(HelpArgs::parse_arguments(tokens)?),
             CommandIdent::Continue => Command::Continue(ContinueArgs::parse_arguments(tokens)?),
             CommandIdent::Run => Command::Continue(ContinueArgs::parse_arguments(tokens)?),
+            CommandIdent::Step => Command::Step(StepArgs::parse_arguments(tokens)?),
             CommandIdent::Next => Command::Next(NextArgs::parse_arguments(tokens)?),
             CommandIdent::Previous => Command::Previous(PrevArgs::parse_arguments(tokens)?),
             CommandIdent::Break => Command::Break(BreakArgs::parse_arguments(tokens)?),
@@ -157,6 +163,8 @@ pub enum CommandIdent {
     Continue,
     /// run
     Run,
+    /// step or s
+    Step,
     /// next or n
     Next,
     /// previous, prev, or p
@@ -175,7 +183,7 @@ pub enum CommandIdent {
     Collapse,
     /// circuit
     Circuit,
-    /// show or s
+    /// show
     Show,
 }
 impl CommandIdent {
@@ -192,6 +200,7 @@ impl CommandIdent {
             CommandIdent::Help => "help".into(),
             CommandIdent::Continue => "continue".into(),
             CommandIdent::Run => "run".into(),
+            CommandIdent::Step => "step".into(),
             CommandIdent::Next => "next".into(),
             CommandIdent::Previous => "previous".into(),
             CommandIdent::Break => "break".into(),
@@ -214,6 +223,7 @@ impl TryFrom<Token<'_>> for CommandIdent {
             "help" | "h" => Ok(Self::Help),
             "continue" | "c" => Ok(Self::Continue),
             "run" => Ok(Self::Run),
+            "step" | "s" => Ok(Self::Step),
             "next" | "n" => Ok(Self::Next),
             "previous" | "prev" | "p" => Ok(Self::Previous),
             "break" => Ok(Self::Break),
@@ -223,7 +233,7 @@ impl TryFrom<Token<'_>> for CommandIdent {
             "state" => Ok(Self::State),
             "collapse" | "cl" => Ok(Self::Collapse),
             "circuit" => Ok(Self::Circuit),
-            "show" | "s" => Ok(Self::Show),
+            "show" => Ok(Self::Show),
             _ => Err(ParseError::ExpectedCommand(value.into())),
         }
     }

@@ -53,9 +53,13 @@ where
         let mut input_buffer = String::default();
 
         loop {
-            match self.simulator.current_instruction() {
-                (_, None) => print!(stdout; "[end] qdb> ")?,
-                (step, Some(_)) => print!(stdout; "{} qdb> ", step)?,
+            let (pc, inst) = self.simulator.current_instruction();
+            let (sc, pc) = pc.current();
+            match (sc, pc, inst) {
+                (None, _, None) => print!(stdout; "[end] qdb> ")?,
+                (None, pc, Some(_)) => print!(stdout; "[{}] qdb> ", pc)?,
+                (Some(sc), _, None) => print!(stdout; "[{}; end] qdb> ", sc)?,
+                (Some(sc), pc, Some(_)) => print!(stdout; "[{}; {}] qdb> ", sc, pc)?,
             };
             input_buffer.clear();
             stdin.read_line(&mut input_buffer)?;
@@ -80,6 +84,7 @@ where
                 Command::Continue(continue_args) => {
                     self.handle_continue(&mut stdout, &continue_args)?
                 }
+                Command::Step(step_args) => self.handle_step(&mut stdout, &step_args)?,
                 Command::Next(next_args) => self.handle_next(&mut stdout, &next_args)?,
                 Command::Previous(prev_args) => self.handle_prev(&mut stdout, &prev_args)?,
                 Command::Break(break_args) => self.handle_break(&mut stdout, &break_args)?,
@@ -127,8 +132,15 @@ where
                         println!(stdout; "Run is just an alias for continue. Showing help for continue...")?;
                         return self.handle_help(stdout, &HelpArgs::Command(CommandIdent::Continue));
                     }
-                    CommandIdent::Next => {
+                    CommandIdent::Step => {
                         "Step forward one instruction. Optionally specify a number of instructions to step forward.
+
+                        EXAMPLES
+                        'next' - Step forward one instruction.
+                        'next 5' - Step forward 5 instructions."
+                    }
+                    CommandIdent::Next => {
+                        "Step forward and over one instruction. Optionally specify a number of instructions to step forward.
 
                         EXAMPLES
                         'next' - Step forward one instruction.
@@ -213,7 +225,8 @@ where
                 let all_help = "\
                     continue (c|run) - Continue execution until a breakpoint is hit or end of circuit is reached. \
                     Optionally specify to skip a number of breakpoints or ignore breakpoints entirely.
-                    next (n) - Step forward one instruction. Optionally specify a number of instructions to step forward.
+                    step (s) - Step forward one instruction. Optionally specify a number of instructions to step forward.
+                    next (n) - Step forward and over one instruction. Optionally specify a number of instructions to step forward.
                     previous (p|prev) - Step back one instruction. Optionally specify a number of instructions to step back.
                     break - Insert a breakpoint at the specified gate index. \
                     Optionally specify to only enable an already existing breakpoint.
@@ -224,7 +237,7 @@ where
                     collapse (cl) - Collapse the current state into a single value and show the count of each value. \
                     Optionally specify to collapse multiple times for a more even distribution of collapsed values.
                     circuit - Show information about the circuit diagram.
-                    show (s) - Show the contents of classical registers.
+                    show - Show the contents of classical registers.
                     help (h) - Show this help message. Optionally specify a command to get more specific help.
                     quit (q) - Exit the debugger.";
 
@@ -307,14 +320,32 @@ where
         }
     }
 
-    fn handle_next<W: Write>(&mut self, stdout: &mut W, next_args: &NextArgs) -> io::Result<()> {
-        let step_count = match next_args {
-            NextArgs::Step => 1,
-            NextArgs::Count(n) => *n,
+    fn handle_step<W: Write>(&mut self, stdout: &mut W, step_args: &StepArgs) -> io::Result<()> {
+        let step_count = match step_args {
+            StepArgs::Count(n) => *n,
         };
 
         for i in 0..step_count {
             if self.simulator.next().is_none() {
+                errorln!(
+                    stdout;
+                    "End of Circuit reached, stepped forward {} time(s)", i
+                )?;
+                return Ok(());
+            }
+        }
+        println!(stdout; "Stepped forward {} time(s)", step_count)?;
+
+        Ok(())
+    }
+
+    fn handle_next<W: Write>(&mut self, stdout: &mut W, next_args: &NextArgs) -> io::Result<()> {
+        let step_count = match next_args {
+            NextArgs::Count(n) => *n,
+        };
+
+        for i in 0..step_count {
+            if self.simulator.next_over().is_none() {
                 errorln!(
                     stdout;
                     "End of Circuit reached, stepped forward {} time(s)", i
