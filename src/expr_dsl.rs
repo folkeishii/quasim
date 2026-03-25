@@ -1,4 +1,7 @@
+use std::fmt::{Display, Formatter};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Sub};
+
+use serde::{Deserialize, Serialize};
 
 use crate::register_file::RegisterFile;
 
@@ -8,11 +11,27 @@ pub enum ValueError {
     TypeMismatch,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Value {
     Int(i32),
     Float(f32),
     Bool(bool),
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Int(i) => {
+                write!(f, "{}", i)
+            }
+            Value::Float(fl) => {
+                write!(f, "{}", fl)
+            }
+            Value::Bool(b) => {
+                write!(f, "{}", b)
+            }
+        }
+    }
 }
 
 impl Default for Value {
@@ -102,7 +121,7 @@ impl Value {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Expr {
     Val(Value),
     Reg(String),

@@ -67,6 +67,7 @@ impl DebuggableSimulator for DMSimulator {
             Instruction::Jump(pc) => self.jump(pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(&expr, pc),
             Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
+            Instruction::Call(_expr, _reg) => todo!(),
         }
         Some(&self.diagonal)
     }
@@ -96,6 +97,7 @@ impl DebuggableSimulator for DMSimulator {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
+            Instruction::Call(_, _) => todo!(),
         }
         Some(&self.diagonal)
     }

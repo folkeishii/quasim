@@ -1,19 +1,21 @@
-use nalgebra::{Complex, DMatrix, DVector};
+use nalgebra::{Complex, DVector, Matrix2};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
-use crate::circuit::{HybridCircuit, PureCircuit};
+use crate::circuit::{CircuitBehaviour, HybridCircuit};
+use crate::ext::get_u_matrix2;
+use crate::gate::GateType;
 use crate::simulator::HybridSimulator;
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
-    ext::get_gate_matrix,
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
     simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
 };
 
+#[derive(Debug, Clone)]
 pub struct SVExecutor {
     state_vector: DVector<Complex<f64>>,
     circuit: Circuit<HybridCircuit>,
@@ -39,6 +41,12 @@ impl SVExecutor {
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // End of (sub) circuit: Try to return
+            if self.pc_mut().ret() {
+                return Some(&self.state_vector);
+            }
+
+            // Could not return: End of circuit
             return None;
         };
 
@@ -81,32 +89,89 @@ impl SVExecutor {
         (i & target_mask) == 0
     }
 
-    fn block_indices(base: usize, targets: &[usize]) -> Vec<usize> {
-        let k = targets.len();
-        let mut indices = Vec::with_capacity(1 << k);
+    // 0 1
+    // 1 0
+    #[inline(always)]
+    fn apply_x(&mut self, base_index: usize, target: QBits) {
+        self.state_vector
+            .as_mut_slice()
+            .swap(base_index, base_index | target.get_bitstring());
+    }
 
-        for mask in 0..(1 << k) {
-            let mut idx = base;
-            // We embed the bits of mask into the corresponding target qubit positions
-            for (j, &target_bit_pos) in targets.iter().enumerate() {
-                // Take the j:th bit of the mask and place it at the correct position
-                // of the target bit
-                idx |= ((mask >> j) & 1) << target_bit_pos;
-            }
-            indices.push(idx);
-        }
+    // 0 -i
+    // i  0
+    #[inline(always)]
+    fn apply_y(&mut self, base_index: usize, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let state = self.state_vector.as_mut_slice();
+        let a = state[base_index];
+        let b = state[flipped_index];
 
-        indices
+        state[base_index] = cart!(b.im, -b.re);
+        state[flipped_index] = cart!(-a.im, a.re);
+    }
+
+    // 1  0
+    // 0 -1
+    #[inline(always)]
+    fn apply_z(&mut self, base_index: usize, target: QBits) {
+        let i = base_index | target.get_bitstring();
+        let amp = &mut self.state_vector[i];
+
+        amp.re = -amp.re;
+        amp.im = -amp.im;
+    }
+
+    #[inline(always)]
+    fn apply_h(&mut self, base_index: usize, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let state = self.state_vector.as_mut_slice();
+        let a = state[base_index];
+        let b = state[flipped_index];
+        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
+
+        state[base_index] = (a + b) * inv_sqrt2;
+        state[flipped_index] = (a - b) * inv_sqrt2;
+    }
+
+    #[inline(always)]
+    fn apply_s(&mut self, base_index: usize, target: QBits) {
+        let i = base_index | target.get_bitstring();
+        let amp = self.state_vector[i];
+
+        self.state_vector[i].re = -amp.im;
+        self.state_vector[i].im = amp.re;
+    }
+
+    #[inline(always)]
+    fn apply_swap(&mut self, base_index: usize, targets: QBits) {
+        let t0 = targets.get_indices()[0];
+        let t1 = targets.get_indices()[1];
+
+        let i01 = base_index | (1 << t0);
+        let i10 = base_index | (1 << t1);
+
+        self.state_vector.as_mut_slice().swap(i01, i10);
+    }
+
+    #[inline(always)]
+    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f64>>, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let a = self.state_vector[base_index];
+        let b = self.state_vector[flipped_index];
+
+        self.state_vector[base_index] = u[(0, 0)] * a + u[(0, 1)] * b;
+        self.state_vector[flipped_index] = u[(1, 0)] * a + u[(1, 1)] * b;
     }
 
     fn gate(&mut self, gate: &Gate) {
         let controls = gate.get_control_bits();
         let targets = gate.get_target_bits();
-        let u: DMatrix<Complex<f64>> = get_gate_matrix(gate);
-        let target_indices = targets.get_indices();
+        let n = self.state_vector.len();
 
+        // No parallelization
         // State vector is length 2^n , n=num qubits
-        for i in 0..self.state_vector.len() {
+        for i in 0..n {
             if !Self::is_block_base(i, targets) {
                 continue;
             }
@@ -115,20 +180,16 @@ impl SVExecutor {
                 continue;
             }
 
-            let indices = Self::block_indices(i, &target_indices);
-
-            // Read amplitudes
-            let v = DVector::from_iterator(
-                indices.len(),
-                indices.iter().map(|&idx| self.state_vector[idx]),
-            );
-
-            // Apply gate matrix, assumes u matches size of v
-            let v2 = &u * &v;
-
-            // Write updated amplitudes back
-            for (j, &idx) in indices.iter().enumerate() {
-                self.state_vector[idx] = v2[j];
+            match gate.get_type() {
+                GateType::X => self.apply_x(i, targets),
+                GateType::Y => self.apply_y(i, targets),
+                GateType::Z => self.apply_z(i, targets),
+                GateType::H => self.apply_h(i, targets),
+                GateType::S => self.apply_s(i, targets),
+                GateType::SWAP => self.apply_swap(i, targets),
+                GateType::U(theta, phi, lambda) => {
+                    self.apply_unitary2(i, &get_u_matrix2(theta, phi, lambda), targets)
+                }
             }
         }
 
@@ -140,9 +201,10 @@ impl SVExecutor {
         let mask = 1 << target;
         let measured_bit = measurement & mask;
         let shifted_measurement = ((measurement >> target) & 1) << bit_pos;
+        let register_bit_mask = 1 << bit_pos;
 
         if let Value::Int(val) = self.registers[reg] {
-            let val_cleared = (val as usize) & !shifted_measurement;
+            let val_cleared = (val as usize) & !register_bit_mask;
             self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
         } else {
             self.registers[reg] = Value::Int(shifted_measurement as i32)
@@ -210,6 +272,7 @@ impl SVExecutor {
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
+            Instruction::Call(name, lsq) => self.pc_mut().jump_and_link(name.clone(), *lsq),
         }
     }
 
@@ -240,21 +303,17 @@ pub struct SVSimulator {
     circuit: Circuit<HybridCircuit>,
 }
 
-impl TryFrom<Circuit<PureCircuit>> for SVSimulator {
+impl<T> TryFrom<Circuit<T>> for SVSimulator
+where
+    T: CircuitBehaviour,
+    Circuit<T>: Into<Circuit<HybridCircuit>>,
+{
     type Error = SVError;
 
-    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<T>) -> Result<Self, Self::Error> {
         Ok(Self {
             circuit: value.into(),
         })
-    }
-}
-
-impl TryFrom<Circuit<HybridCircuit>> for SVSimulator {
-    type Error = SVError;
-
-    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
-        Ok(Self { circuit: value })
     }
 }
 
@@ -275,25 +334,21 @@ impl RunnableSimulator for SVSimulator {
 
 // SVSimulatorDebugger
 
+#[derive(Debug, Clone)]
 pub struct SVSimulatorDebugger {
     executor: SVExecutor,
 }
 
-impl TryFrom<Circuit<PureCircuit>> for SVSimulatorDebugger {
+impl<T> TryFrom<Circuit<T>> for SVSimulatorDebugger
+where
+    T: CircuitBehaviour,
+    Circuit<T>: Into<Circuit<HybridCircuit>>,
+{
     type Error = SVError;
 
-    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<T>) -> Result<Self, Self::Error> {
         Ok(Self {
             executor: SVExecutor::new(value.into()),
-        })
-    }
-}
-impl TryFrom<Circuit<HybridCircuit>> for SVSimulatorDebugger {
-    type Error = SVError;
-
-    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            executor: SVExecutor::new(value),
         })
     }
 }
@@ -317,7 +372,7 @@ impl DebuggableSimulator for SVSimulatorDebugger {
     }
 
     fn double_ended(&self) -> bool {
-        true
+        false
     }
 }
 
@@ -414,23 +469,34 @@ mod tests {
     #[allow(unreachable_code)]
     #[test]
     fn test_sub() {
-        // Keep for sub circuits
-        return;
-        // let sub = Circuit::new(1)
-        //     .new_reg("tmp")
-        //     .assign("tmp".into(), 0.into())
-        //     .h(0)
-        //     .breakpoint()
-        //     .measure_bit(0, "tmp")
-        //     .apply_if(r("tmp").gt(0))
-        //     .x(0);
-        let circuit = Circuit::new(4).new_reg("tmp");
-        // .new_sub_circuit("U", sub);
-        // Init random state
-        // .call("U", 0)
-        // .call("U", 1)
-        // .call("U", 2)
-        // .call("U", 3);
+        let sub = Circuit::new(1).h(0).breakpoint();
+        let circuit = Circuit::new(4)
+            .new_reg("tmp")
+            .new_sub_circuit("U", sub)
+            // Hybrid check
+            .assign("tmp", 0.into())
+            .call("U", 0)
+            .measure_bit(0, ("tmp", 0))
+            .apply_if(r("tmp").gt(0))
+            .x(0)
+            // Hybrid check
+            .assign("tmp", 0.into())
+            .call("U", 1)
+            .measure_bit(1, ("tmp", 0))
+            .apply_if(r("tmp").gt(0))
+            .x(1)
+            // Hybrid check
+            .assign("tmp", 0.into())
+            .call("U", 2)
+            .measure_bit(2, ("tmp", 0))
+            .apply_if(r("tmp").gt(0))
+            .x(2)
+            // Hybrid check
+            .assign("tmp", 0.into())
+            .call("U", 3)
+            .measure_bit(3, ("tmp", 0))
+            .apply_if(r("tmp").gt(0))
+            .x(3);
 
         let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
 
@@ -557,7 +623,45 @@ mod tests {
     }
 
     #[test]
-    fn almost_grovers() {
-        common_test::almost_grovers::<SVSimulatorDebugger>();
+    fn test_measure_bit_overwrites_existing_zero() {
+        let circuit = Circuit::new(2)
+            .new_reg("tmp")
+            .x(0)
+            .measure_bit(0, ("tmp", 0))
+            .measure_bit(1, ("tmp", 0));
+
+        let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
+        sim.executor.step_all();
+
+        assert_eq!(sim.register("tmp"), Value::Int(0));
+    }
+
+    #[test]
+    fn test_reset_with_shared_scratch_register() {
+        let circuit = Circuit::new(4)
+            .h(0)
+            .h(1)
+            .h(2)
+            .h(3)
+            .reset(0)
+            .reset(1)
+            .reset(2)
+            .reset(3);
+
+        let sim = SVSimulator::build(circuit).unwrap();
+
+        for _ in 0..100 {
+            assert!(sim.run() == 0);
+        }
+    }
+
+    #[test]
+    fn double_sub() {
+        common_test::double_sub::<SVSimulatorDebugger>();
+    }
+
+    #[test]
+    fn deep_sub() {
+        common_test::deep_sub::<SVSimulatorDebugger>();
     }
 }

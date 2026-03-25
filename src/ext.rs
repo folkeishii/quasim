@@ -3,7 +3,7 @@ use std::mem::replace;
 use std::ops::Deref;
 use std::{iter::Map, ops::Range};
 
-use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, RawStorage, dmatrix};
+use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, Matrix2, RawStorage, dmatrix};
 use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
 
@@ -100,6 +100,10 @@ fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
         polar!(sin, phi),
         polar!(cos, lambda + phi),
     ]
+}
+
+pub fn get_u_matrix2(theta: f64, phi: f64, lambda: f64) -> Matrix2<Complex<f64>> {
+    Matrix2::from_row_slice(&u(theta, phi, lambda))
 }
 
 pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
