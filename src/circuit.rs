@@ -11,7 +11,7 @@ use crate::{
         pc::CircuitPc,
     },
     expr_dsl::Expr,
-    gate::{Gate, GateType},
+    gate::{Gate, GateType, QBits},
     instruction::{Instruction, PureInstruction},
 };
 mod qasm_parse;
@@ -464,7 +464,15 @@ impl<B: CircuitBehaviour> Circuit<B> {
     /// ## Arguments
     ///  - `name`: Name of registered sub circuit
     ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
-    pub fn call<S: Into<String>>(mut self, name: S, lsq: usize) -> Self {
+    pub fn call<S: Into<String>>(self, name: S, lsq: usize) -> Self {
+        self.ccall(name, lsq, Default::default())
+    }
+
+    /// ## Arguments
+    ///  - `name`: Name of registered sub circuit
+    ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
+    ///  - `ctrl`: Control bits for sub circuit
+    pub fn ccall<S: Into<String>>(mut self, name: S, lsq: usize, controls: &[usize]) -> Self {
         let name = name.into();
         if !self.sub_circuits.contains_key(&name) {
             panic!("No registered sub circuit with the name {}", name)
@@ -480,7 +488,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self.instructions.push(B::from_pure(PureInstruction::Call(
             name,
             lsq,
-            Default::default(),
+            QBits::from_indices(controls),
         )));
         self
     }
@@ -490,9 +498,18 @@ impl<B: CircuitBehaviour> Circuit<B> {
     ///  - `pure_circuit`: Definition of specified circuit
     ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
     pub fn call_new<S: Into<String>>(self, name: S, pure_circuit: Circuit, lsq: usize) -> Self {
+        self.ccall_new(name, pure_circuit, lsq, Default::default())
+    }
+
+    /// ## Arguments
+    ///  - `name`: Name of registered sub circuit
+    ///  - `pure_circuit`: Definition of specified circuit
+    ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
+    ///  - `ctrl`: Control bits for sub circuit
+    pub fn ccall_new<S: Into<String>>(self, name: S, pure_circuit: Circuit, lsq: usize, controls: &[usize]) -> Self {
         let name = name.into();
         self.new_sub_circuit(name.clone(), pure_circuit)
-            .call(name, lsq)
+            .ccall(name, lsq, controls)
     }
 }
 
