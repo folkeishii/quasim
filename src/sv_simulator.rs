@@ -134,18 +134,7 @@ impl SVExecutor {
         state[flipped_index] = (a - b) * inv_sqrt2;
     }
 
-    // #[inline(always)]
-    // fn apply_rx(&mut self, base_index: usize, target: QBits) {}
-
-    // #[inline(always)]
-    // fn apply_ry(&mut self, base_index: usize, target: QBits) {}
-
-    // #[inline(always)]
-    // fn apply_rz(&mut self, base_index: usize, target: QBits) {}
-
-    // #[inline(always)]
-    // fn apply_phase(&mut self, base_index: usize, target: QBits) {}
-
+    #[inline(always)]
     fn apply_s(&mut self, base_index: usize, target: QBits) {
         let i = base_index | target.get_bitstring();
         let amp = self.state_vector[i];
@@ -675,19 +664,5 @@ mod tests {
     #[test]
     fn deep_sub() {
         common_test::deep_sub::<SVSimulatorDebugger>();
-    }
-
-    #[test]
-    fn testy() {
-        let targets = QBits::from_indices(&[2, 1, 4]);
-
-        let rev = targets.get_bitstring().reverse_bits();
-        let chk = (rev & rev.wrapping_neg()).reverse_bits();
-        let block_size = chk << 1;
-
-        println!("{:?}", targets);
-        println!("{:?}", rev);
-        println!("{:?}", chk);
-        println!("{:?}", block_size);
     }
 }
