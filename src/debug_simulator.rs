@@ -1,9 +1,11 @@
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
+    expr_dsl::Value,
     ext::{expand_matrix_from_gate, measure},
     instruction::Instruction,
-    simulator::{DebuggableSimulator, StoredCircuitSimulator},
+    register_file::RegisterFile,
+    simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 use nalgebra::{Complex, DVector};
 
@@ -12,6 +14,7 @@ pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
+    registers: RegisterFile<Value>,
 }
 
 impl TryFrom<Circuit<PureCircuit>> for DebugSimulator {
@@ -46,13 +49,22 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
         let mut init_state = vec![cart!(0.0); 1 << k];
         init_state[0] = cart!(1.0);
 
+        let registers = RegisterFile::from(circuit.registers());
+
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),
             circuit: circuit,
             pc: Default::default(),
+            registers: registers,
         };
 
         Ok(sim)
+    }
+}
+
+impl HybridSimulator<Value> for DebugSimulator {
+    fn registers(&self) -> &RegisterFile<Value> {
+        &self.registers
     }
 }
 
@@ -581,5 +593,10 @@ mod tests {
     #[test]
     fn double_sub() {
         common_test::double_sub::<DebugSimulator>();
+    }
+
+    #[test]
+    fn deep_sub() {
+        common_test::deep_sub::<DebugSimulator>();
     }
 }

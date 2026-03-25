@@ -45,7 +45,7 @@ impl CircuitPc {
         if let Some((_, sub_pc)) = &mut self.sub {
             sub_pc.jump_and_link(name, lsq);
         } else {
-            self.sub = Some((name, Box::from(CircuitPc::with_lsq(0, lsq))));
+            self.sub = Some((name, Box::from(CircuitPc::with_lsq(0, self.lsq + lsq))));
         }
     }
 
