@@ -463,7 +463,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     /// ## Arguments
     ///  - `name`: Name of registered sub circuit
     ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
-    pub fn call<I: Into<String>>(mut self, name: I, lsq: usize) -> Self {
+    pub fn call<S: Into<String>>(mut self, name: S, lsq: usize) -> Self {
         let name = name.into();
         if !self.sub_circuits.contains_key(&name) {
             panic!("No registered sub circuit with the name {}", name)
@@ -684,10 +684,7 @@ impl CircuitBehaviour for HybridCircuit {
     type InstructionTy = Instruction;
 
     fn from_pure(instruction: PureInstruction) -> Self::InstructionTy {
-        match instruction {
-            PureInstruction::Gate(gate) => Instruction::Gate(gate),
-            PureInstruction::Call(name, lsq) => Instruction::Call(name, lsq),
-        }
+        Instruction::from(instruction)
     }
 }
 
