@@ -105,7 +105,6 @@ impl Circuit {
                 Some(PureInstruction::Gate(gate)) => {
                     let mut gate = gate.clone() << circuit_pc.lsq();
                     *gate.control_mut() |= circuit_pc.ctrl();
-                    println!("{:#b}", gate.get_control_bits().get_bitstring());
                     Some(gate.into())
                 }
                 rst => rst.cloned(),
