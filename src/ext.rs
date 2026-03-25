@@ -390,6 +390,24 @@ pub fn measure_and_observe_dm(
     (result, proj_op_times_density * projection_operator / norm)
 }
 
+/// # measure_no_observe_dm
+/// Returns the resulting density matrix after a mesurement that is not observed.
+pub fn measure_no_observe_dm(
+    target: usize,
+    density: &DMatrix<Complex<f64>>,
+    n_qubits: usize,
+) -> DMatrix<Complex<f64>> {
+    // Calculate projection operators, M_1 M_0
+    let mut projection_operator_prod = identity_tensor_factors(n_qubits);
+    projection_operator_prod[target] = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
+    let proj_0 = eval_tensor_product(projection_operator_prod.clone()); // M_0
+    projection_operator_prod[target] = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
+    let proj_1 = eval_tensor_product(projection_operator_prod); // M_1
+
+    // p` == M_0pM_0 + M_1pM_1
+    proj_0.clone() * density * proj_0 + proj_1.clone() * density * proj_1
+}
+
 /// # reduced_state
 /// Returns the reduced state (partial trace) of a density matrix,
 /// where `targets` specifies the subsystem of qubits.
@@ -519,7 +537,7 @@ impl<T: Ord> OrdByKey<T> for T {
 mod tests {
     use crate::ext::{
         convert_matrix, convert_vector, equal_to_matrix_c, expand_matrix_from_gate,
-        get_gate_matrix, swap_matrix,
+        get_gate_matrix, measure_no_observe_dm, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
@@ -599,6 +617,54 @@ mod tests {
         assert!(equal_to_matrix_c(
             &convert_matrix(&textbook_ch),
             &sim_ch,
+            0.001
+        ));
+    }
+
+    #[test]
+    fn measure_no_obs_test() {
+        let pre_matrix = dmatrix![
+            cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.353553);
+            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
+            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0);
+            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
+        ];
+        let measure_0 = dmatrix![
+            cart!(0.5),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.25),cart!(0.0),cart!(0.25);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.25),cart!(0.0),cart!(0.25);
+        ];
+        let measure_1 = dmatrix![
+            cart!(0.5),cart!(0.353553),cart!(0.0),cart!(0.0);
+            cart!(0.353553),cart!(0.25),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.25);
+        ];
+        let measure_all = dmatrix![
+            cart!(0.5),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.25),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.25);
+        ];
+        assert!(equal_to_matrix_c(
+            &measure_no_observe_dm(0, &pre_matrix, 2),
+            &measure_0,
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &measure_no_observe_dm(1, &pre_matrix, 2),
+            &measure_1,
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &measure_no_observe_dm(1, &measure_0, 2),
+            &measure_all,
+            0.001
+        ));
+        assert!(equal_to_matrix_c(
+            &measure_no_observe_dm(0, &measure_1, 2),
+            &measure_all,
             0.001
         ));
     }
