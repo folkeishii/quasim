@@ -66,8 +66,28 @@ impl ContinueArgs {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub enum StepArgs {
+    Count(usize),
+}
+impl StepArgs {
+    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
+        let mut tokens = tokens;
+        let arg = if let Some(token) = tokens.next() {
+            token
+        } else {
+            return Ok(StepArgs::Count(1));
+        };
+
+        if let Some(token) = tokens.next() {
+            return Err(ParseError::UnexpectedArgument(token.into()));
+        }
+
+        Ok(StepArgs::Count(parse_usize!(arg)?))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum NextArgs {
-    Step,
     Count(usize),
 }
 impl NextArgs {
@@ -76,7 +96,7 @@ impl NextArgs {
         let arg = if let Some(token) = tokens.next() {
             token
         } else {
-            return Ok(NextArgs::Step);
+            return Ok(NextArgs::Count(1));
         };
 
         if let Some(token) = tokens.next() {
@@ -297,9 +317,26 @@ impl CollapseArgs {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum ShowArgs {
+#[derive(Debug, Clone)]
+pub enum CircuitArgs {
     Circuit,
+}
+impl CircuitArgs {
+    pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
+        let mut tokens = tokens;
+
+        if let Some(token) = tokens.next() {
+            return Err(ParseError::UnexpectedArgument(token.into()));
+        }
+
+        Ok(CircuitArgs::Circuit)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ShowArgs {
+    All,
+    Reg(String),
 }
 impl ShowArgs {
     pub fn parse_arguments(tokens: TokenIterator<'_>) -> ParseResult<Self> {
@@ -307,16 +344,13 @@ impl ShowArgs {
         let arg = if let Some(token) = tokens.next() {
             token
         } else {
-            return Ok(ShowArgs::Circuit);
+            return Ok(ShowArgs::All);
         };
 
         if let Some(token) = tokens.next() {
             return Err(ParseError::UnexpectedArgument(token.into()));
         }
 
-        match arg {
-            "circuit" => Ok(ShowArgs::Circuit),
-            arg => Err(ParseError::UnexpectedArgument(arg.into())),
-        }
+        Ok(ShowArgs::Reg(arg.into()))
     }
 }

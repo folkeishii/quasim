@@ -1,6 +1,6 @@
 use std::{
     f64::consts::{FRAC_1_SQRT_2, PI},
-    ops::{Shl, Shr},
+    ops::{BitAnd, Shl, Shr, ShrAssign},
 };
 
 use nalgebra::Complex;
@@ -54,6 +54,12 @@ impl QBits {
     }
 }
 
+impl From<usize> for QBits {
+    fn from(value: usize) -> Self {
+        QBits(value)
+    }
+}
+
 impl Shl<usize> for QBits {
     type Output = QBits;
 
@@ -67,6 +73,18 @@ impl Shr<usize> for QBits {
 
     fn shr(self, rhs: usize) -> Self::Output {
         Self(self.0 >> rhs)
+    }
+}
+impl ShrAssign<usize> for QBits {
+    fn shr_assign(&mut self, rhs: usize) {
+        self.0 >>= rhs
+    }
+}
+impl BitAnd<usize> for QBits {
+    type Output = QBits;
+
+    fn bitand(self, rhs: usize) -> Self::Output {
+        Self(self.0 & rhs)
     }
 }
 
