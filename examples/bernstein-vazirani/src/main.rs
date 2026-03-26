@@ -43,7 +43,7 @@ fn find_secret_string_quantum(secret: u8) -> u8 {
         circuit = circuit.h(i);
     }
 
-    circuit = circuit.measure(&[0, 1, 2, 3, 4], "res");
+    circuit = circuit.measure_bits(&[0, 1, 2, 3, 4], "res");
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.cont();
 

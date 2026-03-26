@@ -34,7 +34,7 @@ fn send_int(i: u8) -> u8 {
         .h(0)
 
         // Bob measures his qubit + the received one to get c and d
-        .measure(&[0, 1], "b");
+        .measure_bits(&[0, 1], "b");
 
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.cont();

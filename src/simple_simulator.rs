@@ -3,7 +3,6 @@ use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::{
     circuit::Circuit,
-    instruction::Instruction,
     simulator::{BuildSimulator, RunnableSimulator},
     sv_simulator::{SVError, SVSimulator},
 };
@@ -18,13 +17,6 @@ impl TryFrom<Circuit> for SimpleSimulator {
 
     fn try_from(value: Circuit) -> Result<Self, Self::Error> {
         // Lets check so that circuit only contains quantum gates, otherwise we cant precompute state vector
-        let only_gates = value
-            .instructions()
-            .iter()
-            .all(|inst| matches!(inst, Instruction::Gate(_)));
-        if !only_gates {
-            return Err(SimpleError::UnsupportedInstruction);
-        }
 
         let sv_sim = SVSimulator::build(value)?;
         let state_vector = sv_sim.final_state();

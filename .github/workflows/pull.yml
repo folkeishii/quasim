@@ -3,6 +3,9 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
 
 env:
   RUSTFLAGS: "-D warnings"
@@ -15,7 +18,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
-      - run: cargo fmt --all -- --check
-      - run: cargo check --benches
-      - run: cargo test
+      - uses: swatinem/rust-cache@v2
       - run: ./.github/check.sh

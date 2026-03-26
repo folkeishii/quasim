@@ -1,3 +1,4 @@
+use crate::circuit::CircuitBehaviour;
 use crate::circuit::pc::CircuitPc;
 use crate::register_file::RegisterFile;
 use crate::{circuit::Circuit, instruction::Instruction};
@@ -10,19 +11,19 @@ use nalgebra::{Complex, DVector};
 /// To support `TryFrom<Cicuit>` there is an auto
 /// implementation of `BuildSimulator` for any type
 /// that implements `TryFrom<Circuit>`
-pub trait BuildSimulator: Sized {
+pub trait BuildSimulator<B: CircuitBehaviour>: Sized {
     type E: std::error::Error;
 
-    fn build(circuit: Circuit) -> Result<Self, Self::E>;
+    fn build(circuit: Circuit<B>) -> Result<Self, Self::E>;
 }
-impl<T, E> BuildSimulator for T
+impl<T, B: CircuitBehaviour, E> BuildSimulator<B> for T
 where
-    T: TryFrom<Circuit, Error = E>,
+    T: TryFrom<Circuit<B>, Error = E>,
     E: std::error::Error,
 {
     type E = E;
 
-    fn build(circuit: Circuit) -> Result<Self, Self::E> {
+    fn build(circuit: Circuit<B>) -> Result<Self, Self::E> {
         Self::try_from(circuit)
     }
 }
@@ -41,6 +42,32 @@ pub trait RunnableSimulator {
 /// one gate at a time should implement this trait
 pub trait DebuggableSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>>;
+    /// Unlike `next`, `next_over` will execute all instructions
+    /// inside a sub circuit
+    fn next_over(&mut self) -> Option<&DVector<Complex<f64>>> {
+        let (before, _) = self.current_instruction();
+        let before_depth = before.depth();
+
+        // Allways do at least one next
+        let mut ret_some = self.next().is_some();
+
+        let (after, _) = self.current_instruction();
+        let mut after_depth = after.depth();
+
+        while before_depth < after_depth {
+            // Inside sub circuit
+            ret_some = self.next().is_some();
+
+            let (after, _) = self.current_instruction();
+            after_depth = after.depth();
+        }
+
+        if ret_some {
+            Some(self.current_state())
+        } else {
+            None
+        }
+    }
     /// Not guaranteed to be implemented for every simulator
     ///
     /// `prev` should be implemented if `fn double_ended(&self)`
@@ -74,9 +101,11 @@ pub trait DebuggableSimulator {
 /// Any simulator that stores the underlying circuit
 /// internally should implment this trait
 pub trait StoredCircuitSimulator {
-    fn circuit(&self) -> &Circuit;
-    fn circuit_mut(&mut self) -> &mut Circuit;
-    fn instructions(&self) -> &[Instruction] {
+    type B: CircuitBehaviour;
+
+    fn circuit(&self) -> &Circuit<Self::B>;
+    fn circuit_mut(&mut self) -> &mut Circuit<Self::B>;
+    fn instructions(&self) -> &[<Self::B as CircuitBehaviour>::InstructionTy] {
         self.circuit().instructions()
     }
     fn instruction_count(&self) -> usize {

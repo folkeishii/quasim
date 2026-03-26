@@ -3,8 +3,6 @@ use quasim::expr_dsl::Value;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
-const N: usize = 8;
-
 #[allow(dead_code)]
 #[derive(PartialEq, Debug)]
 enum FunctionType {
@@ -25,28 +23,27 @@ fn f_constant_2(_: u8) -> bool {
 
 #[allow(dead_code)]
 fn f_balanced(x: u8) -> bool {
-    (x >> (N - 1)) == 1
+    x == 0
 }
 
 #[allow(dead_code)]
 fn f_balanced_2(x: u8) -> bool {
-    x % 2 == 0
+    x == 1
 }
 
-/// Check if a function is constant or balanced
 #[allow(dead_code)]
 fn check_classic(f: fn(u8) -> bool) -> FunctionType {
     let first = f(0);
-    for i in 1..=(1 << (N - 1)) {
-        if f(i) != first {
-            return FunctionType::Balanced;
-        }
-    }
+    let second = f(1);
 
-    if first {
-        FunctionType::Constant1
+    if first == second {
+        if first {
+            FunctionType::Constant1
+        } else {
+            FunctionType::Constant0
+        }
     } else {
-        FunctionType::Constant0
+        FunctionType::Balanced
     }
 }
 
@@ -54,29 +51,24 @@ fn check_classic(f: fn(u8) -> bool) -> FunctionType {
 ///
 /// Return true if constant, false if balanced
 fn check_quantum(function_type: FunctionType) -> bool {
-    let mut circuit = Circuit::new(N + 1).new_reg("res");
-    circuit = circuit.x(N);
-
-    for i in 0..=N {
-        circuit = circuit.h(i);
-    }
+    let mut circuit = Circuit::new(2).new_reg("res");
+    circuit = circuit.x(1);
+    circuit = circuit.h(0).h(1);
 
     // Simple oracle
     match function_type {
         FunctionType::Constant0 => {}
         FunctionType::Constant1 => {
-            circuit = circuit.x(N);
+            circuit = circuit.x(1);
         }
         FunctionType::Balanced => {
-            circuit = circuit.cx(&[0], N);
+            circuit = circuit.cx(&[0], 1);
         }
     }
 
-    for i in 0..N {
-        circuit = circuit.h(i);
-    }
+    circuit = circuit.h(0).h(1);
 
-    circuit = circuit.measure_bits(&[0, 1, 2, 3, 4, 5, 6, 7], "res");
+    circuit = circuit.measure_bits(&[0], "res");
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.cont();
 
@@ -92,7 +84,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
 }
 
 fn main() {
-    println!("{}", check_quantum(FunctionType::Constant0));
+    println!("{}", check_quantum(FunctionType::Balanced));
 }
 
 #[cfg(test)]
