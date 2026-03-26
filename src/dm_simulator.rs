@@ -8,7 +8,7 @@ use crate::{
     register_file::RegisterFile,
     simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
-use nalgebra::{Complex, DMatrix, DVector};
+use nalgebra::{Complex, DMatrix, DVector, dvector};
 
 #[derive(Debug, Clone)]
 pub struct DMSimulator {
@@ -16,7 +16,7 @@ pub struct DMSimulator {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile<Value>,
-    diagonal: DVector<Complex<f64>>,
+    dummy_state: DVector<Complex<f64>>, //TODO: when next/prev returns bool, remove this
 }
 
 impl TryFrom<Circuit<PureCircuit>> for DMSimulator {
@@ -67,9 +67,9 @@ impl DebuggableSimulator for DMSimulator {
             Instruction::Jump(pc) => self.jump(pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(&expr, pc),
             Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
-            Instruction::Call(_expr, _reg) => todo!(),
+            Instruction::Call(name, lsq, ctrl) => self.pc_mut().jump_and_link(name, lsq, ctrl),
         }
-        Some(&self.diagonal)
+        Some(&self.dummy_state)
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
@@ -77,33 +77,11 @@ impl DebuggableSimulator for DMSimulator {
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
-        todo!()
-    }
-
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
-        if !self.pc_mut().decrement() {
-            return None;
-        }
-
-        let Some(inst) = self.circuit.instruction(self.pc()) else {
-            // Should not happen
-            return None;
-        };
-
-        match inst {
-            Instruction::Gate(gate) => self.apply_gate_inv(gate),
-            Instruction::MeasureBit(_, _) => todo!(),
-            Instruction::MeasureAll(_) => todo!(),
-            Instruction::Jump(_) => todo!(),
-            Instruction::JumpIf(_, _) => todo!(),
-            Instruction::Assign(_, _) => todo!(),
-            Instruction::Call(_, _) => todo!(),
-        }
-        Some(&self.diagonal)
+        todo!() // 
     }
 
     fn double_ended(&self) -> bool {
-        true
+       false 
     }
 }
 
@@ -175,12 +153,6 @@ impl DMSimulator {
         self.current_state = mat * self.current_state.clone() * adj;
     }
 
-    fn apply_gate_inv(&mut self, gate: Gate) {
-        let adj_inv = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
-        let mat_inv = adj_inv.adjoint();
-        self.current_state = mat_inv * self.current_state.clone() * adj_inv;
-    }
-
     fn init(circuit: Circuit<HybridCircuit>) -> Self {
         // Initial state assumed to be |000..>
         // == |0><0| * |0><0| * |0><0| * ...
@@ -191,7 +163,7 @@ impl DMSimulator {
         let registers = RegisterFile::from(circuit.registers());
 
         DMSimulator {
-            diagonal: init_state.diagonal(),
+            dummy_state: dvector![],
             current_state: init_state,
             circuit: circuit,
             pc: Default::default(),
