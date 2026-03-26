@@ -1,10 +1,10 @@
 use crate::circuit::{Circuit, CircuitBehaviour};
 
 /// n is the number of classical bits.
-pub fn fn_to_truth_table(f: &dyn Fn(&usize) -> bool, n: usize) -> Vec<bool> {
+pub fn fn_to_truth_table(f: &dyn Fn(usize) -> bool, n: usize) -> Vec<bool> {
     let mut truth_table = Vec::with_capacity(1 << n);
     for i in 0..(1 << n) {
-        truth_table.push(f(&i));
+        truth_table.push(f(i));
     }
     return truth_table;
 }
@@ -28,8 +28,8 @@ pub fn truth_table_to_anf_coefs(mut truth_table: Vec<bool>) -> Vec<bool> {
 }
 
 /// Converts the ANF coefficients back to a function that can be evaluated on inputs.
-fn anf_coefs_to_fn(anf_coefs: Vec<bool>) -> Box<dyn Fn(&usize) -> bool> {
-    let f = move |x: &usize| {
+fn anf_coefs_to_fn(anf_coefs: Vec<bool>) -> Box<dyn Fn(usize) -> bool> {
+    let f = move |x: usize| {
         let mut classical_result = false;
 
         for (i, coef) in anf_coefs.iter().enumerate() {
@@ -92,7 +92,7 @@ mod anf_conversion_tests {
 
     use super::*;
 
-    fn test_isomorphism(name: &str, f: &dyn Fn(&usize) -> bool) {
+    fn test_isomorphism(name: &str, f: &dyn Fn(usize) -> bool) {
         const N: usize = 12; // Number of bits for the truth table
 
         let truth_table = fn_to_truth_table(&f, N);
@@ -102,8 +102,8 @@ mod anf_conversion_tests {
         let f_reconstructed = anf_coefs_to_fn(coefs);
         for i in 0..(1 << N) {
             assert_eq!(
-                f(&i),
-                f_reconstructed(&i),
+                f(i),
+                f_reconstructed(i),
                 "Mismatch for function {} at input {}",
                 name,
                 i
@@ -114,7 +114,7 @@ mod anf_conversion_tests {
 
     #[test]
     fn is_constant_zero() {
-        fn is_constant_zero(_: &usize) -> bool {
+        fn is_constant_zero(_: usize) -> bool {
             return false;
         }
 
@@ -123,7 +123,7 @@ mod anf_conversion_tests {
 
     #[test]
     fn is_constant_one() {
-        fn is_constant_one(_: &usize) -> bool {
+        fn is_constant_one(_: usize) -> bool {
             return true;
         }
 
@@ -132,7 +132,7 @@ mod anf_conversion_tests {
 
     #[test]
     fn is_divisible_by_3() {
-        fn is_divisible_by_3(x: &usize) -> bool {
+        fn is_divisible_by_3(x: usize) -> bool {
             return x % 3 == 0;
         }
 
@@ -141,8 +141,8 @@ mod anf_conversion_tests {
 
     #[test]
     fn is_prime() {
-        fn is_prime(x: &usize) -> bool {
-            for i in 2..=(*x as f64).sqrt() as usize {
+        fn is_prime(x: usize) -> bool {
+            for i in 2..=(x as f64).sqrt() as usize {
                 if x % i == 0 {
                     return false;
                 }
@@ -155,8 +155,8 @@ mod anf_conversion_tests {
 
     #[test]
     fn is_greater_than_42() {
-        fn is_greater_than_42(x: &usize) -> bool {
-            return *x > 42;
+        fn is_greater_than_42(x: usize) -> bool {
+            return x > 42;
         }
 
         test_isomorphism("is_greater_than_42", &is_greater_than_42);

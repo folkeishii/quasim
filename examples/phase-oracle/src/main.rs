@@ -20,7 +20,7 @@ fn circuit_in_start_state(n: usize, mut starting_qubits_mask: usize) -> Circuit 
 
 /// Runs a quantum oracle for a given input and function,
 /// returning the collapsed final state of the qubits.
-fn run_one_quantum_oracle(input: usize, f: impl Fn(&usize) -> bool) -> usize {
+fn run_one_quantum_oracle(input: usize, f: impl Fn(usize) -> bool) -> usize {
     let input_qubits: Vec<usize> = (0..N).collect();
     let circuit = circuit_in_start_state(N + 1, input)
         .h(N)
@@ -37,40 +37,40 @@ fn run_one_quantum_oracle(input: usize, f: impl Fn(&usize) -> bool) -> usize {
 /// Tests a quantum oracle against a classical function by comparing the results.
 /// Tries all possible inputs for the specified number of qubits.
 /// panics if the oracle does not match the function for any input, otherwise prints the results.
-fn oracle_proof(f: &impl Fn(&usize) -> bool) {
+fn oracle_proof(f: &impl Fn(usize) -> bool) {
     for i in 0..(1 << N) {
         let result = run_one_quantum_oracle(i, f);
         let flipped = result & (1 << N) != 0;
         assert_eq!(
             flipped,
-            f(&i),
+            f(i),
             "f({}) -> {}, but phase oracle did{} invert.",
             i,
-            f(&i),
+            f(i),
             if !flipped { " not" } else { "" }
         );
         println!("For i={}:  {:#09b}, Flipped: {}", i, result, flipped);
     }
 }
 
-fn is_even(n: &usize) -> bool {
+fn is_even(n: usize) -> bool {
     n % 2 == 0
 }
 
-fn is_divisible_by_7(n: &usize) -> bool {
+fn is_divisible_by_7(n: usize) -> bool {
     n % 7 == 0
 }
 
-fn is_between_10_and_20(n: &usize) -> bool {
-    *n >= 10 && *n <= 20
+fn is_between_10_and_20(n: usize) -> bool {
+    n >= 10 && n <= 20
 }
 
-fn is_prime(n: &usize) -> bool {
-    if *n <= 1 {
+fn is_prime(n: usize) -> bool {
+    if n <= 1 {
         return false;
     }
-    for i in 2..=((*n as f64).sqrt() as usize) {
-        if *n % i == 0 {
+    for i in 2..=((n as f64).sqrt() as usize) {
+        if n % i == 0 {
             return false;
         }
     }
