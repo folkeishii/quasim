@@ -2,13 +2,13 @@ use nalgebra::{Complex, DVector};
 use quasim::circuit::Circuit;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 
 #[derive(Debug)]
 struct Point {
-    x: f64,
-    y: f64,
-    z: f64,
+    x: f32,
+    y: f32,
+    z: f32,
 }
 
 impl PartialEq for Point {
@@ -24,7 +24,7 @@ impl PartialEq for Point {
 /// References:
 /// https://quantum.cloud.ibm.com/learning/en/courses/general-formulation-of-quantum-information/density-matrices/multiple-systems
 /// https://www.sciencedirect.com/science/article/pii/S0375960101004558
-fn get_bloch_vector(state_vector: &DVector<Complex<f64>>) -> Point {
+fn get_bloch_vector(state_vector: &DVector<Complex<f32>>) -> Point {
     let p = state_vector * state_vector.adjoint();
 
     let a = p[(0, 0)] + p[(1, 1)];

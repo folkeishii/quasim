@@ -53,7 +53,7 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
         let control_data_handle = client.create_from_slice(u32::as_bytes(control_data));
 
         // Bytes init
-        let mut init_state: Vec<f64> = vec![0.0; size * 2]; // two floats for each complex number
+        let mut init_state: Vec<f32> = vec![0.0; size * 2]; // two floats for each complex number
         init_state[0] = 1.0; // Sets first complex re = 1.0
         let init_bytes = Bytes::from_elems(init_state);
 
@@ -108,11 +108,11 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
     }
 
     /// Get current state of the quantum system
-    pub fn state_vector(&self) -> &[Complex<f64>] {
+    pub fn state_vector(&self) -> &[Complex<f32>] {
         complex_from_bytes(&self.state_vector_cache)
     }
 
-    pub fn state_vector_mut(&mut self) -> &mut [Complex<f64>] {
+    pub fn state_vector_mut(&mut self) -> &mut [Complex<f32>] {
         complex_from_bytes_mut(&mut self.state_vector_cache)
     }
 
@@ -135,10 +135,10 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(&self.state_vector_handle, n_amplitudes * 2, 1),
+                ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, n_amplitudes * 2, 1),
                 ArrayArg::from_raw_parts::<u32>(&self.target_data_handle, data_length, 1),
                 ArrayArg::from_raw_parts::<u32>(&self.control_data_handle, data_length, 1),
-                ArrayArg::from_raw_parts::<f64>(&self.gate_data_handle, data_length * 8, 1),
+                ArrayArg::from_raw_parts::<f32>(&self.gate_data_handle, data_length * 8, 1),
                 ScalarArg::new(command.start_index),
                 ScalarArg::new(command.size),
                 ScalarArg::new(command.targets.get_bitstring() as u32),
@@ -173,7 +173,7 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
             .state_vector()
             .iter()
             .map(|x| x.norm_sqr())
-            .sum::<f64>()
+            .sum::<f32>()
             .sqrt();
         self.state_vector_mut().iter_mut().for_each(|x| *x /= norm);
 
@@ -229,22 +229,22 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
 }
 
 #[derive(CubeType, Clone, Copy)]
-struct ComplexF64 {
-    re: f64,
-    im: f64,
+struct ComplexF32 {
+    re: f32,
+    im: f32,
 }
 
 #[cube]
-impl ComplexF64 {
+impl ComplexF32 {
     fn mul(self, rhs: Self) -> Self {
-        ComplexF64 {
+        ComplexF32 {
             re: self.re * rhs.re - self.im * rhs.im,
             im: self.re * rhs.im + self.im * rhs.re,
         }
     }
 
     fn add(self, rhs: Self) -> Self {
-        ComplexF64 {
+        ComplexF32 {
             re: self.re + rhs.re,
             im: self.im + rhs.im,
         }
@@ -253,10 +253,10 @@ impl ComplexF64 {
 
 #[cube(launch)]
 fn batched_gate2_kernel(
-    state_vector: &mut Array<f64>,
+    state_vector: &mut Array<f32>,
     target_data: &Array<u32>,
     control_data: &Array<u32>,
-    gate_data: &Array<f64>,
+    gate_data: &Array<f32>,
     start_index: u32,
     size: u32,
     target_mask: u32,
@@ -279,19 +279,19 @@ fn batched_gate2_kernel(
             let control: usize = control_data[data_index] as usize;
             let gate_base = data_index * 8;
 
-            let u00 = ComplexF64 {
+            let u00 = ComplexF32 {
                 re: gate_data[gate_base],
                 im: gate_data[gate_base + 1],
             };
-            let u01 = ComplexF64 {
+            let u01 = ComplexF32 {
                 re: gate_data[gate_base + 2],
                 im: gate_data[gate_base + 3],
             };
-            let u10 = ComplexF64 {
+            let u10 = ComplexF32 {
                 re: gate_data[gate_base + 4],
                 im: gate_data[gate_base + 5],
             };
-            let u11 = ComplexF64 {
+            let u11 = ComplexF32 {
                 re: gate_data[gate_base + 6],
                 im: gate_data[gate_base + 7],
             };
@@ -308,14 +308,14 @@ fn batched_gate2_kernel(
 
 #[cube]
 fn apply_unitary2(
-    state_vector: &mut Array<f64>,
+    state_vector: &mut Array<f32>,
     basis_state: usize,
     target: usize,
     control: usize,
-    u00: ComplexF64,
-    u01: ComplexF64,
-    u10: ComplexF64,
-    u11: ComplexF64,
+    u00: ComplexF32,
+    u01: ComplexF32,
+    u10: ComplexF32,
+    u11: ComplexF32,
 ) {
     // ABSOLUTE_POS is basis state
     let basis0: usize = basis_state * 2;
@@ -325,11 +325,11 @@ fn apply_unitary2(
     let controls_active: bool = (basis_state & control) == control;
 
     if is_block_base && controls_active {
-        let amp0 = ComplexF64 {
+        let amp0 = ComplexF32 {
             re: state_vector[basis0],
             im: state_vector[basis0 + 1],
         };
-        let amp1 = ComplexF64 {
+        let amp1 = ComplexF32 {
             re: state_vector[basis1],
             im: state_vector[basis1 + 1],
         };
@@ -434,7 +434,7 @@ impl<R: Runtime> RunnableSimulator for GpuStateVectorSimulator<R> {
         exec.get_collapsed_state()
     }
 
-    fn final_state(&self) -> DVector<Complex<f64>> {
+    fn final_state(&self) -> DVector<Complex<f32>> {
         let mut exec = GpuStateVectorExecutor::<R>::new(self.circuit.clone());
         exec.step_all();
         exec.sync_state_to_cpu();

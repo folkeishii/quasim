@@ -34,17 +34,17 @@ where
 /// should implement this trait
 pub trait RunnableSimulator {
     fn run(&self) -> usize;
-    fn final_state(&self) -> DVector<Complex<f64>>;
+    fn final_state(&self) -> DVector<Complex<f32>>;
 }
 
 /// # DebuggableSimulator
 /// Any simulator that can step through a circuit
 /// one gate at a time should implement this trait
 pub trait DebuggableSimulator {
-    fn next(&mut self) -> Option<&DVector<Complex<f64>>>;
+    fn next(&mut self) -> Option<&DVector<Complex<f32>>>;
     /// Unlike `next`, `next_over` will execute all instructions
     /// inside a sub circuit
-    fn next_over(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn next_over(&mut self) -> Option<&DVector<Complex<f32>>> {
         let (before, _) = self.current_instruction();
         let before_depth = before.depth();
 
@@ -72,7 +72,7 @@ pub trait DebuggableSimulator {
     ///
     /// `prev` should be implemented if `fn double_ended(&self)`
     /// returns true
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn prev(&mut self) -> Option<&DVector<Complex<f32>>> {
         todo!()
     }
     fn double_ended(&self) -> bool;
@@ -81,9 +81,9 @@ pub trait DebuggableSimulator {
     /// If returned value is (pc, None)
     /// then we have reached the end of (sub) circuit
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>);
-    fn current_state(&self) -> &DVector<Complex<f64>>;
+    fn current_state(&self) -> &DVector<Complex<f32>>;
 
-    fn cont(&mut self) -> &DVector<Complex<f64>>
+    fn cont(&mut self) -> &DVector<Complex<f32>>
     where
         Self: StoredCircuitSimulator,
     {

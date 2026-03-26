@@ -1,6 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
-    f64::consts::PI,
+    f32::consts::PI,
 };
 pub mod breakpoint;
 pub mod pc;
@@ -241,7 +241,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    pub fn u(mut self, theta: f64, phi: f64, lambda: f64, target: usize) -> Self {
+    pub fn u(mut self, theta: f32, phi: f32, lambda: f32, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, phi, lambda), &[], &[target])
                 .unwrap()
@@ -252,9 +252,9 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
     pub fn cu(
         mut self,
-        theta: f64,
-        phi: f64,
-        lambda: f64,
+        theta: f32,
+        phi: f32,
+        lambda: f32,
         controls: &[usize],
         target: usize,
     ) -> Self {
@@ -280,7 +280,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    pub fn rx(mut self, theta: f64, target: usize) -> Self {
+    pub fn rx(mut self, theta: f32, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), &[], &[target])
                 .unwrap()
@@ -289,7 +289,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    pub fn crx(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+    pub fn crx(mut self, theta: f32, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), controls, &[target])
                 .unwrap()
@@ -298,7 +298,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    pub fn ry(mut self, theta: f64, target: usize) -> Self {
+    pub fn ry(mut self, theta: f32, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, 0.0, 0.0), &[], &[target])
                 .unwrap()
@@ -307,7 +307,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    pub fn cry(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+    pub fn cry(mut self, theta: f32, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, 0.0, 0.0), controls, &[target])
                 .unwrap()
@@ -316,7 +316,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    pub fn rz(mut self, theta: f64, target: usize) -> Self {
+    pub fn rz(mut self, theta: f32, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(0.0, 0.0, theta), &[], &[target])
                 .unwrap()
@@ -325,7 +325,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    pub fn crz(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+    pub fn crz(mut self, theta: f32, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(0.0, 0.0, theta), controls, &[target])
                 .unwrap()
@@ -350,7 +350,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
-                let theta = PI / (1 << (k - 1)) as f64;
+                let theta = PI / (1 << (k - 1)) as f32;
                 self = self.crz(theta, &[targets[control as usize]], targets[i]);
                 control -= 1;
             }
@@ -738,8 +738,8 @@ mod tests {
             .cswap(&[0], 1, 2);
         let circ_and_inv = concat_circuits(&circ, &circ.inverse());
         let dim = 1 << 5;
-        let id = DMatrix::<Complex<f64>>::identity(dim, dim);
-        let mut res: DMatrix<Complex<f64>> = id.clone();
+        let id = DMatrix::<Complex<f32>>::identity(dim, dim);
+        let mut res: DMatrix<Complex<f32>> = id.clone();
         for instruction in circ_and_inv.instructions() {
             if let PureInstruction::Gate(gate) = instruction {
                 res = expand_matrix_from_gate(gate, 5) * res;

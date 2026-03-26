@@ -17,7 +17,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct SVExecutor {
-    state_vector: DVector<Complex<f64>>,
+    state_vector: DVector<Complex<f32>>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile<Value>,
@@ -26,7 +26,7 @@ pub struct SVExecutor {
 impl SVExecutor {
     fn new(circuit: Circuit<HybridCircuit>) -> Self {
         let size = 1 << circuit.n_qubits();
-        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
+        let mut init_state_vector: DVector<Complex<f32>> = DVector::from_element(size, cart![0.0]);
         init_state_vector[0] = cart![1.0];
 
         let registers = RegisterFile::from(circuit.registers());
@@ -39,7 +39,7 @@ impl SVExecutor {
     }
 
     /// Step forward one instruction in the circuit
-    pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
+    pub fn step(&mut self) -> Option<&DVector<Complex<f32>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
             if self.pc_mut().ret() {
@@ -73,7 +73,7 @@ impl SVExecutor {
     }
 
     /// Get current state of the quantum system
-    pub fn state_vector(&self) -> &DVector<Complex<f64>> {
+    pub fn state_vector(&self) -> &DVector<Complex<f32>> {
         &self.state_vector
     }
 
@@ -128,7 +128,7 @@ impl SVExecutor {
         let state = self.state_vector.as_mut_slice();
         let a = state[base_index];
         let b = state[flipped_index];
-        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
+        let inv_sqrt2 = 1.0 / std::f32::consts::SQRT_2;
 
         state[base_index] = (a + b) * inv_sqrt2;
         state[flipped_index] = (a - b) * inv_sqrt2;
@@ -155,7 +155,7 @@ impl SVExecutor {
     }
 
     #[inline(always)]
-    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f64>>, target: QBits) {
+    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f32>>, target: QBits) {
         let flipped_index = base_index | target.get_bitstring();
         let a = self.state_vector[base_index];
         let b = self.state_vector[flipped_index];
@@ -222,7 +222,7 @@ impl SVExecutor {
             .state_vector
             .iter()
             .map(|x| x.norm_sqr())
-            .sum::<f64>()
+            .sum::<f32>()
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
 
@@ -324,7 +324,7 @@ impl RunnableSimulator for SVSimulator {
             .get_collapsed_state()
     }
 
-    fn final_state(&self) -> DVector<Complex<f64>> {
+    fn final_state(&self) -> DVector<Complex<f32>> {
         SVExecutor::new(self.circuit.clone())
             .step_all()
             .state_vector()
@@ -354,7 +354,7 @@ where
 }
 
 impl DebuggableSimulator for SVSimulatorDebugger {
-    fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
         self.executor.step()
     }
 
@@ -363,11 +363,11 @@ impl DebuggableSimulator for SVSimulatorDebugger {
         (pc, self.executor.circuit.instruction(pc))
     }
 
-    fn current_state(&self) -> &DVector<Complex<f64>> {
+    fn current_state(&self) -> &DVector<Complex<f32>> {
         &self.executor.state_vector
     }
 
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn prev(&mut self) -> Option<&DVector<Complex<f32>>> {
         None
     }
 
@@ -399,7 +399,7 @@ pub enum SVError {}
 
 #[cfg(test)]
 mod tests {
-    use std::f64::consts::FRAC_1_SQRT_2;
+    use std::f32::consts::FRAC_1_SQRT_2;
 
     use nalgebra::dvector;
 

@@ -40,7 +40,7 @@ fn circuit(func: &[usize]) -> Circuit<HybridCircuit> {
         circuit = circuit.h(i);
     }
 
-    let iterations = (std::f64::consts::PI / 4.0 * ((n as f64).sqrt())).floor() as usize;
+    let iterations = (std::f32::consts::PI / 4.0 * ((n as f32).sqrt())).floor() as usize;
 
     for _i in 0..iterations {
         // Oracle
