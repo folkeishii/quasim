@@ -141,13 +141,16 @@ mod anf_conversion_tests {
 
     #[test]
     fn is_prime() {
-        fn is_prime(x: usize) -> bool {
-            for i in 2..=(x as f64).sqrt() as usize {
-                if x % i == 0 {
+        fn is_prime(n: usize) -> bool {
+            if n <= 1 {
+                return false;
+            }
+            for i in 2..=((n as f64).sqrt() as usize) {
+                if n % i == 0 {
                     return false;
                 }
             }
-            return true;
+            true
         }
 
         test_isomorphism("is_prime", &is_prime);
