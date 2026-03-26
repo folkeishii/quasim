@@ -1,8 +1,8 @@
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
-    expr_dsl::Value,
-    ext::{expand_matrix_from_gate, measure},
+    expr_dsl::{Expr, Value},
+    ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv},
     instruction::Instruction,
     register_file::RegisterFile,
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
@@ -86,14 +86,11 @@ impl DebuggableSimulator for DebugSimulator {
                 self.current_state = mat * self.current_state.clone();
                 self.pc_mut().increment();
             }
-            Instruction::MeasureBit(qbit, _) => {
-                self.current_state = measure(qbit, &self.current_state, self.circuit.n_qubits());
-                self.pc_mut().increment();
-            }
-            Instruction::MeasureAll(_) => todo!(),
-            Instruction::Jump(_) => todo!(),
-            Instruction::JumpIf(_, _) => todo!(),
-            Instruction::Assign(_, _) => todo!(),
+            Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(qbit, &reg, bit_pos),
+            Instruction::MeasureAll(reg) => self.measure_all(&reg),
+            Instruction::Jump(pc) => self.jump(pc),
+            Instruction::JumpIf(expr, pc) => self.jump_if(&expr, pc),
+            Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
             Instruction::Call(name, lsq) => self.pc_mut().jump_and_link(name, lsq),
         }
         Some(&self.current_state)
@@ -153,6 +150,59 @@ impl DebuggableSimulator for DebugSimulator {
 }
 
 impl DebugSimulator {
+    fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
+        let (measurement, new_state) =
+            measure_and_observe_sv(target, &self.current_state, self.n_qubits());
+
+        let shifted_measurement = measurement << bit_pos;
+
+        if let Value::Int(val) = self.registers[reg] {
+            let val_cleared = (val as usize) & !shifted_measurement;
+            self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
+        } else {
+            self.registers[reg] = Value::Int(shifted_measurement as i32)
+        }
+
+        self.current_state = new_state;
+
+        self.pc_mut().increment();
+    }
+
+    fn measure_all(&mut self, reg: &str) {
+        let measurement = collapse(self.current_state.as_slice());
+
+        self.registers[reg] = Value::Int(measurement as i32);
+
+        // Collapse whole state vector
+        self.current_state.fill(cart!(0.0));
+        self.current_state[measurement] = cart!(1.0);
+
+        self.pc_mut().increment();
+    }
+
+    fn jump(&mut self, label_pc: usize) {
+        self.pc_mut().jump(label_pc);
+    }
+
+    fn jump_if(&mut self, expr: &Expr, label_pc: usize) {
+        match expr.eval(&self.registers) {
+            Ok(Value::Bool(true)) => self.jump(label_pc),
+            Ok(Value::Bool(false)) => self.pc_mut().increment(),
+            Err(err) => panic!("{}", err),
+            _ => panic!(
+                "Expression was expected to evaluate to boolean type but got something else."
+            ),
+        }
+    }
+
+    fn assign(&mut self, expr: &Expr, reg: &str) {
+        match expr.eval(&self.registers) {
+            Ok(value) => self.registers[reg] = value,
+            Err(err) => panic!("{}", err),
+        }
+        self.pc_mut().increment();
+    }
+
     fn pc(&self) -> &CircuitPc {
         &self.pc
     }
@@ -184,12 +234,13 @@ mod tests {
     use crate::common_test;
     use crate::ext::{
         collapse, equal_to_matrix_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
-        measure,
+        measure_and_observe_sv,
     };
     use crate::{
         cart,
         circuit::Circuit,
         debug_simulator::DebugSimulator,
+        expr_dsl::{Value, expr_helpers::r},
         gate::{Gate, GateType},
         simulator::{BuildSimulator, DebuggableSimulator},
     };
@@ -232,7 +283,7 @@ mod tests {
             cart!(0.0), // |110>
             cart!(0.5), // |111>
         ];
-        res = measure(0, &res, 3);
+        (_, res) = measure_and_observe_sv(0, &res, 3);
         assert!(
             equal_to_matrix_c(&res, &plus_plus_measure0, 0.001)
                 || equal_to_matrix_c(&res, &plus_plus_measure1, 0.001)
@@ -277,14 +328,14 @@ mod tests {
             cart!(0.0),           // |110>
             cart!(FRAC_1_SQRT_2), // |111>
         ];
-        res = measure(1, &res, 3);
+        (_, res) = measure_and_observe_sv(1, &res, 3);
         assert!(
             equal_to_matrix_c(&res, &plus_measure0_measure0, 0.001)
                 || equal_to_matrix_c(&res, &plus_measure0_measure1, 0.001)
                 || equal_to_matrix_c(&res, &plus_measure1_measure0, 0.001)
                 || equal_to_matrix_c(&res, &plus_measure1_measure1, 0.001)
         );
-        res = measure(2, &res, 3);
+        (_, res) = measure_and_observe_sv(2, &res, 3);
         // Now collapsed to any 3-bit-string.
         assert!(state_is_collapsed(res));
     }
@@ -341,14 +392,14 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
         ];
-        res = measure(0, &res, 3);
+        (_, res) = measure_and_observe_sv(0, &res, 3);
 
         assert!(
             equal_to_matrix_c(&res, &colapse_00, 0.001)
                 || equal_to_matrix_c(&res, &colapse_11, 0.001)
         );
 
-        res = measure(1, &res, 3);
+        (_, res) = measure_and_observe_sv(1, &res, 3);
         assert!(
             equal_to_matrix_c(&res, &colapse_00, 0.001)
                 || equal_to_matrix_c(&res, &colapse_11, 0.001)
@@ -587,6 +638,49 @@ mod tests {
             Some(_) => panic!("Does not err correctly when stepping forwards."),
             None => println!("Errs correctly when stepping backwards"),
         }
+    }
+
+    fn hybrid_test() {
+        let circuit = Circuit::new(4)
+            .new_reg("r0")
+            .new_reg("r1")
+            .new_reg("r2")
+            .new_reg("r3")
+            // Init random state
+            .h(0)
+            .h(1)
+            .h(2)
+            .h(3)
+            .measure_bit(0, ("r0", 0))
+            .measure_bit(1, ("r1", 0))
+            .measure_bit(2, ("r2", 0))
+            .measure_bit(3, ("r3", 0))
+            .apply_if(r("r0").eq(1))
+            .x(0)
+            .apply_if(r("r1").eq(1))
+            .x(1)
+            .apply_if(r("r2").eq(1))
+            .x(2)
+            .apply_if(r("r3").eq(1))
+            .x(3);
+
+        let mut sim = DebugSimulator::build(circuit).unwrap();
+        while let Some(_) = sim.next() {}
+
+        let mut expected = DVector::<Complex<f64>>::zeros(16);
+        expected[0] = cart!(1.0);
+
+        assert!(equal_to_matrix_c(&sim.current_state, &expected, 0.001));
+    }
+
+    #[test]
+    fn register_test() {
+        let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, ("r0", 0));
+
+        let mut sim = DebugSimulator::build(circuit).unwrap();
+        while let Some(_) = sim.next() {}
+
+        assert_eq!(sim.registers["r0"], Value::Int(1));
     }
 
     #[test]
