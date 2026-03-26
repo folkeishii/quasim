@@ -337,33 +337,31 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    /// Appends a circuit implementing the quantum Fourier transform.
-    /// Targets are normally specified in order of least significance,
-    /// for example [0,1,2,3,4].
-    pub fn qft(mut self, targets: &[usize]) -> Self {
+    /// Creates a circuit implementing the quantum Fourier transform,
+    /// with qubits in order of least significance.
+    pub fn qft(n_qubits: usize) -> Circuit {
         /* This implementation is taken from Mike & Ike chapter 5.1.
          * Note that, due to our chosen convention, the circuit will
          * be the same as figure 5.1 but "upside down".
          * */
+        let mut qft = Circuit::new(n_qubits);
 
-        let n = targets.len();
-
-        for i in (0..n).rev() {
-            self = self.h(targets[i]);
+        for i in (0..n_qubits).rev() {
+            qft = qft.h(i);
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
                 let theta = PI / (1 << (k - 1)) as f64;
-                self = self.crz(theta, &[targets[control as usize]], targets[i]);
+                qft = qft.crz(theta, &[control as usize], i);
                 control -= 1;
             }
         }
 
         // Reverse order of qubits. (not shown in figure 5.1)
-        for i in 0..(n >> 1) {
-            self = self.swap(targets[i], targets[n - 1 - i]);
+        for i in 0..(n_qubits >> 1) {
+            qft = qft.swap(i, n_qubits - 1 - i);
         }
-        self
+        qft
     }
 
     // Breakpoint
@@ -736,7 +734,7 @@ pub trait CircuitBehaviour {
 mod tests {
     use crate::{
         cart,
-        circuit::Circuit,
+        circuit::{Circuit, PureCircuit},
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{BuildSimulator, RunnableSimulator},
@@ -778,8 +776,12 @@ mod tests {
     }
     #[test]
     fn qft_test() {
-        let sim =
-            SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).qft(&[0, 1, 2, 3])).unwrap();
+        let sim = SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
+            "QFT",
+            Circuit::<PureCircuit>::qft(4),
+            0,
+        ))
+        .unwrap();
 
         let expected_vec = dvector![
             cart!(0.0, 0.35355),  // |0000>
