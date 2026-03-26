@@ -261,50 +261,49 @@ fn batched_gate2_kernel(
     size: u32,
     target_mask: u32,
 ) {
-    let target_mask = target_mask as usize;
     let block_size: usize = 1usize << (target_mask.count_ones() as usize);
     let state_vector_len: usize = state_vector.len() / 2;
 
     // One kernel is launcher for each block, so
     // num units = statevector length / block size
     let num_units: usize = state_vector_len / block_size;
-    let mut block_indices: Array<usize> = Array::new(GPU_MAX_BLOCK_SIZE);
-    for i in 0..block_size {
-        block_indices[i] = block_index(ABSOLUTE_POS, target_mask, i);
-    }
-
     if ABSOLUTE_POS < num_units {
+        let mut block_indices: Array<usize> = Array::new(GPU_MAX_BLOCK_SIZE);
+        for i in 0..block_size {
+            block_indices[i] = block_index(ABSOLUTE_POS, target_mask as usize, i);
+        }
+
         for i in 0..size {
+            let data_index: usize = (start_index + i) as usize;
+            let target: usize = target_data[data_index] as usize;
+            let control: usize = control_data[data_index] as usize;
+            let gate_base = data_index * 8;
+
+            let u00 = ComplexF64 {
+                re: gate_data[gate_base],
+                im: gate_data[gate_base + 1],
+            };
+            let u01 = ComplexF64 {
+                re: gate_data[gate_base + 2],
+                im: gate_data[gate_base + 3],
+            };
+            let u10 = ComplexF64 {
+                re: gate_data[gate_base + 4],
+                im: gate_data[gate_base + 5],
+            };
+            let u11 = ComplexF64 {
+                re: gate_data[gate_base + 6],
+                im: gate_data[gate_base + 7],
+            };
+
             for local_index in 0..block_size {
                 let block_index = block_indices[local_index];
-
-                let data_index: usize = (start_index + i) as usize;
-                let target: usize = target_data[data_index] as usize;
-                let control: usize = control_data[data_index] as usize;
-                let gate_base = data_index * 8;
                 
-                apply_unitary2(state_vector, block_index, target, control, gate_data, gate_base);
+                apply_unitary2(state_vector, block_index, target, control, u00, u01, u10, u11);
             }
         }
 
     }
-}
-
-#[cube(launch)]
-fn single_gate2_kernel(
-    state_vector: &mut Array<f64>,
-    target: u32,
-    control: u32,
-    gate_data: &Array<f64>,
-) {
-    apply_unitary2(
-        state_vector,
-        ABSOLUTE_POS,
-        target as usize,
-        control as usize,
-        gate_data,
-        0,
-    );
 }
 
 #[cube]
@@ -313,8 +312,10 @@ fn apply_unitary2(
     basis_state: usize,
     target: usize,
     control: usize,
-    gate_data: &Array<f64>,
-    gate_base: usize,
+    u00: ComplexF64,
+    u01: ComplexF64,
+    u10: ComplexF64,
+    u11: ComplexF64,
 ) {
     // ABSOLUTE_POS is basis state
     let basis0: usize = basis_state * 2;
@@ -324,23 +325,6 @@ fn apply_unitary2(
     let controls_active: bool = (basis_state & control) == control;
 
     if is_block_base && controls_active {
-        let u00 = ComplexF64 {
-            re: gate_data[gate_base],
-            im: gate_data[gate_base + 1],
-        };
-        let u01 = ComplexF64 {
-            re: gate_data[gate_base + 2],
-            im: gate_data[gate_base + 3],
-        };
-        let u10 = ComplexF64 {
-            re: gate_data[gate_base + 4],
-            im: gate_data[gate_base + 5],
-        };
-        let u11 = ComplexF64 {
-            re: gate_data[gate_base + 6],
-            im: gate_data[gate_base + 7],
-        };
-
         let amp0 = ComplexF64 {
             re: state_vector[basis0],
             im: state_vector[basis0 + 1],
