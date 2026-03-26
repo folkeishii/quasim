@@ -11,6 +11,11 @@ pub fn fn_to_truth_table(f: &dyn Fn(usize) -> bool, n: usize) -> Vec<bool> {
 
 /// In-place transformation of the truth table to get the ANF coefficients.
 pub fn truth_table_to_anf_coefs(mut truth_table: Vec<bool>) -> Vec<bool> {
+    assert!(
+        truth_table.len().is_power_of_two(),
+        "Truth table length must be a power of 2"
+    );
+
     let size = truth_table.len();
     let mut step = 1;
 
