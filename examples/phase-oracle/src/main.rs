@@ -24,7 +24,7 @@ fn run_one_quantum_oracle(input: usize, f: impl Fn(usize) -> bool) -> usize {
     let input_qubits: Vec<usize> = (0..N).collect();
     let circuit = circuit_in_start_state(N + 1, input)
         .h(N)
-        .phase_oracle(input_qubits, N, f)
+        .phase_oracle(&input_qubits, N, f)
         .h(N);
     let sim = match SVSimulator::build(circuit) {
         Ok(sim) => sim,
