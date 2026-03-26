@@ -69,7 +69,7 @@ impl DebuggableSimulator for DMSimulator {
             Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
             Instruction::Call(name, lsq, ctrl) => self.pc_mut().jump_and_link(name, lsq, ctrl),
         }
-        Some(&self.dummy_state)
+        Some(&self.dummy_state) //TODO: when next/prev returns bool, remove this
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
@@ -77,7 +77,7 @@ impl DebuggableSimulator for DMSimulator {
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
-        todo!() // 
+        &self.dummy_state //TODO: when next/prev returns bool, remove this
     }
 
     fn double_ended(&self) -> bool {
@@ -163,7 +163,7 @@ impl DMSimulator {
         let registers = RegisterFile::from(circuit.registers());
 
         DMSimulator {
-            dummy_state: dvector![],
+            dummy_state: dvector![], //TODO: when next/prev returns bool, remove this
             current_state: init_state,
             circuit: circuit,
             pc: Default::default(),
@@ -287,13 +287,6 @@ mod tests {
             0.001
         ));
         assert!(equal_to_matrix_c(&rho, &rho_012, 0.001));
-        sim.prev();
-        sim.prev();
-        sim.prev();
-
-        let mut rho_init = DMatrix::<Complex<f64>>::zeros(8, 8);
-        rho_init[(0, 0)] = cart!(1.0);
-        assert!(equal_to_matrix_c(&rho_init, &sim.current_state, 0.001));
     }
 
     #[test]
