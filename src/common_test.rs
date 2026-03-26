@@ -5,8 +5,9 @@ use nalgebra::{Complex, DVector, dvector};
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit},
+    expr_dsl::{Value, expr_helpers::r},
     ext::equal_to_matrix_c,
-    simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
+    simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 
 pub fn double_sub<
@@ -145,4 +146,53 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
         correct[0] = cart!(1);
         assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
     }
+}
+
+pub fn hybrid_test<
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+>() {
+    let circuit = Circuit::new(4)
+        .new_reg("r0")
+        .new_reg("r1")
+        .new_reg("r2")
+        .new_reg("r3")
+        // Init random state
+        .h(0)
+        .h(1)
+        .h(2)
+        .h(3)
+        .measure_bit(0, ("r0", 0))
+        .measure_bit(1, ("r1", 0))
+        .measure_bit(2, ("r2", 0))
+        .measure_bit(3, ("r3", 0))
+        .apply_if(r("r0").eq(1))
+        .x(0)
+        .apply_if(r("r1").eq(1))
+        .x(1)
+        .apply_if(r("r2").eq(1))
+        .x(2)
+        .apply_if(r("r3").eq(1))
+        .x(3);
+
+    let mut sim = D::build(circuit).unwrap();
+    while let Some(_) = sim.next() {}
+
+    let mut expected = DVector::<Complex<f64>>::zeros(16);
+    expected[0] = cart!(1.0);
+
+    assert!(equal_to_matrix_c(&sim.current_state(), &expected, 0.001));
+}
+
+pub fn register_test<
+    D: BuildSimulator<HybridCircuit>
+        + DebuggableSimulator
+        + StoredCircuitSimulator
+        + HybridSimulator<Value>,
+>() {
+    let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, ("r0", 0));
+
+    let mut sim = D::build(circuit).unwrap();
+    while let Some(_) = sim.next() {}
+
+    assert_eq!(sim.registers()["r0"], Value::Int(1));
 }
