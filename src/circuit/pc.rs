@@ -1,9 +1,12 @@
 use std::fmt::Display;
 
+use crate::gate::QBits;
+
 #[derive(Debug, Clone, Default, Hash)]
 pub struct CircuitPc {
     pc: usize,
     lsq: usize,
+    ctrl: QBits,
     sub: Option<(String, Box<CircuitPc>)>,
 }
 impl CircuitPc {
@@ -11,12 +14,27 @@ impl CircuitPc {
         CircuitPc {
             pc,
             lsq: 0,
+            ctrl: 0.into(),
             sub: None,
         }
     }
 
     pub fn with_lsq(pc: usize, lsq: usize) -> Self {
-        CircuitPc { pc, lsq, sub: None }
+        CircuitPc {
+            pc,
+            lsq,
+            ctrl: 0.into(),
+            sub: None,
+        }
+    }
+
+    pub fn with_ctrl(pc: usize, lsq: usize, ctrl: QBits) -> Self {
+        CircuitPc {
+            pc,
+            lsq,
+            ctrl,
+            sub: None,
+        }
     }
 
     pub fn increment(&mut self) {
@@ -33,11 +51,18 @@ impl CircuitPc {
         *self.pc_mut() = pc
     }
 
-    pub fn jump_and_link(&mut self, name: String, lsq: usize) {
+    pub fn jump_and_link(&mut self, name: String, lsq: usize, ctrl: QBits) {
         if let Some((_, sub_pc)) = &mut self.sub {
-            sub_pc.jump_and_link(name, lsq);
+            sub_pc.jump_and_link(name, lsq, ctrl);
         } else {
-            self.sub = Some((name, Box::from(CircuitPc::with_lsq(0, self.lsq + lsq))));
+            self.sub = Some((
+                name,
+                Box::from(CircuitPc::with_ctrl(
+                    0,
+                    self.lsq + lsq,
+                    self.ctrl | ctrl << self.lsq,
+                )),
+            ));
         }
     }
 
@@ -95,6 +120,14 @@ impl CircuitPc {
             pc.lsq()
         } else {
             self.lsq
+        }
+    }
+
+    pub fn ctrl(&self) -> QBits {
+        if let Some((_, pc)) = self.next_sub_pc() {
+            pc.ctrl()
+        } else {
+            self.ctrl
         }
     }
 

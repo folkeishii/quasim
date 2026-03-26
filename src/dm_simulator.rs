@@ -81,7 +81,7 @@ impl DebuggableSimulator for DMSimulator {
     }
 
     fn double_ended(&self) -> bool {
-       false 
+        false
     }
 }
 

@@ -637,7 +637,7 @@ impl Column {
             Instruction::Jump(_) => todo!(),
             Instruction::JumpIf(_, _) => todo!(),
             Instruction::Assign(_, _) => todo!(),
-            Instruction::Call(sub_circuit_name, lsq) => {
+            Instruction::Call(sub_circuit_name, lsq, ctrl) => {
                 let lsq = *lsq;
                 let (pc, _) = simulator.current_instruction();
 
@@ -662,7 +662,7 @@ impl Column {
                     nqubits,
                     String::from(sub_circuit_name),
                     targets.into(),
-                    0.into(),
+                    *ctrl,
                 )
             }
         }
@@ -2355,17 +2355,38 @@ mod tests {
     #[test]
     #[allow(unreachable_code)]
     fn sub_circuit() {
-        //Keep for sub circuit
         return;
         let w = &mut stdout();
 
-        // let sub = Circuit::new(5).breakpoint().cx(&[0], 2).y(1).swap(2, 4);
+        let sub = Circuit::new(5).breakpoint().cx(&[0], 2).y(1).swap(2, 4);
 
         let circuit = Circuit::new(7)
-            // .new_sub_circuit("Sub", sub)
+            .new_sub_circuit("Sub", sub)
             .h(2)
             .z(5)
-            // .call("Sub", 1)
+            .call("Sub", 1)
+            .cswap(&[2], 3, 4);
+        let mut sim = DebugSimulator::build(circuit).unwrap();
+        show_circuit(w, &sim).unwrap();
+        sim.cont();
+        show_circuit(w, &sim).unwrap();
+        sim.cont();
+        show_circuit(w, &sim).unwrap();
+    }
+
+    #[test]
+    #[allow(unreachable_code)]
+    fn controlled_sub_circuit() {
+        return;
+        let w = &mut stdout();
+
+        let sub = Circuit::new(5).breakpoint().cx(&[0], 2).y(1).swap(2, 4);
+
+        let circuit = Circuit::new(7)
+            .new_sub_circuit("Sub", sub)
+            .h(2)
+            .z(5)
+            .ccall("Sub", 2, &[0])
             .cswap(&[2], 3, 4);
         let mut sim = DebugSimulator::build(circuit).unwrap();
         show_circuit(w, &sim).unwrap();
