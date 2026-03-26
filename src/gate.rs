@@ -1,13 +1,13 @@
 use std::{
     f64::consts::{FRAC_1_SQRT_2, PI},
-    ops::{BitAnd, Shl, Shr, ShrAssign},
+    ops::{BitAnd, BitOr, BitOrAssign, Shl, Shr, ShrAssign},
 };
 
 use nalgebra::Complex;
 
 use crate::cart;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Hash)]
 pub struct QBits(usize);
 
 impl QBits {
@@ -74,6 +74,18 @@ impl BitAnd<usize> for QBits {
 
     fn bitand(self, rhs: usize) -> Self::Output {
         Self(self.0 & rhs)
+    }
+}
+impl BitOr for QBits {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        QBits(self.0 | rhs.0)
+    }
+}
+impl BitOrAssign for QBits {
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.0 |= rhs.0
     }
 }
 
@@ -196,6 +208,10 @@ impl Gate {
             &self.targets.get_indices(),
         )
         .unwrap()
+    }
+
+    pub(crate) fn control_mut(&mut self) -> &mut QBits {
+        &mut self.controls
     }
 }
 
