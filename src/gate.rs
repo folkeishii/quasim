@@ -1,6 +1,6 @@
 use std::{
     f64::consts::{FRAC_1_SQRT_2, PI},
-    ops::{BitAnd, BitOr, BitOrAssign, Shl, Shr, ShrAssign},
+    ops::{BitAnd, BitOr, BitOrAssign, Deref, Shl, Shr, ShrAssign},
 };
 
 use nalgebra::Complex;
@@ -43,6 +43,10 @@ impl QBits {
         }
 
         vec
+    }
+
+    pub const fn inner(&self) -> usize {
+        self.0
     }
 }
 impl From<usize> for QBits {
