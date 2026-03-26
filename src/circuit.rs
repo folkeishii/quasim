@@ -123,20 +123,10 @@ impl Circuit {
 
     /// ## Returns
     /// Returns an iterator that iterates over all instructions and hides the call instructions
-    pub fn as_flat(
-        &self,
-        start: CircuitPc,
-        end: Option<CircuitPc>,
-    ) -> FlatCircuit<'_, PureCircuit> {
-        let end = end.unwrap_or_else(|| {
-            let mut t = start.clone();
-            t.jump(self.instructions().len());
-            t
-        });
+    pub fn as_flat(&self) -> FlatCircuit<'_, PureCircuit> {
         FlatCircuit {
             circuit: self,
-            pc: start,
-            end,
+            pc: CircuitPc::new(0),
         }
     }
 }
@@ -164,20 +154,10 @@ impl Circuit<HybridCircuit> {
 
     /// ## Returns
     /// Returns an iterator that iterates over all instructions and hides the call instructions
-    pub fn as_flat(
-        &self,
-        start: CircuitPc,
-        end: Option<CircuitPc>,
-    ) -> FlatCircuit<'_, HybridCircuit> {
-        let end = end.unwrap_or_else(|| {
-            let mut t = start.clone();
-            t.jump(self.instructions().len());
-            t
-        });
+    pub fn as_flat(&self) -> FlatCircuit<'_, HybridCircuit> {
         FlatCircuit {
             circuit: self,
-            pc: start,
-            end,
+            pc: CircuitPc::new(0),
         }
     }
 }
@@ -744,18 +724,12 @@ pub trait CircuitBehaviour {
 pub struct FlatCircuit<'a, B: CircuitBehaviour> {
     circuit: &'a Circuit<B>,
     pc: CircuitPc,
-    /// Is part of the same sub circuit as pc
-    end: CircuitPc,
 }
 
 impl<'a> Iterator for FlatCircuit<'a, PureCircuit> {
     type Item = PureInstruction;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pc >= self.end {
-            return None;
-        }
-
         let inst = self.circuit.instruction(&self.pc);
         match inst {
             Some(PureInstruction::Call(name, lsq)) => {
@@ -785,10 +759,6 @@ impl<'a> Iterator for FlatCircuit<'a, HybridCircuit> {
     type Item = Instruction;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.pc >= self.end {
-            return None;
-        }
-
         let inst = self.circuit.instruction(&self.pc);
         match inst {
             Some(Instruction::Call(name, lsq)) => {
@@ -818,7 +788,7 @@ impl<'a> Iterator for FlatCircuit<'a, HybridCircuit> {
 mod tests {
     use crate::{
         cart,
-        circuit::{Circuit, pc::CircuitPc},
+        circuit::Circuit,
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{BuildSimulator, RunnableSimulator},
@@ -945,24 +915,10 @@ mod tests {
             .h(2)
             .instructions;
 
-        let mut as_flat1 = circuit.as_flat(CircuitPc::new(0), None);
+        let mut as_flat1 = circuit.as_flat();
         for i in 0..correct.len() {
             assert_eq!(as_flat1.next(), Some(correct[i].clone()))
         }
         assert!(as_flat1.next().is_none());
-
-        let mut as_flat2 = circuit.as_flat(CircuitPc::new(2), None);
-        for i in 7..correct.len() {
-            assert_eq!(as_flat2.next(), Some(correct[i].clone()))
-        }
-        assert!(as_flat2.next().is_none());
-
-        let mut end = CircuitPc::new(0);
-        end.jump_with_offset(2);
-        let mut as_flat3 = circuit.as_flat(CircuitPc::new(0), Some(end));
-        for i in 0..7 {
-            assert_eq!(as_flat3.next(), Some(correct[i].clone()))
-        }
-        assert!(as_flat3.next().is_none());
     }
 }

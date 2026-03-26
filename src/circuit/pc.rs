@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, fmt::Display};
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Default, Hash, Eq)]
 pub struct CircuitPc {
@@ -136,41 +136,6 @@ impl PartialEq for CircuitPc {
             && self.sub.as_ref().zip(other.sub.as_ref()).map(|((sname, ssub),(oname, osub))| {
                 sname == oname && ssub.eq(osub)
             }).unwrap_or(true)
-    }
-}
-
-impl PartialOrd for CircuitPc {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        // Cannot order pcs who don't share call stack
-        if self.lsq != other.lsq {
-            return None;
-        }
-
-        // Only check subs if top level is equal
-        match self.pc.cmp(&other.pc) {
-            Ordering::Equal => (),
-            ord => return Some(ord),
-        }
-
-        match (self.sub.as_ref(), other.sub.as_ref()) {
-            (None, None) => return Some(Ordering::Equal),
-
-            // other is deeper in the program, i.e. self < other
-            (None, Some(_)) => Some(Ordering::Less),
-
-            // self is deeper in the program, i.e. self > other
-            (Some(_), None) => Some(Ordering::Greater),
-
-            // Both go deeper: Recursion
-            (Some((sname, ssub)), Some((oname, osub))) => {
-                // Cannot order pcs who don't share call stack
-                if sname != oname {
-                    None
-                } else {
-                    ssub.partial_cmp(osub)
-                }
-            }
-        }
     }
 }
 
