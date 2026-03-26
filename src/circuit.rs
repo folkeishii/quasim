@@ -366,6 +366,16 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
+    pub fn bubble(mut self, target: usize) -> Self {
+        let mut lower = target;
+        while lower > 0 {
+            let upper = lower - 1;
+            self = self.swap(lower, upper);
+            lower -= 1;
+        }
+        self
+    }
+
     // Breakpoint
 
     pub fn breakpoint(mut self) -> Self {
@@ -739,8 +749,8 @@ mod tests {
         circuit::Circuit,
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
-        simulator::{BuildSimulator, RunnableSimulator},
-        sv_simulator::SVSimulator,
+        simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator},
+        sv_simulator::{SVSimulator, SVSimulatorDebugger},
     };
     use nalgebra::{Complex, DMatrix, dvector};
     fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
@@ -812,5 +822,34 @@ mod tests {
 
         assert!(!circuit.has_unresolved_labels());
         assert_eq!(circuit.instructions()[0], Instruction::Jump(2));
+    }
+
+    #[test]
+    fn bubble_test() {
+        let bubble_circ = Circuit::new(5).bubble(3);
+        let insert_circ = bubble_circ.inverse();
+        let circuit = Circuit::new(5)
+            .x(0)
+            .y(1)
+            .z(2)
+            .h(3)
+            .s(4)
+            .breakpoint()
+            .call_new("bubble", bubble_circ, 0)
+            .breakpoint()
+            .call_new("insert", insert_circ, 0);
+        let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
+        let circuit_ref = Circuit::new(5).h(0).x(1).y(2).z(3).s(4);
+        let sim_ref = SVSimulator::build(circuit_ref).unwrap();
+        sim.cont();
+        let init_state = sim.current_state().clone();
+        sim.cont();
+        assert!(equal_to_matrix_c(
+            &sim_ref.final_state(),
+            &sim.current_state(),
+            0.001
+        ));
+        sim.cont();
+        assert!(equal_to_matrix_c(&init_state, &sim.current_state(), 0.001))
     }
 }
