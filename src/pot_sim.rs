@@ -1,4 +1,4 @@
-use std::{ops::Index, os::macos::raw::stat};
+use std::{ops::Index};
 
 use nalgebra::Complex;
 
@@ -31,6 +31,13 @@ impl QString {
         match self {
             QString::Branch(qbranch) => qbranch.set(index, val),
             QString::State(qstate) => qstate.set(index, val),
+        }
+    }
+
+    pub fn height(&self) -> usize {
+        match self {
+            QString::Branch(qbranch) => qbranch.height,
+            QString::State(_) => 1,
         }
     }
 
