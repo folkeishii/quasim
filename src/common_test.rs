@@ -196,3 +196,44 @@ pub fn register_test<
 
     assert_eq!(sim.registers()["r0"], Value::Int(1));
 }
+pub fn deep_ctrl_sub<
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+>() {
+    // Keep for sub circuits
+    const LEVELS: usize = 5;
+    let subs1 = Circuit::new(1).x(0).h(0);
+    let subs2 = Circuit::new(2).x(0).h(0).ccall_new("sub 1", subs1, 1, &[0]);
+    let subs3 = Circuit::new(3).x(0).h(0).ccall_new("sub 2", subs2, 1, &[0]);
+    let subs4 = Circuit::new(4).x(0).h(0).ccall_new("sub 3", subs3, 1, &[0]);
+
+    let circuit = Circuit::new(LEVELS).h(0).ccall_new("sub 4", subs4, 1, &[0]);
+    let mut sim = D::build(circuit.into()).expect("Could not build simulator");
+
+    let mut forward_steps = 0;
+    while sim.next().is_some() {
+        forward_steps += 1;
+    }
+
+    let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
+    correct[0b00000] = cart!(FRAC_1_SQRT_2);
+    correct[0b00001] = cart!(0.5);
+    correct[0b00011] = cart!(-0.35355);
+    correct[0b00111] = cart!(0.25);
+    correct[0b01111] = cart!(-0.17678);
+    correct[0b11111] = cart!(0.17678);
+
+    println!("{}", sim.current_state());
+    assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
+
+    if sim.double_ended() {
+        let mut backward_steps = 0;
+        while sim.prev().is_some() {
+            backward_steps += 1;
+        }
+        assert_eq!(forward_steps, backward_steps);
+
+        let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
+        correct[0] = cart!(1);
+        assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
+    }
+}
