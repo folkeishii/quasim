@@ -4,7 +4,7 @@ use crate::{
     expr_dsl::{Expr, Value},
     ext::{
         collapse_matrix, eval_tensor_product, expand_matrix_from_gate, measure_and_observe_dm,
-        swap_matrix,
+        reduced_state, swap_matrix,
     },
     gate::Gate,
     instruction::Instruction,
@@ -192,12 +192,82 @@ impl DMSimulator {
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
-        todo!();
+        /* Idea:
+         *      - Once a qubit is measured and observed
+         *      it can not be entangled with any other
+         *      system.
+         *      --> Measurements "splits" the measured system.
+         *
+         *      ex: 3 qubits A,B,C that might be entangled, A measured to |0>
+         *
+         *                      p` == |0><0| * Tr_BC(p)
+         * */
+
+        let target_qsystem = self.find_system_of_qubit(target);
+        let mut qsys = self.qsystems[target_qsystem].clone();
+
+        // Translate global qubit indexing to the system's local indexing.
+        let local_target = qsys.to_local_index(target);
+        let local_n_qubits = qsys.qubits.len();
+        let local_non_targets: Vec<usize> =
+            (0..local_n_qubits).filter(|&i| i != local_target).collect();
+
+        let (measurement, post_measure_density) =
+            measure_and_observe_dm(local_target, &qsys.density, local_n_qubits);
+
+        // "Split" density matrix.
+        qsys.qubits.remove(local_target);
+        qsys.density = reduced_state(&post_measure_density, &local_non_targets, local_n_qubits);
+
+        self.qsystems[target_qsystem] = qsys;
+
+        let collapsed_density = if measurement == 0 {
+            dmatrix![cart!(1.0), cart!(0.0);
+                     cart!(0.0), cart!(0.0)] // |0><0|
+        } else {
+            dmatrix![cart!(0.0), cart!(0.0);
+                     cart!(0.0), cart!(1.0)] // |1><1|
+        };
+
+        self.qsystems.push(QSys {
+            density: collapsed_density,
+            qubits: vec![target],
+        });
+
+        // Write measurement to register.
+        let shifted_measurement = measurement << bit_pos;
+
+        if let Value::Int(val) = self.registers[reg] {
+            let val_cleared = (val as usize) & !shifted_measurement;
+            self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
+        } else {
+            self.registers[reg] = Value::Int(shifted_measurement as i32)
+        }
+
         self.pc_mut().increment();
     }
 
     fn measure_all(&mut self, reg: &str) {
-        todo!();
+        let measurement_bitstring = collapse_matrix(&self.density());
+
+        self.registers[reg] = Value::Int(measurement_bitstring as i32);
+
+        self.qsystems = vec![];
+
+        for qubit in 0..self.circuit.n_qubits() {
+            let collapsed_density = if (measurement_bitstring >> qubit) & 1 == 0 {
+                dmatrix![cart!(1.0), cart!(0.0);
+                         cart!(0.0), cart!(0.0)] // |0><0|
+            } else {
+                dmatrix![cart!(0.0), cart!(0.0);
+                         cart!(0.0), cart!(1.0)] // |1><1|
+            };
+            self.qsystems.push(QSys {
+                density: collapsed_density,
+                qubits: vec![qubit],
+            })
+        }
+
         self.pc_mut().increment();
     }
 
@@ -248,17 +318,17 @@ impl TryFrom<Circuit<HybridCircuit>> for DMSimulator {
         let circuit = value;
 
         // Check for mid-cicuit measurement
-        let mut encountered = false;
-        for inst in circuit.instructions() {
-            let is_measurement = matches!(inst, Instruction::MeasureBit(_, _))
-                || matches!(inst, Instruction::MeasureAll(_));
-            if is_measurement {
-                encountered = true;
-            } else if encountered {
-                // There was a gate between measurements
-                return Err(DMSimulatorError::MidCircuitMeasurement);
-            }
-        }
+        //let mut encountered = false;
+        //for inst in circuit.instructions() {
+        //    let is_measurement = matches!(inst, Instruction::MeasureBit(_, _))
+        //        || matches!(inst, Instruction::MeasureAll(_));
+        //    if is_measurement {
+        //        encountered = true;
+        //    } else if encountered {
+        //        // There was a gate between measurements
+        //        return Err(DMSimulatorError::MidCircuitMeasurement);
+        //    }
+        //}
 
         let sim = Self::init(circuit);
 
@@ -321,7 +391,7 @@ mod tests {
         cart,
         circuit::Circuit,
         dm_simulator::DMSimulator,
-        expr_dsl::{Value, expr_helpers::r},
+        expr_dsl::{Expr, Value, expr_helpers::r},
         simulator::DebuggableSimulator,
     };
     use nalgebra::{Complex, DMatrix, dmatrix};
@@ -346,6 +416,37 @@ mod tests {
     fn print_systems(sim: &DMSimulator) {
         for sys in sim.qsystems.clone() {
             println!("{}", sys);
+        }
+    }
+
+    #[test]
+    fn measure_all_test() {
+        for _ in 0..100 {
+            let mut sim = DMSimulator::init(
+                Circuit::new(5)
+                    .new_reg("a")
+                    .new_reg("^a")
+                    .h(0)
+                    .h(1)
+                    .h(2)
+                    .h(3)
+                    .measure("a")
+                    .x(0)
+                    .x(1)
+                    .x(2)
+                    .x(3)
+                    .measure("^a")
+                    .apply_if((r("a") + r("^a")).eq(0b1111))
+                    .x(4),
+            );
+            while let Some(_) = sim.next() {}
+            let q4 = reduced_state(&sim.density(), &[4], 5);
+            assert!(equal_to_matrix_c(
+                &q4,
+                &dmatrix![cart!(0.0), cart!(0.0);
+                      cart!(0.0), cart!(1.0)],
+                0.001
+            ));
         }
     }
 
