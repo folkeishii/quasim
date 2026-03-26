@@ -13,6 +13,7 @@ use crate::{
 };
 use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
 
+/// A system of potentially entangled qubits.
 #[derive(Debug, Clone)]
 pub struct QSys {
     density: DMatrix<Complex<f64>>,
@@ -26,6 +27,7 @@ impl std::fmt::Display for QSys {
 }
 
 impl QSys {
+    /// Concatinates qubit lists and "tensors" density matricies.
     fn add_system(&self, rhs: &QSys) -> QSys {
         let mut qubits = self.qubits.clone();
         qubits.extend(rhs.qubits.clone());
@@ -37,7 +39,7 @@ impl QSys {
 
     fn to_local_index(&self, global_index: usize) -> usize {
         let Some(local_index) = self.qubits.iter().position(|&q| q == global_index) else {
-            panic!("Wtf?")
+            panic!("Qubit is not member of system!")
         };
         local_index
     }
@@ -79,39 +81,31 @@ impl DMSimulator {
 
     fn find_system_of_qubit(&self, qubit: usize) -> usize {
         let Some(qsys_idx) = self.qsystems.iter().position(|s| s.qubits.contains(&qubit)) else {
-            panic!("Wtf?")
+            panic!("Qubit is not member of any system!")
         };
         qsys_idx
     }
 
     fn apply_gate(&mut self, gate: Gate) {
-        // Om > 1 qubit -> merge systems
-        // Annars, applya som vanligt
+        /* Overview:
+         *
+         *      - if gate acts on a single system,
+         *      then apply gate to that system only.
+         *
+         *      - if gate acts on multiple systems,
+         *      then combine those systems and then
+         *      apply gate to the total system.
+         *
+         * */
+
         let controls = gate.get_controls();
         let targets = gate.get_targets();
-        let arity = controls.len() + targets.len();
 
-        if arity == 1 {
-            //println!("APPLY: single qubit gate");
-            // Single qubit gate
-            let global_target = targets[0];
-            let qsys_idx = self.find_system_of_qubit(global_target);
-            let qsys = &self.qsystems[qsys_idx];
-            let local_target = qsys.to_local_index(global_target);
-            let local_gate = Gate::new(gate.get_type(), &[], &[local_target]).unwrap();
-            let n_qubits = qsys.qubits.len();
-            let mat = expand_matrix_from_gate(&local_gate, n_qubits);
-            let mat_adj = mat.adjoint();
-            let density = qsys.density.clone();
-            self.qsystems[qsys_idx].density = mat * density * mat_adj;
-            return;
-        }
-        // Multi qubit gate
-
-        //println!("APPLY: multi qubit gate");
+        // Qubits that gate acts on.
         let mut gate_qubits = controls.clone();
         gate_qubits.extend(&targets);
 
+        // Systems that gate acts on.
         let mut gate_qsystems = vec![];
         for qubit in gate_qubits {
             let qsys_idx = self.find_system_of_qubit(qubit);
@@ -120,44 +114,32 @@ impl DMSimulator {
             }
         }
 
-        if gate_qsystems.len() > 1 {
-            //println!("APPLY: multi system gate");
-            // Multi system gate
-            // -> Combine systems
-            ////
-            //for sys in gate_qsystems.clone() {
-            //    println!("SYS: {}", self.qsystems[sys]);
-            //}
-            ////
-            let mut tot_qsys = gate_qsystems
+        let mut qsys = self.qsystems[gate_qsystems[0]].clone();
+
+        let gate_acts_on_several_systems = gate_qsystems.len() > 1;
+
+        if gate_acts_on_several_systems {
+            // Combine all systems acted on.
+            qsys = gate_qsystems
                 .iter()
-                .map(|&qsys_idx| self.qsystems[qsys_idx].clone())
-                .fold(
-                    QSys {
-                        density: dmatrix![cart!(1.0)],
-                        qubits: vec![],
-                    },
-                    |acc, qsys| acc.add_system(&qsys),
-                );
-            //println!("SYS_TOT: {}", tot_qsys);
+                .skip(1)
+                .map(|&qs_idx| self.qsystems[qs_idx].clone())
+                .fold(qsys, |acc, qs| acc.add_system(&qs));
+        }
 
-            let local_targets: Vec<usize> = targets
-                .iter()
-                .map(|&t| tot_qsys.to_local_index(t))
-                .collect();
+        // Translate global qubit indexing to the system's local indexing.
+        let local_targets: Vec<usize> = targets.iter().map(|&t| qsys.to_local_index(t)).collect();
+        let local_controls: Vec<usize> = controls.iter().map(|&t| qsys.to_local_index(t)).collect();
+        let local_n_qubits = qsys.qubits.len();
+        let local_gate = Gate::new(gate.get_type(), &local_controls, &local_targets).unwrap();
 
-            let local_controls: Vec<usize> = controls
-                .iter()
-                .map(|&t| tot_qsys.to_local_index(t))
-                .collect();
+        // Apply the gate to the system's density matrix using: p` == UpU'
+        let mat = expand_matrix_from_gate(&local_gate, local_n_qubits);
+        let mat_adj = mat.adjoint();
+        qsys.density = mat * qsys.density * mat_adj;
 
-            let local_n_qubits = tot_qsys.qubits.len();
-            let local_gate = Gate::new(gate.get_type(), &local_controls, &local_targets).unwrap();
-            let mat = expand_matrix_from_gate(&local_gate, local_n_qubits);
-            let mat_adj = mat.adjoint();
-            tot_qsys.density = mat * tot_qsys.density * mat_adj;
-
-            // remove systems that were combined
+        if gate_acts_on_several_systems {
+            // Remove systems that were combined.
             self.qsystems = self
                 .qsystems
                 .iter()
@@ -165,27 +147,18 @@ impl DMSimulator {
                 .filter(|(i, _)| !gate_qsystems.contains(i))
                 .map(|(_, q)| q.clone())
                 .collect();
-            // add combined system
-            self.qsystems.push(tot_qsys);
+
+            // Add combined system.
+            self.qsystems.push(qsys);
             return;
         }
-        //println!("APPLY: single system gate");
-
-        // Multi qubit, single system gate
-        let mut qsys = self.qsystems[gate_qsystems[0]].clone();
-        let local_targets: Vec<usize> = targets.iter().map(|&t| qsys.to_local_index(t)).collect();
-
-        let local_controls: Vec<usize> = controls.iter().map(|&t| qsys.to_local_index(t)).collect();
-
-        let local_n_qubits = qsys.qubits.len();
-        let local_gate = Gate::new(gate.get_type(), &local_controls, &local_targets).unwrap();
-        let mat = expand_matrix_from_gate(&local_gate, local_n_qubits);
-        let mat_adj = mat.adjoint();
-        qsys.density = mat * qsys.density * mat_adj;
+        // Update system acted on.
         self.qsystems[gate_qsystems[0]] = qsys;
     }
 
+    /// The density matrix of the full system.
     fn density(&self) -> DMatrix<Complex<f64>> {
+        // Combine all sub-systems into a single one.
         let mut tot_qsys = (0..self.qsystems.len())
             .into_iter()
             .map(|qsys_idx| self.qsystems[qsys_idx].clone())
@@ -196,25 +169,19 @@ impl DMSimulator {
                 },
                 |acc, qsys| acc.add_system(&qsys),
             );
-        // insertion sort with swap
-        //i ← 1
-        //while i < length(A)
-        //    j ← i
-        //    while j > 0 and A[j-1] > A[j]
-        //        swap A[j] and A[j-1]
-        //        j ← j - 1
-        //    end while
-        //    i ← i + 1
-        //end while
+
+        // Insersion sort by qubit index and swaps on density accordingly.
         let n_qubits = tot_qsys.qubits.len();
         let mut i = 1;
         while i < n_qubits {
             let mut j = i;
             while j > 0 && tot_qsys.qubits[j - 1] > tot_qsys.qubits[j] {
+                // Sort the list of qubit indecies.
                 tot_qsys.qubits.swap(j, j - 1);
 
+                // Sort the density matrix.
                 let mat = swap_matrix(&[], j, j - 1, n_qubits);
-                let mat_adj = mat.adjoint();
+                let mat_adj = mat.clone(); // SWAP is Hermitian.
                 tot_qsys.density = mat * tot_qsys.density * mat_adj;
 
                 j -= 1;
