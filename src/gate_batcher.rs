@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeSet, HashMap},
-    mem,
-};
+use std::{collections::HashMap, mem};
 
 use nalgebra::{Complex, Matrix2};
 
@@ -63,13 +60,14 @@ impl GateBatch {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BatchCommand {
     pub start_index: u32,
     pub size: u32,
+    pub targets: QBits,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct GateBatchData {
     gate_data: Vec<Complex<f64>>,
     target_data: Vec<u32>,
@@ -128,12 +126,16 @@ impl GateBatchData {
     }
 
     fn insert_from(&mut self, gate_batch: &GateBatch, gate_nodes: &[GateNode]) {
+        let mut node_ids = gate_batch.nodes.clone();
+        node_ids.sort_unstable();
+
         self.commands.push(BatchCommand {
             start_index: self.len as u32,
-            size: gate_batch.nodes.len() as u32,
+            size: node_ids.len() as u32,
+            targets: gate_batch.target_union,
         });
 
-        for &node_id in &gate_batch.nodes {
+        for node_id in node_ids {
             let gate_node = &gate_nodes[node_id];
 
             self.gate_data
@@ -193,22 +195,41 @@ impl GateBatcher {
     ///
     /// Returns all flushed batches as a `GateBatchData`
     pub fn flush_batches(&mut self) -> GateBatchData {
-        let frontier = mem::take(&mut self.frontier);
-        let batches: BTreeSet<BatchId> = frontier
-            .into_values()
-            .map(|frontier_node| self.nodes[frontier_node].batch_id)
+        let _ = mem::take(&mut self.frontier);
+        let batches = mem::take(&mut self.batches);
+        let nodes = mem::take(&mut self.nodes);
+
+        let mut batch_ids: Vec<BatchId> = batches
+            .iter()
+            .enumerate()
+            .filter_map(|(batch_id, batch)| {
+                if batch.retired || batch.nodes.is_empty() {
+                    None
+                } else {
+                    Some(batch_id)
+                }
+            })
             .collect();
 
         // Create batch data from all nodes
-        let total_nodes = batches
+        let total_nodes = batch_ids
             .iter()
-            .map(|&batch_id| self.batches[batch_id].nodes.len())
+            .map(|&batch_id| batches[batch_id].nodes.len())
             .sum();
 
         let mut batch_data = GateBatchData::with_capacity(total_nodes);
 
-        for batch_id in batches {
-            batch_data.insert_from(&self.batches[batch_id], &self.nodes);
+        batch_ids.sort_by_key(|&batch_id| {
+            batches[batch_id]
+                .nodes
+                .iter()
+                .copied()
+                .min()
+                .unwrap_or(usize::MAX)
+        });
+
+        for batch_id in batch_ids {
+            batch_data.insert_from(&batches[batch_id], &nodes);
         }
 
         batch_data
@@ -372,6 +393,7 @@ impl GateBatcher {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use crate::{circuit::Circuit, gate_batcher::GateBatcher};
 

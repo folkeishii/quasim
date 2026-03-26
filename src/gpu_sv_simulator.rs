@@ -7,6 +7,7 @@ use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
 use crate::circuit::HybridCircuit;
+use crate::gate::QBits;
 use crate::gate_batcher::BatchCommand;
 use crate::simulator::RunnableSimulator;
 use crate::{
@@ -16,6 +17,9 @@ use crate::{
     instruction::Instruction,
     register_file::RegisterFile,
 };
+
+const GPU_MAX_TARGET_QUBITS: usize = 3;
+const GPU_MAX_BLOCK_SIZE: usize = 1 << GPU_MAX_TARGET_QUBITS;
 
 #[derive(Clone)]
 pub struct GpuStateVectorExecutor<R: Runtime> {
@@ -38,7 +42,7 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
         let size = 1 << circuit.n_qubits();
         let registers = RegisterFile::from(circuit.registers());
         let client = R::client(&Default::default());
-        let batched_circuit = BatchedCircuit::from_circuit(circuit, 3);
+        let batched_circuit = BatchedCircuit::from_circuit(circuit, GPU_MAX_TARGET_QUBITS);
 
         let gate_data = batched_circuit.data().gate_data();
         let target_data = batched_circuit.data().target_data();
@@ -115,11 +119,17 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
     fn gpu_batch_command(&self, command: &BatchCommand) {
         let n_amplitudes = self.state_vector_len;
         let data_length = self.batched_circuit.data().len();
+        let batch_target_count = command.targets.count();
+        
+        // let block_indices = block_indices(command.targets);
+        // let block_indices_handle = self.client.create_from_slice(u32::as_bytes(&block_indices));
 
-        let cube_dim = CubeDim::new_1d(128);
+        let n_superblocks = n_amplitudes >> batch_target_count;
+
+        let cube_dim = CubeDim::new_1d(min(n_superblocks as u32, 128));
         let cube_count =
-            cubecl::calculate_cube_count_elemwise(&self.client, n_amplitudes, cube_dim);
-
+            cubecl::calculate_cube_count_elemwise(&self.client, n_superblocks, cube_dim);
+        
         unsafe {
             let _ = batched_gate2_kernel::launch(
                 &self.client,
@@ -131,6 +141,8 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
                 ArrayArg::from_raw_parts::<f64>(&self.gate_data_handle, data_length * 8, 1),
                 ScalarArg::new(command.start_index),
                 ScalarArg::new(command.size),
+                ScalarArg::new(command.targets.get_bitstring() as u32),
+                // ArrayArg::from_raw_parts::<u32>(&block_indices_handle, command.targets.count(), 1),
             );
         }
     }
@@ -205,7 +217,7 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
 
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
-            Instruction::Gate(gate) => todo!(),
+            Instruction::Gate(_gate) => todo!(),
             Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(*qbit, reg, *bit_pos),
             Instruction::MeasureAll(reg) => self.measure_all(reg),
             Instruction::Jump(pc) => self.jump(*pc),
@@ -247,16 +259,34 @@ fn batched_gate2_kernel(
     gate_data: &Array<f64>,
     start_index: u32,
     size: u32,
+    target_mask: u32,
 ) {
-    for i in 0..size {
-        let data_index = (start_index + i) as usize;
+    let target_mask = target_mask as usize;
+    let block_size: usize = 1usize << (target_mask.count_ones() as usize);
+    let state_vector_len: usize = state_vector.len() / 2;
 
-        let target = target_data[data_index] as usize;
-        let control = control_data[data_index] as usize;
+    // One kernel is launcher for each block, so
+    // num units = statevector length / block size
+    let num_units: usize = state_vector_len / block_size;
+    let mut block_indices: Array<usize> = Array::new(GPU_MAX_BLOCK_SIZE);
+    for i in 0..block_size {
+        block_indices[i] = block_index(ABSOLUTE_POS, target_mask, i);
+    }
 
-        apply_unitary2(state_vector, target, control, gate_data, data_index * 8);
+    if ABSOLUTE_POS < num_units {
+        for i in 0..size {
+            for local_index in 0..block_size {
+                let block_index = block_indices[local_index];
 
-        sync_storage();
+                let data_index: usize = (start_index + i) as usize;
+                let target: usize = target_data[data_index] as usize;
+                let control: usize = control_data[data_index] as usize;
+                let gate_base = data_index * 8;
+                
+                apply_unitary2(state_vector, block_index, target, control, gate_data, gate_base);
+            }
+        }
+
     }
 }
 
@@ -269,6 +299,7 @@ fn single_gate2_kernel(
 ) {
     apply_unitary2(
         state_vector,
+        ABSOLUTE_POS,
         target as usize,
         control as usize,
         gate_data,
@@ -279,17 +310,18 @@ fn single_gate2_kernel(
 #[cube]
 fn apply_unitary2(
     state_vector: &mut Array<f64>,
+    basis_state: usize,
     target: usize,
     control: usize,
     gate_data: &Array<f64>,
     gate_base: usize,
 ) {
     // ABSOLUTE_POS is basis state
-    let basis0: usize = ABSOLUTE_POS * 2;
-    let basis1: usize = (ABSOLUTE_POS | target) * 2;
+    let basis0: usize = basis_state * 2;
+    let basis1: usize = (basis_state | target) * 2;
 
-    let is_block_base: bool = (ABSOLUTE_POS & target) == 0;
-    let controls_active: bool = (ABSOLUTE_POS & control) == control;
+    let is_block_base: bool = (basis_state & target) == 0;
+    let controls_active: bool = (basis_state & control) == control;
 
     if is_block_base && controls_active {
         let u00 = ComplexF64 {
@@ -327,6 +359,40 @@ fn apply_unitary2(
         state_vector[basis1] = new_amp1.re;
         state_vector[basis1 + 1] = new_amp1.im;
     }
+}
+
+#[cube]
+fn block_index(mut superblock: usize, mut target_mask: usize, local_index: usize) -> usize {
+    let mut shift = 0usize;
+    while target_mask != 0 {
+        let lowest = target_mask & ((!target_mask) + 1);
+        let pos = (lowest - 1).count_ones() as usize;
+        let bit = (local_index >> shift) & 1;  // take next bit from local_index
+        let lower = superblock & ((1 << pos) - 1);
+        let upper = superblock >> pos;
+        superblock = lower | (bit << pos) | (upper << (pos + 1)); // Reconstruct blockindex
+        target_mask &= target_mask - 1;
+        shift += 1;
+    }
+    superblock
+}
+
+fn block_indices(targets: QBits) -> Vec<u32> {
+    let k = targets.count();
+    let mut indices = Vec::with_capacity(1 << k);
+
+    for mask in 0..(1 << k) {
+        let mut idx = 0;
+        // We embed the bits of mask into the corresponding target qubit positions
+        for (j, &target_bit_pos) in targets.get_indices().iter().enumerate() {
+            // Take the j:th bit of the mask and place it at the correct position
+            // of the target bit
+            idx |= ((mask >> j) & 1) << target_bit_pos;
+        }
+        indices.push(idx);
+    }
+
+    indices
 }
 
 fn bytes_from_complex<T: CubeElement>(data: &[Complex<T>]) -> &[u8] {
@@ -395,30 +461,30 @@ impl<R: Runtime> RunnableSimulator for GpuStateVectorSimulator<R> {
 #[derive(Debug, thiserror::Error)]
 pub enum GPUSVError {}
 
+#[cfg(test)]
 mod tests {
     use cubecl::wgpu::WgpuRuntime;
-    use nalgebra::DVector;
 
     use crate::{
         circuit::Circuit,
-        gpu_sv_simulator::{GpuStateVectorExecutor, GpuStateVectorSimulator},
-        simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator},
-        sv_simulator::{SVSimulator, SVSimulatorDebugger},
+        ext::equal_to_matrix_c,
+        gpu_sv_simulator::GpuStateVectorSimulator,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
     };
 
     #[test]
-    fn test() {
-        let mut circ = Circuit::new(23).h(0).swap(0, 1);
+    fn qft_matches_cpu_state_vector() {
+        let n_qubits = 4;
+        let range = (0..n_qubits).collect::<Vec<usize>>();
 
-        for i in 0..23 {
-            circ = circ.h(i % 23);
-        }
+        let circuit = Circuit::new(n_qubits).qft(&range);
 
-        let sim = SVSimulator::build(circ).unwrap();
-        // let sim = GPUSVSimulator::<WgpuRuntime>::build(circ.into()).unwrap();
-        sim.run();
+        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone().into()).unwrap();
+        let cpu = SVSimulator::build(circuit).unwrap();
 
-        // exec.sync_state_to_cpu();
-        // println!("{}", DVector::from_row_slice(exec.state_vector()))
+        println!("{}", &gpu.final_state());
+        println!("{}", &cpu.final_state());
+        assert!(equal_to_matrix_c(&gpu.final_state(), &cpu.final_state(), 0.001));
     }
 }

@@ -52,6 +52,8 @@ impl BatchedCircuit {
             }
         }
 
+        batched_circuit.flush_batches(batch_start_inst_index);
+
         batched_circuit
     }
 
@@ -68,10 +70,17 @@ impl BatchedCircuit {
 
     fn flush_batches(&mut self, to_inst_index: usize) {
         let batch_data = self.batcher.flush_batches();
+
+        if batch_data.commands().is_empty() {
+            return;
+        }
+
         self.instruction_lookup.insert(
             to_inst_index,
             BatchedCircuitOp::BatchCommands(batch_data.commands().to_vec()),
         );
+
+        self.data.append(batch_data);
     }
 }
 
