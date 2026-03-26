@@ -32,19 +32,6 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
         let circuit = value;
         let k = circuit.n_qubits();
 
-        // Check for mid-cicuit measurement
-        let mut encountered = false;
-        for inst in circuit.instructions() {
-            let is_measurement = matches!(inst, Instruction::MeasureBit(_, _))
-                || matches!(inst, Instruction::MeasureAll(_));
-            if is_measurement {
-                encountered = true;
-            } else if encountered {
-                // There was a gate between measurements
-                return Err(DebugSimulatorError::MidCircuitMeasurement);
-            }
-        }
-
         // Initial state assumed to be |000..>
         let mut init_state = vec![cart!(0.0); 1 << k];
         init_state[0] = cart!(1.0);
@@ -640,6 +627,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn hybrid_test() {
         let circuit = Circuit::new(4)
             .new_reg("r0")
