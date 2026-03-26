@@ -366,14 +366,19 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    pub fn bubble(mut self, target: usize) -> Self {
+    pub fn bubble(target: usize, n_qubits: usize) -> Circuit {
+        if target >= n_qubits {
+            panic!("Target out of bounds");
+        }
+        let mut bubble = Circuit::new(n_qubits);
+
         let mut lower = target;
         while lower > 0 {
             let upper = lower - 1;
-            self = self.swap(lower, upper);
+            bubble = bubble.swap(lower, upper);
             lower -= 1;
         }
-        self
+        bubble
     }
 
     // Breakpoint
@@ -746,7 +751,7 @@ pub trait CircuitBehaviour {
 mod tests {
     use crate::{
         cart,
-        circuit::Circuit,
+        circuit::{PureCircuit, Circuit},
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator},
@@ -826,7 +831,7 @@ mod tests {
 
     #[test]
     fn bubble_test() {
-        let bubble_circ = Circuit::new(5).bubble(3);
+        let bubble_circ = Circuit::<PureCircuit>::bubble(3, 5);
         let insert_circ = bubble_circ.inverse();
         let circuit = Circuit::new(5)
             .x(0)
