@@ -272,7 +272,9 @@ impl SVExecutor {
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
-            Instruction::Call(name, lsq) => self.pc_mut().jump_and_link(name.clone(), *lsq),
+            Instruction::Call(name, lsq, ctrl) => {
+                self.pc_mut().jump_and_link(name.clone(), *lsq, *ctrl)
+            }
         }
     }
 
@@ -667,16 +669,7 @@ mod tests {
     }
 
     #[test]
-    fn testy() {
-        let targets = QBits::from_indices(&[2, 1, 4]);
-
-        let rev = targets.get_bitstring().reverse_bits();
-        let chk = (rev & rev.wrapping_neg()).reverse_bits();
-        let block_size = chk << 1;
-
-        println!("{:?}", targets);
-        println!("{:?}", rev);
-        println!("{:?}", chk);
-        println!("{:?}", block_size);
+    fn deep_ctrl_sub() {
+        common_test::deep_ctrl_sub::<SVSimulatorDebugger>();
     }
 }

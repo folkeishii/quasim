@@ -11,7 +11,7 @@ use crate::{
         pc::CircuitPc,
     },
     expr_dsl::Expr,
-    gate::{Gate, GateType},
+    gate::{Gate, GateType, QBits},
     instruction::{Instruction, PureInstruction},
 };
 mod qasm_parse;
@@ -81,9 +81,9 @@ impl Circuit {
                 PureInstruction::Gate(gate) => {
                     inverted_circuit.instructions.push(gate.inverse().into())
                 }
-                PureInstruction::Call(name, lsq) => inverted_circuit
+                PureInstruction::Call(name, lsq, ctrl) => inverted_circuit
                     .instructions
-                    .push(PureInstruction::Call(name.clone(), *lsq)),
+                    .push(PureInstruction::Call(name.clone(), *lsq, *ctrl)),
             }
         }
 
@@ -103,10 +103,11 @@ impl Circuit {
         } else {
             match self.instructions().get(circuit_pc.pc()) {
                 Some(PureInstruction::Gate(gate)) => {
-                    Some((gate.clone() << circuit_pc.lsq()).into())
+                    let mut gate = gate.clone() << circuit_pc.lsq();
+                    *gate.control_mut() |= circuit_pc.ctrl();
+                    Some(gate.into())
                 }
-                Some(inst) => Some(inst.clone()),
-                None => None,
+                rst => rst.cloned(),
             }
         }
     }
@@ -118,6 +119,15 @@ impl Circuit {
             self.sub_circuits[name].current_circuit(pc)
         } else {
             self
+        }
+    }
+
+    /// ## Returns
+    /// Returns an iterator that iterates over all instructions and hides the call instructions
+    pub fn as_flat(&self) -> FlatCircuit<'_, PureCircuit> {
+        FlatCircuit {
+            circuit: self,
+            pc: CircuitPc::new(0),
         }
     }
 }
@@ -132,7 +142,9 @@ impl Circuit<HybridCircuit> {
         } else {
             match self.instructions().get(circuit_pc.pc()) {
                 Some(Instruction::Gate(gate)) => {
-                    Some(Instruction::Gate(gate.clone() << circuit_pc.lsq()))
+                    let mut gate = gate.clone() << circuit_pc.lsq();
+                    *gate.control_mut() |= circuit_pc.ctrl();
+                    Some(Instruction::Gate(gate))
                 }
                 Some(Instruction::MeasureBit(target, register)) => Some(Instruction::MeasureBit(
                     *target << circuit_pc.lsq(),
@@ -140,6 +152,15 @@ impl Circuit<HybridCircuit> {
                 )),
                 rst => rst.cloned(),
             }
+        }
+    }
+
+    /// ## Returns
+    /// Returns an iterator that iterates over all instructions and hides the call instructions
+    pub fn as_flat(&self) -> FlatCircuit<'_, HybridCircuit> {
+        FlatCircuit {
+            circuit: self,
+            pc: CircuitPc::new(0),
         }
     }
 }
@@ -334,33 +355,31 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    /// Appends a circuit implementing the quantum Fourier transform.
-    /// Targets are normally specified in order of least significance,
-    /// for example [0,1,2,3,4].
-    pub fn qft(mut self, targets: &[usize]) -> Self {
+    /// Creates a circuit implementing the quantum Fourier transform,
+    /// with qubits in order of least significance.
+    pub fn qft(n_qubits: usize) -> Circuit {
         /* This implementation is taken from Mike & Ike chapter 5.1.
          * Note that, due to our chosen convention, the circuit will
          * be the same as figure 5.1 but "upside down".
          * */
+        let mut qft = Circuit::new(n_qubits);
 
-        let n = targets.len();
-
-        for i in (0..n).rev() {
-            self = self.h(targets[i]);
+        for i in (0..n_qubits).rev() {
+            qft = qft.h(i);
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
                 let theta = PI / (1 << (k - 1)) as f32;
-                self = self.crz(theta, &[targets[control as usize]], targets[i]);
+                qft = qft.crz(theta, &[control as usize], i);
                 control -= 1;
             }
         }
 
         // Reverse order of qubits. (not shown in figure 5.1)
-        for i in 0..(n >> 1) {
-            self = self.swap(targets[i], targets[n - 1 - i]);
+        for i in 0..(n_qubits >> 1) {
+            qft = qft.swap(i, n_qubits - 1 - i);
         }
-        self
+        qft
     }
 
     // Breakpoint
@@ -463,7 +482,15 @@ impl<B: CircuitBehaviour> Circuit<B> {
     /// ## Arguments
     ///  - `name`: Name of registered sub circuit
     ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
-    pub fn call<S: Into<String>>(mut self, name: S, lsq: usize) -> Self {
+    pub fn call<S: Into<String>>(self, name: S, lsq: usize) -> Self {
+        self.ccall(name, lsq, Default::default())
+    }
+
+    /// ## Arguments
+    ///  - `name`: Name of registered sub circuit
+    ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
+    ///  - `ctrl`: Control bits for sub circuit
+    pub fn ccall<S: Into<String>>(mut self, name: S, lsq: usize, controls: &[usize]) -> Self {
         let name = name.into();
         if !self.sub_circuits.contains_key(&name) {
             panic!("No registered sub circuit with the name {}", name)
@@ -476,8 +503,11 @@ impl<B: CircuitBehaviour> Circuit<B> {
                 self.n_qubits()
             );
         }
-        self.instructions
-            .push(B::from_pure(PureInstruction::Call(name, lsq)));
+        self.instructions.push(B::from_pure(PureInstruction::Call(
+            name,
+            lsq,
+            QBits::from_indices(controls),
+        )));
         self
     }
 
@@ -486,9 +516,24 @@ impl<B: CircuitBehaviour> Circuit<B> {
     ///  - `pure_circuit`: Definition of specified circuit
     ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
     pub fn call_new<S: Into<String>>(self, name: S, pure_circuit: Circuit, lsq: usize) -> Self {
+        self.ccall_new(name, pure_circuit, lsq, Default::default())
+    }
+
+    /// ## Arguments
+    ///  - `name`: Name of registered sub circuit
+    ///  - `pure_circuit`: Definition of specified circuit
+    ///  - `lsq`: Least significant qubit that the specified sub circuit will be acting on
+    ///  - `ctrl`: Control bits for sub circuit
+    pub fn ccall_new<S: Into<String>>(
+        self,
+        name: S,
+        pure_circuit: Circuit,
+        lsq: usize,
+        controls: &[usize],
+    ) -> Self {
         let name = name.into();
         self.new_sub_circuit(name.clone(), pure_circuit)
-            .call(name, lsq)
+            .ccall(name, lsq, controls)
     }
 }
 
@@ -703,11 +748,74 @@ pub trait CircuitBehaviour {
     fn from_pure(instruction: PureInstruction) -> Self::InstructionTy;
 }
 
+pub struct FlatCircuit<'a, B: CircuitBehaviour> {
+    circuit: &'a Circuit<B>,
+    pc: CircuitPc,
+}
+
+impl<'a> Iterator for FlatCircuit<'a, PureCircuit> {
+    type Item = PureInstruction;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let inst = self.circuit.instruction(&self.pc);
+        match inst {
+            Some(PureInstruction::Call(name, lsq, ctrl)) => {
+                self.pc.jump_and_link(name, lsq, ctrl);
+                // Take next instruction inside sub circuit
+                self.next()
+            }
+            Some(inst) => {
+                self.pc.increment();
+                Some(inst)
+            }
+            None => {
+                // Try to return
+                if self.pc.ret() {
+                    // Could return: Return next
+                    self.next()
+                } else {
+                    // Could not return: end of circuit
+                    None
+                }
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for FlatCircuit<'a, HybridCircuit> {
+    type Item = Instruction;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let inst = self.circuit.instruction(&self.pc);
+        match inst {
+            Some(Instruction::Call(name, lsq, ctrl)) => {
+                self.pc.jump_and_link(name, lsq, ctrl);
+                // Take next instruction inside sub circuit
+                self.next()
+            }
+            Some(inst) => {
+                self.pc.increment();
+                Some(inst)
+            }
+            None => {
+                // Try to return
+                if self.pc.ret() {
+                    // Could return: Return next
+                    self.next()
+                } else {
+                    // Could not return: end of circuit
+                    None
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         cart,
-        circuit::Circuit,
+        circuit::{Circuit, PureCircuit},
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{BuildSimulator, RunnableSimulator},
@@ -749,8 +857,12 @@ mod tests {
     }
     #[test]
     fn qft_test() {
-        let sim =
-            SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).qft(&[0, 1, 2, 3])).unwrap();
+        let sim = SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
+            "QFT",
+            Circuit::<PureCircuit>::qft(4),
+            0,
+        ))
+        .unwrap();
 
         let expected_vec = dvector![
             cart!(0.0, 0.35355),  // |0000>
@@ -783,5 +895,61 @@ mod tests {
 
         assert!(!circuit.has_unresolved_labels());
         assert_eq!(circuit.instructions()[0], Instruction::Jump(2));
+    }
+
+    #[test]
+    fn flatten() {
+        let sub1 = Circuit::new(2).h(0).h(1);
+        let sub2 = Circuit::new(4)
+            .h(0)
+            .call_new("sub1", sub1, 0)
+            .h(2)
+            .call("sub1", 2);
+
+        let circuit = Circuit::new(6)
+            .new_reg("tt")
+            .h(0)
+            .call_new("sub2", sub2, 0)
+            .measure("tt")
+            .call("sub2", 2)
+            .h(2);
+
+        let correct = Circuit::new(6)
+            .new_reg("tt")
+            // main
+            .h(0) // 0
+            // sub2 @ 0
+            .h(0) // 1
+            // sub1 @ 0
+            .h(0) // 2
+            .h(1) // 3
+            // end
+            .h(2) // 4
+            // sub1 @ 2
+            .h(2) // 5
+            .h(3) // 6
+            // end
+            // end
+            .measure("tt") // 7
+            // sub2 @ 2
+            .h(2) // 8
+            // sub1 @ 2
+            .h(2) // 9
+            .h(3) // 10
+            // end
+            .h(4) // 11
+            // sub1 @ 4
+            .h(4) // 12
+            .h(5) // 13
+            // end
+            // end
+            .h(2)
+            .instructions;
+
+        let mut as_flat1 = circuit.as_flat();
+        for i in 0..correct.len() {
+            assert_eq!(as_flat1.next(), Some(correct[i].clone()))
+        }
+        assert!(as_flat1.next().is_none());
     }
 }

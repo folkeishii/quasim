@@ -223,7 +223,7 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
-            Instruction::Call(_, _) => todo!(),
+            Instruction::Call(_, _, _) => todo!(),
         }
     }
 }

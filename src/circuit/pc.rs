@@ -1,9 +1,12 @@
 use std::fmt::Display;
 
+use crate::gate::QBits;
+
 #[derive(Debug, Clone, Default, Hash)]
 pub struct CircuitPc {
     pc: usize,
     lsq: usize,
+    ctrl: QBits,
     sub: Option<(String, Box<CircuitPc>)>,
 }
 impl CircuitPc {
@@ -11,12 +14,27 @@ impl CircuitPc {
         CircuitPc {
             pc,
             lsq: 0,
+            ctrl: 0.into(),
             sub: None,
         }
     }
 
     pub fn with_lsq(pc: usize, lsq: usize) -> Self {
-        CircuitPc { pc, lsq, sub: None }
+        CircuitPc {
+            pc,
+            lsq,
+            ctrl: 0.into(),
+            sub: None,
+        }
+    }
+
+    pub fn with_ctrl(pc: usize, lsq: usize, ctrl: QBits) -> Self {
+        CircuitPc {
+            pc,
+            lsq,
+            ctrl,
+            sub: None,
+        }
     }
 
     pub fn increment(&mut self) {
@@ -33,11 +51,23 @@ impl CircuitPc {
         *self.pc_mut() = pc
     }
 
-    pub fn jump_and_link(&mut self, name: String, lsq: usize) {
+    pub fn jump_with_offset(&mut self, offset: isize) {
+        let nn = self.pc() as isize + offset;
+        *self.pc_mut() = nn as usize;
+    }
+
+    pub fn jump_and_link(&mut self, name: String, lsq: usize, ctrl: QBits) {
         if let Some((_, sub_pc)) = &mut self.sub {
-            sub_pc.jump_and_link(name, lsq);
+            sub_pc.jump_and_link(name, lsq, ctrl);
         } else {
-            self.sub = Some((name, Box::from(CircuitPc::with_lsq(0, self.lsq + lsq))));
+            self.sub = Some((
+                name,
+                Box::from(CircuitPc::with_ctrl(
+                    0,
+                    self.lsq + lsq,
+                    self.ctrl | ctrl << self.lsq,
+                )),
+            ));
         }
     }
 
@@ -98,6 +128,14 @@ impl CircuitPc {
         }
     }
 
+    pub fn ctrl(&self) -> QBits {
+        if let Some((_, pc)) = self.next_sub_pc() {
+            pc.ctrl()
+        } else {
+            self.ctrl
+        }
+    }
+
     pub fn current(&self) -> (Option<&str>, usize) {
         if let Some((name, pc)) = self.sub.as_ref() {
             pc.current_aux(name)
@@ -125,6 +163,12 @@ impl CircuitPc {
 impl PartialEq for CircuitPc {
     fn eq(&self, other: &Self) -> bool {
         self.pc == other.pc
+            && self.lsq == other.lsq
+            && self.sub.is_some() == other.sub.is_some()
+            // Check that sub pc is the same
+            && self.sub.as_ref().zip(other.sub.as_ref()).map(|((sname, ssub),(oname, osub))| {
+                sname == oname && ssub.eq(osub)
+            }).unwrap_or(true)
     }
 }
 
