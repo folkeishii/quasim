@@ -28,10 +28,10 @@ impl std::fmt::Display for QSys {
 
 impl QSys {
     /// Concatinates qubit lists and "tensors" density matricies.
-    fn add_system(&self, rhs: &QSys) -> QSys {
+    fn add_system(&self, rhs: &Self) -> Self {
         let mut qubits = self.qubits.clone();
         qubits.extend(rhs.qubits.clone());
-        QSys {
+        Self {
             density: eval_tensor_product(vec![self.density.clone(), rhs.density.clone()]),
             qubits: qubits,
         }
@@ -43,6 +43,39 @@ impl QSys {
         };
         local_index
     }
+
+    /// Insersion sort by qubit index and swaps on density accordingly.
+    /// swap(t1: usize, t2: usize, n: usize, density: &DMatrix<Complex<f64>>)
+    fn sort_with(
+        &mut self,
+        swap: fn(usize, usize, usize, &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>>,
+    ) {
+        let n_qubits = self.qubits.len();
+        let mut i = 1;
+        while i < n_qubits {
+            let mut j = i;
+            while j > 0 && self.qubits[j - 1] > self.qubits[j] {
+                // Sort the list of qubit indecies.
+                self.qubits.swap(j, j - 1);
+
+                // Sort the density matrix.
+                self.density = swap(j, j - 1, n_qubits, &self.density);
+
+                j -= 1;
+            }
+            i += 1;
+        }
+    }
+}
+
+fn qsystem_product(qsystems: &[QSys]) -> QSys {
+    qsystems.into_iter().fold(
+        QSys {
+            density: dmatrix![cart!(1.0)],
+            qubits: vec![],
+        },
+        |acc, qsys| acc.add_system(&qsys),
+    )
 }
 
 #[derive(Debug, Clone)]
@@ -155,40 +188,43 @@ impl DMSimulator {
         // Update system acted on.
         self.qsystems[gate_qsystems[0]] = qsys;
     }
-
     /// The density matrix of the full system.
     fn density(&self) -> DMatrix<Complex<f64>> {
         // Combine all sub-systems into a single one.
-        let mut tot_qsys = (0..self.qsystems.len())
-            .into_iter()
-            .map(|qsys_idx| self.qsystems[qsys_idx].clone())
-            .fold(
-                QSys {
-                    density: dmatrix![cart!(1.0)],
-                    qubits: vec![],
-                },
-                |acc, qsys| acc.add_system(&qsys),
-            );
+        let mut tot_qsys = qsystem_product(&self.qsystems);
 
-        // Insersion sort by qubit index and swaps on density accordingly.
-        let n_qubits = tot_qsys.qubits.len();
-        let mut i = 1;
-        while i < n_qubits {
-            let mut j = i;
-            while j > 0 && tot_qsys.qubits[j - 1] > tot_qsys.qubits[j] {
-                // Sort the list of qubit indecies.
-                tot_qsys.qubits.swap(j, j - 1);
+        tot_qsys.sort_with(|t1, t2, n, p| {
+            let mat = swap_matrix(&[], t1, t2, n);
+            let mat_adj = mat.clone();
+            mat * p * mat_adj
+        });
 
-                // Sort the density matrix.
-                let mat = swap_matrix(&[], j, j - 1, n_qubits);
-                let mat_adj = mat.clone(); // SWAP is Hermitian.
-                tot_qsys.density = mat * tot_qsys.density * mat_adj;
-
-                j -= 1;
-            }
-            i += 1;
-        }
         tot_qsys.density
+    }
+
+    /// Just the diagonal of the full density matrix.
+    fn probabilities(&self) -> Vec<f64> {
+        let qsys_diags = self
+            .qsystems
+            .iter()
+            .map(|qsys| QSys {
+                density: DMatrix::<Complex<f64>>::from_columns(&[qsys.density.diagonal()]),
+                qubits: qsys.qubits.clone(),
+            })
+            .collect::<Vec<QSys>>();
+
+        let mut tot_qsys_diag = qsystem_product(&qsys_diags);
+
+        tot_qsys_diag.sort_with(|t1, t2, n, v| {
+            let mat = swap_matrix(&[], t1, t2, n);
+            mat * v
+        });
+
+        tot_qsys_diag
+            .density
+            .iter()
+            .map(|c| c.re)
+            .collect::<Vec<f64>>()
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
@@ -394,16 +430,23 @@ mod tests {
         expr_dsl::{Expr, Value, expr_helpers::r},
         simulator::DebuggableSimulator,
     };
-    use nalgebra::{Complex, DMatrix, dmatrix};
+    use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
+
+    fn check_probs(sim: &DMSimulator, expected: &DMatrix<Complex<f64>>) {
+        let probs = DVector::<Complex<f64>>::from_vec(
+            sim.probabilities()
+                .iter()
+                .map(|&r| cart!(r))
+                .collect::<Vec<Complex<f64>>>(),
+        );
+        assert!(equal_to_matrix_c(&probs, &expected.diagonal(), 0.001));
+    }
 
     #[test]
     fn hch_test() {
         let mut sim = DMSimulator::init(Circuit::new(2).h(0).ch(&[0], 1).into());
-        println!("Sim initalized");
         sim.next();
-        println!("Sim stepped once");
         sim.next();
-        println!("Sim stepped twice");
         let expected_mat = dmatrix![
             cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.353553);
             cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
@@ -411,6 +454,7 @@ mod tests {
             cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
         ];
         assert!(equal_to_matrix_c(&sim.density(), &expected_mat, 0.001));
+        check_probs(&sim, &expected_mat);
     }
 
     fn print_systems(sim: &DMSimulator) {
@@ -581,5 +625,6 @@ mod tests {
         expected[(15, 15)] = cart!(0.03125);
 
         assert!(equal_to_matrix_c(&sim.density(), &expected, 0.001));
+        check_probs(&sim, &expected);
     }
 }
