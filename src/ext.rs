@@ -149,6 +149,15 @@ pub fn collapse_matrix(state: &DMatrix<Complex<f64>>) -> usize {
     dist.sample(&mut rng)
 }
 
+/// Collapse a probabillity distrobution into a value
+pub fn collapse_probs(probs: &Vec<f64>) -> usize {
+    let dist = WeightedIndex::new(probs)
+        .expect("Failed to create probability distribution. Invalid or empty state vector?");
+    let mut rng = rand::rng();
+
+    dist.sample(&mut rng)
+}
+
 /// # measure_and_observe_sv
 /// Returns a probable measurement and state vector after measurement.
 pub fn measure_and_observe_sv(

@@ -3,7 +3,7 @@ use crate::{
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
     ext::{
-        collapse_matrix, eval_tensor_product, expand_matrix_from_gate, measure_and_observe_dm,
+        collapse_probs, eval_tensor_product, expand_matrix_from_gate, measure_and_observe_dm,
         reduced_state, swap_matrix,
     },
     gate::Gate,
@@ -15,7 +15,7 @@ use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
 
 /// A system of potentially entangled qubits.
 #[derive(Debug, Clone)]
-pub struct QSys {
+struct QSys {
     density: DMatrix<Complex<f64>>,
     qubits: Vec<usize>,
 }
@@ -45,7 +45,7 @@ impl QSys {
     }
 
     /// Insersion sort by qubit index and swaps on density accordingly.
-    /// swap(t1: usize, t2: usize, n: usize, density: &DMatrix<Complex<f64>>)
+    /// swap(target1: usize, target2: usize, n_qubits: usize, density: &DMatrix<Complex<f64>>)
     fn sort_with(
         &mut self,
         swap: fn(usize, usize, usize, &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>>,
@@ -91,6 +91,7 @@ impl DMSimulator {
     fn init(circuit: Circuit<HybridCircuit>) -> Self {
         // Initial state assumed to be |000..>
         // == |0><0| * |0><0| * |0><0| * ...
+        // No entanglement -> one system for each qubit.
 
         let mut init_sys = vec![];
 
@@ -130,6 +131,8 @@ impl DMSimulator {
          *      apply gate to the total system.
          *
          * */
+
+        self.pc_mut().increment();
 
         let controls = gate.get_controls();
         let targets = gate.get_targets();
@@ -204,6 +207,8 @@ impl DMSimulator {
 
     /// Just the diagonal of the full density matrix.
     fn probabilities(&self) -> Vec<f64> {
+        // Ok to combine diagonals in the same way
+        // as density matricies.
         let qsys_diags = self
             .qsystems
             .iter()
@@ -284,10 +289,11 @@ impl DMSimulator {
     }
 
     fn measure_all(&mut self, reg: &str) {
-        let measurement_bitstring = collapse_matrix(&self.density());
+        let measurement_bitstring = collapse_probs(&self.probabilities());
 
         self.registers[reg] = Value::Int(measurement_bitstring as i32);
 
+        // No entanglement -> one system for each qubit.
         self.qsystems = vec![];
 
         for qubit in 0..self.circuit.n_qubits() {
@@ -353,19 +359,6 @@ impl TryFrom<Circuit<HybridCircuit>> for DMSimulator {
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         let circuit = value;
 
-        // Check for mid-cicuit measurement
-        //let mut encountered = false;
-        //for inst in circuit.instructions() {
-        //    let is_measurement = matches!(inst, Instruction::MeasureBit(_, _))
-        //        || matches!(inst, Instruction::MeasureAll(_));
-        //    if is_measurement {
-        //        encountered = true;
-        //    } else if encountered {
-        //        // There was a gate between measurements
-        //        return Err(DMSimulatorError::MidCircuitMeasurement);
-        //    }
-        //}
-
         let sim = Self::init(circuit);
 
         Ok(sim)
@@ -378,10 +371,7 @@ impl DebuggableSimulator for DMSimulator {
         };
 
         match inst {
-            Instruction::Gate(gate) => {
-                self.apply_gate(gate);
-                self.pc_mut().increment();
-            }
+            Instruction::Gate(gate) => self.apply_gate(gate),
             Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(qbit, &reg, bit_pos),
             Instruction::MeasureAll(reg) => self.measure_all(&reg),
             Instruction::Jump(pc) => self.jump(pc),
@@ -443,8 +433,7 @@ mod tests {
     #[test]
     fn hch_test() {
         let mut sim = DMSimulator::init(Circuit::new(2).h(0).ch(&[0], 1).into());
-        sim.next();
-        sim.next();
+        sim.cont();
         let expected_mat = dmatrix![
             cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.353553);
             cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
@@ -504,12 +493,7 @@ mod tests {
                 .ch(&[0], 3)
                 .into(),
         );
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
+        sim.cont();
         let mut expected = DMatrix::<Complex<f64>>::zeros(16, 16);
 
         expected[(0, 0)] = cart!(0.2500000298023224);
