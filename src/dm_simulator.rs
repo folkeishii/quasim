@@ -425,13 +425,10 @@ pub enum DMSimulatorError {
 mod tests {
     use crate::ext::{equal_to_matrix_c, reduced_state};
     use crate::{
-        cart,
-        circuit::Circuit,
-        dm_simulator::DMSimulator,
-        expr_dsl::{Expr, Value, expr_helpers::r},
+        cart, circuit::Circuit, dm_simulator::DMSimulator, expr_dsl::expr_helpers::r,
         simulator::DebuggableSimulator,
     };
-    use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
+    use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 
     fn check_probs(sim: &DMSimulator, expected: &DMatrix<Complex<f64>>) {
         let probs = DVector::<Complex<f64>>::from_vec(
