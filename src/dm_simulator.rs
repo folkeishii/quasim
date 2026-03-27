@@ -421,6 +421,7 @@ pub enum DMSimulatorError {
     MidCircuitMeasurement,
 }
 
+#[cfg(test)]
 mod tests {
     use crate::ext::{equal_to_matrix_c, reduced_state};
     use crate::{
