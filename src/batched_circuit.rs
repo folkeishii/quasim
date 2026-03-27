@@ -37,10 +37,10 @@ impl BatchedCircuit {
 
         let mut batch_start_inst_index = 0;
 
-        for (inst_index, inst) in circuit.instructions().iter().enumerate() {
+        for (inst_index, inst) in circuit.as_flat().enumerate() {
             match inst {
                 Instruction::Gate(gate) => {
-                    batched_circuit.batcher.add_gate(gate);
+                    batched_circuit.batcher.add_gate(&gate);
                 }
                 _ => {
                     batched_circuit.flush_batches(batch_start_inst_index);

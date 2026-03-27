@@ -450,7 +450,7 @@ mod tests {
     use cubecl::wgpu::WgpuRuntime;
 
     use crate::{
-        circuit::Circuit,
+        circuit::{Circuit, PureCircuit},
         ext::equal_to_matrix_c,
         gpu_sv_simulator::GpuStateVectorSimulator,
         simulator::{BuildSimulator, RunnableSimulator},
@@ -460,9 +460,7 @@ mod tests {
     #[test]
     fn qft_matches_cpu_state_vector() {
         let n_qubits = 4;
-        let range = (0..n_qubits).collect::<Vec<usize>>();
-
-        let circuit = Circuit::new(n_qubits).qft(&range);
+        let circuit = Circuit::<PureCircuit>::qft(n_qubits);
 
         let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone().into()).unwrap();
         let cpu = SVSimulator::build(circuit).unwrap();

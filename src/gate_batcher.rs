@@ -412,7 +412,7 @@ mod tests {
         for gate in circ.instructions() {
             match &gate {
                 crate::instruction::PureInstruction::Gate(gate) => circ_ir.add_gate(gate),
-                crate::instruction::PureInstruction::Call(_, _) => todo!(),
+                crate::instruction::PureInstruction::Call(_, _, _) => todo!(),
             }
         }
 

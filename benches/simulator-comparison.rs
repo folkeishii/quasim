@@ -1,6 +1,6 @@
 use cubecl::{cpu::CpuRuntime, wgpu::WgpuRuntime};
 use quasim::{
-    circuit::{Circuit, HybridCircuit},
+    circuit::{Circuit, HybridCircuit, PureCircuit},
     debug_simulator::DebugSimulator,
     gpu_sv_simulator::GpuStateVectorSimulator,
     simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
@@ -60,11 +60,7 @@ fn circuit_size_sample<S>(n_qubits: usize)
 where
     S: RunnableSimulator + BuildSimulator<HybridCircuit>,
 {
-    let range = (0..n_qubits).collect::<Vec<usize>>();
-    
-    let circuit = Circuit::new(n_qubits)
-        .qft(&range);
-
+    let circuit = Circuit::<PureCircuit>::qft(n_qubits);
 
     let sim = S::build(circuit.into()).expect("Couldnt build circuit...");
     sim.run();
