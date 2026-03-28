@@ -153,11 +153,9 @@ impl DMSimulator {
         let mut qsys = self.qsystems[gate_qsystems[0]].clone();
 
         let gate_acts_on_several_systems = gate_qsystems.len() > 1;
-        let is_swap_between_systems = gate_acts_on_several_systems
-            && gate.get_type() == GateType::SWAP
-            && controls.is_empty();
+        let is_swap_gate = gate.get_type() == GateType::SWAP && controls.is_empty();
 
-        if is_swap_between_systems {
+        if gate_acts_on_several_systems && is_swap_gate {
             // Regular swaps do not result in entanglement.
             // Only change global qubit index.
             let qsys1_local_target = qsys.to_local_index(targets[0]);
@@ -183,6 +181,15 @@ impl DMSimulator {
 
         // Translate global qubit indexing to the system's local indexing.
         let local_targets: Vec<usize> = targets.iter().map(|&t| qsys.to_local_index(t)).collect();
+
+        if is_swap_gate {
+            // Swap qubit indecies, no need for matrix multiplication.
+            qsys.qubits.swap(local_targets[0], local_targets[1]);
+            self.qsystems[gate_qsystems[0]] = qsys;
+            return;
+        }
+
+        // Continue to translate global qubit indexing to the system's local indexing.
         let local_controls: Vec<usize> = controls.iter().map(|&t| qsys.to_local_index(t)).collect();
         let local_n_qubits = qsys.qubits.len();
         let local_gate = Gate::new(gate.get_type(), &local_controls, &local_targets).unwrap();
