@@ -6,7 +6,7 @@ use crate::{
         collapse_probs, eval_tensor_product, expand_matrix_from_gate, measure_and_observe_dm,
         reduced_state, swap_matrix,
     },
-    gate::Gate,
+    gate::{Gate, GateType},
     instruction::Instruction,
     register_file::RegisterFile,
     simulator::{DebuggableSimulator, StoredCircuitSimulator},
@@ -153,8 +153,26 @@ impl DMSimulator {
         let mut qsys = self.qsystems[gate_qsystems[0]].clone();
 
         let gate_acts_on_several_systems = gate_qsystems.len() > 1;
+        let is_swap_between_systems = gate_acts_on_several_systems
+            && gate.get_type() == GateType::SWAP
+            && controls.is_empty();
 
-        if gate_acts_on_several_systems {
+        if is_swap_between_systems {
+            // Regular swaps do not result in entanglement.
+            // Only change global qubit index.
+            let qsys1_local_target = qsys.to_local_index(targets[0]);
+            let mut qsys2 = self.qsystems[gate_qsystems[1]].clone();
+            let qsys2_local_target = qsys2.to_local_index(targets[1]);
+
+            // Swap.
+            let temp = qsys.qubits[qsys1_local_target];
+            qsys.qubits[qsys1_local_target] = qsys2.qubits[qsys2_local_target];
+            qsys2.qubits[qsys2_local_target] = temp;
+
+            self.qsystems[gate_qsystems[0]] = qsys;
+            self.qsystems[gate_qsystems[1]] = qsys2;
+            return;
+        } else if gate_acts_on_several_systems {
             // Combine all systems acted on.
             qsys = gate_qsystems
                 .iter()
@@ -487,124 +505,228 @@ mod tests {
             Circuit::new(4)
                 .h(0)
                 .ch(&[0], 2)
+                .swap(0, 2)
                 .h(1)
                 .ch(&[1], 3)
+                .swap(0, 3)
                 .ch(&[2], 1)
+                .swap(2, 3)
                 .ch(&[0], 3)
+                .swap(0, 1)
                 .into(),
         );
         sim.cont();
         let mut expected = DMatrix::<Complex<f64>>::zeros(16, 16);
 
         expected[(0, 0)] = cart!(0.2500000298023224);
-        expected[(0, 1)] = cart!(0.125);
-        expected[(0, 2)] = cart!(0.1767767071723938);
-        expected[(0, 3)] = cart!(0.1767767071723938);
-        expected[(0, 5)] = cart!(0.2133883386850357);
-        expected[(0, 7)] = cart!(-0.0366116501390934);
-        expected[(0, 9)] = cart!(0.125);
-        expected[(0, 10)] = cart!(0.1767767071723938);
-        expected[(0, 13)] = cart!(0.0883883386850357);
-        expected[(0, 15)] = cart!(0.0883883535861969);
+        expected[(0, 1)] = cart!(0.1767767071723938);
+        expected[(0, 2)] = cart!(0.0625);
+        expected[(0, 3)] = cart!(0.0625);
+        expected[(0, 6)] = cart!(0.0625);
+        expected[(0, 7)] = cart!(-0.0625);
+        expected[(0, 8)] = cart!(0.2133883386850357);
+        expected[(0, 9)] = cart!(0.0366116538643837);
+        expected[(0, 10)] = cart!(-0.0625);
+        expected[(0, 11)] = cart!(0.1875000149011612);
+        expected[(0, 12)] = cart!(0.2133883386850357);
+        expected[(0, 13)] = cart!(0.0366116538643837);
+        expected[(0, 14)] = cart!(-0.0625);
+        expected[(0, 15)] = cart!(0.0625);
 
-        expected[(1, 0)] = cart!(0.125);
-        expected[(1, 1)] = cart!(0.0625);
-        expected[(1, 2)] = cart!(0.0883883535861969);
-        expected[(1, 3)] = cart!(0.0883883535861969);
-        expected[(1, 5)] = cart!(0.10669416189193726);
-        expected[(1, 7)] = cart!(-0.0183058250695467);
-        expected[(1, 9)] = cart!(0.0625);
-        expected[(1, 10)] = cart!(0.0883883535861969);
-        expected[(1, 13)] = cart!(0.04419416934251785);
+        expected[(1, 0)] = cart!(0.1767767071723938);
+        expected[(1, 1)] = cart!(0.125);
+        expected[(1, 2)] = cart!(0.04419417679309845);
+        expected[(1, 3)] = cart!(0.04419417679309845);
+        expected[(1, 6)] = cart!(0.04419417679309845);
+        expected[(1, 7)] = cart!(-0.04419417679309845);
+        expected[(1, 8)] = cart!(0.1508883386850357);
+        expected[(1, 9)] = cart!(0.0258883498609066);
+        expected[(1, 10)] = cart!(-0.04419417679309845);
+        expected[(1, 11)] = cart!(0.13258253037929535);
+        expected[(1, 12)] = cart!(0.1508883386850357);
+        expected[(1, 13)] = cart!(0.0258883498609066);
+        expected[(1, 14)] = cart!(-0.04419417679309845);
         expected[(1, 15)] = cart!(0.04419417679309845);
 
-        expected[(2, 0)] = cart!(0.1767767071723938);
-        expected[(2, 1)] = cart!(0.0883883535861969);
-        expected[(2, 2)] = cart!(0.125);
-        expected[(2, 3)] = cart!(0.125);
-        expected[(2, 5)] = cart!(0.1508883386850357);
-        expected[(2, 7)] = cart!(-0.025888346135616302);
-        expected[(2, 9)] = cart!(0.0883883535861969);
-        expected[(2, 10)] = cart!(0.125);
-        expected[(2, 13)] = cart!(0.0624999925494194);
-        expected[(2, 15)] = cart!(0.0625);
+        expected[(2, 0)] = cart!(0.0625);
+        expected[(2, 1)] = cart!(0.04419417679309845);
+        expected[(2, 2)] = cart!(0.015625);
+        expected[(2, 3)] = cart!(0.015625);
+        expected[(2, 6)] = cart!(0.015625);
+        expected[(2, 7)] = cart!(-0.015625);
+        expected[(2, 8)] = cart!(0.05334708094596863);
+        expected[(2, 9)] = cart!(0.009152913466095924);
+        expected[(2, 10)] = cart!(-0.015625);
+        expected[(2, 11)] = cart!(0.0468750037252903);
+        expected[(2, 12)] = cart!(0.05334708094596863);
+        expected[(2, 13)] = cart!(0.009152913466095924);
+        expected[(2, 14)] = cart!(-0.015625);
+        expected[(2, 15)] = cart!(0.015625);
 
-        expected[(3, 0)] = cart!(0.1767767071723938);
-        expected[(3, 1)] = cart!(0.0883883535861969);
-        expected[(3, 2)] = cart!(0.125);
-        expected[(3, 3)] = cart!(0.125);
-        expected[(3, 5)] = cart!(0.1508883386850357);
-        expected[(3, 7)] = cart!(-0.025888346135616302);
-        expected[(3, 9)] = cart!(0.0883883535861969);
-        expected[(3, 10)] = cart!(0.125);
-        expected[(3, 13)] = cart!(0.0624999925494194);
-        expected[(3, 15)] = cart!(0.0625);
+        expected[(3, 0)] = cart!(0.0625);
+        expected[(3, 1)] = cart!(0.04419417679309845);
+        expected[(3, 2)] = cart!(0.015625);
+        expected[(3, 3)] = cart!(0.015625);
+        expected[(3, 6)] = cart!(0.015625);
+        expected[(3, 7)] = cart!(-0.015625);
+        expected[(3, 8)] = cart!(0.05334708094596863);
+        expected[(3, 9)] = cart!(0.009152913466095924);
+        expected[(3, 10)] = cart!(-0.015625);
+        expected[(3, 11)] = cart!(0.0468750037252903);
+        expected[(3, 12)] = cart!(0.05334708094596863);
+        expected[(3, 13)] = cart!(0.009152913466095924);
+        expected[(3, 14)] = cart!(-0.015625);
+        expected[(3, 15)] = cart!(0.015625);
 
-        expected[(5, 0)] = cart!(0.2133883386850357);
-        expected[(5, 1)] = cart!(0.10669416189193726);
-        expected[(5, 2)] = cart!(0.1508883386850357);
-        expected[(5, 3)] = cart!(0.1508883386850357);
-        expected[(5, 5)] = cart!(0.1821383237838745);
-        expected[(5, 7)] = cart!(-0.0312499962747097);
-        expected[(5, 9)] = cart!(0.10669416189193726);
-        expected[(5, 10)] = cart!(0.1508883386850357);
-        expected[(5, 13)] = cart!(0.07544415444135666);
-        expected[(5, 15)] = cart!(0.07544416934251785);
+        expected[(6, 0)] = cart!(0.0625);
+        expected[(6, 1)] = cart!(0.04419417679309845);
+        expected[(6, 2)] = cart!(0.015625);
+        expected[(6, 3)] = cart!(0.015625);
+        expected[(6, 6)] = cart!(0.015625);
+        expected[(6, 7)] = cart!(-0.015625);
+        expected[(6, 8)] = cart!(0.05334708094596863);
+        expected[(6, 9)] = cart!(0.009152913466095924);
+        expected[(6, 10)] = cart!(-0.015625);
+        expected[(6, 11)] = cart!(0.0468750037252903);
+        expected[(6, 12)] = cart!(0.05334708094596863);
+        expected[(6, 13)] = cart!(0.009152913466095924);
+        expected[(6, 14)] = cart!(-0.015625);
+        expected[(6, 15)] = cart!(0.015625);
 
-        expected[(7, 0)] = cart!(-0.0366116501390934);
-        expected[(7, 1)] = cart!(-0.0183058250695467);
-        expected[(7, 2)] = cart!(-0.025888346135616302);
-        expected[(7, 3)] = cart!(-0.025888346135616302);
-        expected[(7, 5)] = cart!(-0.0312499962747097);
-        expected[(7, 7)] = cart!(0.005361652001738548);
-        expected[(7, 9)] = cart!(-0.0183058250695467);
-        expected[(7, 10)] = cart!(-0.025888346135616302);
-        expected[(7, 13)] = cart!(-0.012944171205163002);
-        expected[(7, 15)] = cart!(-0.012944173067808151);
+        expected[(7, 0)] = cart!(-0.0625);
+        expected[(7, 1)] = cart!(-0.04419417679309845);
+        expected[(7, 2)] = cart!(-0.015625);
+        expected[(7, 3)] = cart!(-0.015625);
+        expected[(7, 6)] = cart!(-0.015625);
+        expected[(7, 7)] = cart!(0.015625);
+        expected[(7, 8)] = cart!(-0.05334708094596863);
+        expected[(7, 9)] = cart!(-0.009152913466095924);
+        expected[(7, 10)] = cart!(0.015625);
+        expected[(7, 11)] = cart!(-0.0468750037252903);
+        expected[(7, 12)] = cart!(-0.05334708094596863);
+        expected[(7, 13)] = cart!(-0.009152913466095924);
+        expected[(7, 14)] = cart!(0.015625);
+        expected[(7, 15)] = cart!(-0.015625);
 
-        expected[(9, 0)] = cart!(0.125);
-        expected[(9, 1)] = cart!(0.0625);
-        expected[(9, 2)] = cart!(0.0883883535861969);
-        expected[(9, 3)] = cart!(0.0883883535861969);
-        expected[(9, 5)] = cart!(0.10669416189193726);
-        expected[(9, 7)] = cart!(-0.0183058250695467);
-        expected[(9, 9)] = cart!(0.0625);
-        expected[(9, 10)] = cart!(0.0883883535861969);
-        expected[(9, 13)] = cart!(0.04419416934251785);
-        expected[(9, 15)] = cart!(0.04419417679309845);
+        expected[(8, 0)] = cart!(0.2133883386850357);
+        expected[(8, 1)] = cart!(0.1508883386850357);
+        expected[(8, 2)] = cart!(0.05334708094596863);
+        expected[(8, 3)] = cart!(0.05334708094596863);
+        expected[(8, 6)] = cart!(0.05334708094596863);
+        expected[(8, 7)] = cart!(-0.05334708094596863);
+        expected[(8, 8)] = cart!(0.1821383237838745);
+        expected[(8, 9)] = cart!(0.03125);
+        expected[(8, 10)] = cart!(-0.05334708094596863);
+        expected[(8, 11)] = cart!(0.16004124283790588);
+        expected[(8, 12)] = cart!(0.1821383237838745);
+        expected[(8, 13)] = cart!(0.03125);
+        expected[(8, 14)] = cart!(-0.05334708094596863);
+        expected[(8, 15)] = cart!(0.05334708094596863);
 
-        expected[(10, 0)] = cart!(0.1767767071723938);
-        expected[(10, 1)] = cart!(0.0883883535861969);
-        expected[(10, 2)] = cart!(0.125);
-        expected[(10, 3)] = cart!(0.125);
-        expected[(10, 5)] = cart!(0.1508883386850357);
-        expected[(10, 7)] = cart!(-0.025888346135616302);
-        expected[(10, 9)] = cart!(0.0883883535861969);
-        expected[(10, 10)] = cart!(0.125);
-        expected[(10, 13)] = cart!(0.0624999925494194);
-        expected[(10, 15)] = cart!(0.0625);
+        expected[(9, 0)] = cart!(0.0366116538643837);
+        expected[(9, 1)] = cart!(0.0258883498609066);
+        expected[(9, 2)] = cart!(0.009152913466095924);
+        expected[(9, 3)] = cart!(0.009152913466095924);
+        expected[(9, 6)] = cart!(0.009152913466095924);
+        expected[(9, 7)] = cart!(-0.009152913466095924);
+        expected[(9, 8)] = cart!(0.03125);
+        expected[(9, 9)] = cart!(0.005361652933061123);
+        expected[(9, 10)] = cart!(-0.009152913466095924);
+        expected[(9, 11)] = cart!(0.027458740398287773);
+        expected[(9, 12)] = cart!(0.03125);
+        expected[(9, 13)] = cart!(0.005361652933061123);
+        expected[(9, 14)] = cart!(-0.009152913466095924);
+        expected[(9, 15)] = cart!(0.009152913466095924);
 
-        expected[(13, 0)] = cart!(0.0883883386850357);
-        expected[(13, 1)] = cart!(0.04419416934251785);
-        expected[(13, 2)] = cart!(0.0624999925494194);
-        expected[(13, 3)] = cart!(0.0624999925494194);
-        expected[(13, 5)] = cart!(0.07544415444135666);
-        expected[(13, 7)] = cart!(-0.012944171205163002);
-        expected[(13, 9)] = cart!(0.04419416934251785);
-        expected[(13, 10)] = cart!(0.0624999925494194);
-        expected[(13, 13)] = cart!(0.031249990686774254);
-        expected[(13, 15)] = cart!(0.0312499962747097);
+        expected[(10, 0)] = cart!(-0.0625);
+        expected[(10, 1)] = cart!(-0.04419417679309845);
+        expected[(10, 2)] = cart!(-0.015625);
+        expected[(10, 3)] = cart!(-0.015625);
+        expected[(10, 6)] = cart!(-0.015625);
+        expected[(10, 7)] = cart!(0.015625);
+        expected[(10, 8)] = cart!(-0.05334708094596863);
+        expected[(10, 9)] = cart!(-0.009152913466095924);
+        expected[(10, 10)] = cart!(0.015625);
+        expected[(10, 11)] = cart!(-0.0468750037252903);
+        expected[(10, 12)] = cart!(-0.05334708094596863);
+        expected[(10, 13)] = cart!(-0.009152913466095924);
+        expected[(10, 14)] = cart!(0.015625);
+        expected[(10, 15)] = cart!(-0.015625);
 
-        expected[(15, 0)] = cart!(0.0883883535861969);
+        expected[(11, 0)] = cart!(0.1875000149011612);
+        expected[(11, 1)] = cart!(0.13258253037929535);
+        expected[(11, 2)] = cart!(0.0468750037252903);
+        expected[(11, 3)] = cart!(0.0468750037252903);
+        expected[(11, 6)] = cart!(0.0468750037252903);
+        expected[(11, 7)] = cart!(-0.0468750037252903);
+        expected[(11, 8)] = cart!(0.16004124283790588);
+        expected[(11, 9)] = cart!(0.027458740398287773);
+        expected[(11, 10)] = cart!(-0.0468750037252903);
+        expected[(11, 11)] = cart!(0.1406250149011612);
+        expected[(11, 12)] = cart!(0.16004124283790588);
+        expected[(11, 13)] = cart!(0.027458740398287773);
+        expected[(11, 14)] = cart!(-0.0468750037252903);
+        expected[(11, 15)] = cart!(0.0468750037252903);
+
+        expected[(12, 0)] = cart!(0.2133883386850357);
+        expected[(12, 1)] = cart!(0.1508883386850357);
+        expected[(12, 2)] = cart!(0.05334708094596863);
+        expected[(12, 3)] = cart!(0.05334708094596863);
+        expected[(12, 6)] = cart!(0.05334708094596863);
+        expected[(12, 7)] = cart!(-0.05334708094596863);
+        expected[(12, 8)] = cart!(0.1821383237838745);
+        expected[(12, 9)] = cart!(0.03125);
+        expected[(12, 10)] = cart!(-0.05334708094596863);
+        expected[(12, 11)] = cart!(0.16004124283790588);
+        expected[(12, 12)] = cart!(0.1821383237838745);
+        expected[(12, 13)] = cart!(0.03125);
+        expected[(12, 14)] = cart!(-0.05334708094596863);
+        expected[(12, 15)] = cart!(0.05334708094596863);
+
+        expected[(13, 0)] = cart!(0.0366116538643837);
+        expected[(13, 1)] = cart!(0.0258883498609066);
+        expected[(13, 2)] = cart!(0.009152913466095924);
+        expected[(13, 3)] = cart!(0.009152913466095924);
+        expected[(13, 6)] = cart!(0.009152913466095924);
+        expected[(13, 7)] = cart!(-0.009152913466095924);
+        expected[(13, 8)] = cart!(0.03125);
+        expected[(13, 9)] = cart!(0.005361652933061123);
+        expected[(13, 10)] = cart!(-0.009152913466095924);
+        expected[(13, 11)] = cart!(0.027458740398287773);
+        expected[(13, 12)] = cart!(0.03125);
+        expected[(13, 13)] = cart!(0.005361652933061123);
+        expected[(13, 14)] = cart!(-0.009152913466095924);
+        expected[(13, 15)] = cart!(0.009152913466095924);
+
+        expected[(14, 0)] = cart!(-0.0625);
+        expected[(14, 1)] = cart!(-0.04419417679309845);
+        expected[(14, 2)] = cart!(-0.015625);
+        expected[(14, 3)] = cart!(-0.015625);
+        expected[(14, 6)] = cart!(-0.015625);
+        expected[(14, 7)] = cart!(0.015625);
+        expected[(14, 8)] = cart!(-0.05334708094596863);
+        expected[(14, 9)] = cart!(-0.009152913466095924);
+        expected[(14, 10)] = cart!(0.015625);
+        expected[(14, 11)] = cart!(-0.0468750037252903);
+        expected[(14, 12)] = cart!(-0.05334708094596863);
+        expected[(14, 13)] = cart!(-0.009152913466095924);
+        expected[(14, 14)] = cart!(0.015625);
+        expected[(14, 15)] = cart!(-0.015625);
+
+        expected[(15, 0)] = cart!(0.0625);
         expected[(15, 1)] = cart!(0.04419417679309845);
-        expected[(15, 2)] = cart!(0.0625);
-        expected[(15, 3)] = cart!(0.0625);
-        expected[(15, 5)] = cart!(0.07544416934251785);
-        expected[(15, 7)] = cart!(-0.012944173067808151);
-        expected[(15, 9)] = cart!(0.04419417679309845);
-        expected[(15, 10)] = cart!(0.0625);
-        expected[(15, 13)] = cart!(0.0312499962747097);
-        expected[(15, 15)] = cart!(0.03125);
+        expected[(15, 2)] = cart!(0.015625);
+        expected[(15, 3)] = cart!(0.015625);
+        expected[(15, 6)] = cart!(0.015625);
+        expected[(15, 7)] = cart!(-0.015625);
+        expected[(15, 8)] = cart!(0.05334708094596863);
+        expected[(15, 9)] = cart!(0.009152913466095924);
+        expected[(15, 10)] = cart!(-0.015625);
+        expected[(15, 11)] = cart!(0.0468750037252903);
+        expected[(15, 12)] = cart!(0.05334708094596863);
+        expected[(15, 13)] = cart!(0.009152913466095924);
+        expected[(15, 14)] = cart!(-0.015625);
+        expected[(15, 15)] = cart!(0.015625);
 
         assert!(equal_to_matrix_c(&sim.density(), &expected, 0.001));
         check_probs(&sim, &expected);
