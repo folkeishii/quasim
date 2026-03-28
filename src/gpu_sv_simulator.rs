@@ -1,7 +1,7 @@
 use cubecl::bytes::Bytes;
 use cubecl::prelude::*;
 use cubecl::server::Handle;
-use cubecl::{CubeDim, Runtime, cube};
+use cubecl::{CubeDim, Runtime};
 use nalgebra::{Complex, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
@@ -17,6 +17,9 @@ use crate::{
     instruction::Instruction,
     register_file::RegisterFile,
 };
+
+mod gpu_kernels;
+mod mem_helpers;
 
 const GPU_MAX_TARGET_QUBITS: usize = 3;
 const GPU_MAX_BLOCK_SIZE: usize = 1 << GPU_MAX_TARGET_QUBITS;
@@ -48,7 +51,7 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
         let target_data = batched_circuit.data().target_data();
         let control_data = batched_circuit.data().control_data();
 
-        let gate_data_handle = client.create_from_slice(bytes_from_complex(gate_data));
+        let gate_data_handle = client.create_from_slice(mem_helpers::bytes_from_complex(gate_data));
         let target_data_handle = client.create_from_slice(u32::as_bytes(target_data));
         let control_data_handle = client.create_from_slice(u32::as_bytes(control_data));
 
@@ -82,10 +85,10 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
                         self.gpu_batch_command(command);
                         self.pc += command.size as usize;
                     }
-                },
+                }
                 BatchedCircuitOp::Instruction(instruction) => {
                     self.apply_instruction(&instruction.clone());
-                },
+                }
             }
         }
 
@@ -109,29 +112,26 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
 
     /// Get current state of the quantum system
     pub fn state_vector(&self) -> &[Complex<f32>] {
-        complex_from_bytes(&self.state_vector_cache)
+        unsafe { mem_helpers::complex_from_bytes(&self.state_vector_cache) }
     }
 
     pub fn state_vector_mut(&mut self) -> &mut [Complex<f32>] {
-        complex_from_bytes_mut(&mut self.state_vector_cache)
+        unsafe { mem_helpers::complex_from_bytes_mut(&mut self.state_vector_cache) }
     }
 
     fn gpu_batch_command(&self, command: &BatchCommand) {
         let n_amplitudes = self.state_vector_len;
         let data_length = self.batched_circuit.data().len();
         let batch_target_count = command.targets.count();
-        
-        // let block_indices = block_indices(command.targets);
-        // let block_indices_handle = self.client.create_from_slice(u32::as_bytes(&block_indices));
 
         let n_superblocks = n_amplitudes >> batch_target_count;
 
         let cube_dim = CubeDim::new_1d(min(n_superblocks as u32, 128));
         let cube_count =
             cubecl::calculate_cube_count_elemwise(&self.client, n_superblocks, cube_dim);
-        
+
         unsafe {
-            let _ = batched_gate2_kernel::launch(
+            let _ = gpu_kernels::batched_gate2::launch(
                 &self.client,
                 cube_count,
                 cube_dim,
@@ -228,188 +228,6 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
     }
 }
 
-#[derive(CubeType, Clone, Copy)]
-struct ComplexF32 {
-    re: f32,
-    im: f32,
-}
-
-#[cube]
-impl ComplexF32 {
-    fn mul(self, rhs: Self) -> Self {
-        ComplexF32 {
-            re: self.re * rhs.re - self.im * rhs.im,
-            im: self.re * rhs.im + self.im * rhs.re,
-        }
-    }
-
-    fn add(self, rhs: Self) -> Self {
-        ComplexF32 {
-            re: self.re + rhs.re,
-            im: self.im + rhs.im,
-        }
-    }
-}
-
-#[cube(launch)]
-fn batched_gate2_kernel(
-    state_vector: &mut Array<f32>,
-    target_data: &Array<u32>,
-    control_data: &Array<u32>,
-    gate_data: &Array<f32>,
-    start_index: u32,
-    size: u32,
-    target_mask: u32,
-) {
-    let block_size: usize = 1usize << (target_mask.count_ones() as usize);
-    let state_vector_len: usize = state_vector.len() / 2;
-
-    // One kernel is launcher for each block, so
-    // num units = statevector length / block size
-    let num_units: usize = state_vector_len / block_size;
-    if ABSOLUTE_POS < num_units {
-        let mut block_indices: Array<usize> = Array::new(GPU_MAX_BLOCK_SIZE);
-        for i in 0..block_size {
-            block_indices[i] = block_index(ABSOLUTE_POS, target_mask as usize, i);
-        }
-
-        for i in 0..size {
-            let data_index: usize = (start_index + i) as usize;
-            let target: usize = target_data[data_index] as usize;
-            let control: usize = control_data[data_index] as usize;
-            let gate_base = data_index * 8;
-
-            let u00 = ComplexF32 {
-                re: gate_data[gate_base],
-                im: gate_data[gate_base + 1],
-            };
-            let u01 = ComplexF32 {
-                re: gate_data[gate_base + 2],
-                im: gate_data[gate_base + 3],
-            };
-            let u10 = ComplexF32 {
-                re: gate_data[gate_base + 4],
-                im: gate_data[gate_base + 5],
-            };
-            let u11 = ComplexF32 {
-                re: gate_data[gate_base + 6],
-                im: gate_data[gate_base + 7],
-            };
-
-            for local_index in 0..block_size {
-                let block_index = block_indices[local_index];
-                
-                apply_unitary2(state_vector, block_index, target, control, u00, u01, u10, u11);
-            }
-        }
-
-    }
-}
-
-#[cube]
-fn apply_unitary2(
-    state_vector: &mut Array<f32>,
-    basis_state: usize,
-    target: usize,
-    control: usize,
-    u00: ComplexF32,
-    u01: ComplexF32,
-    u10: ComplexF32,
-    u11: ComplexF32,
-) {
-    // ABSOLUTE_POS is basis state
-    let basis0: usize = basis_state * 2;
-    let basis1: usize = (basis_state | target) * 2;
-
-    let is_block_base: bool = (basis_state & target) == 0;
-    let controls_active: bool = (basis_state & control) == control;
-
-    if is_block_base && controls_active {
-        let amp0 = ComplexF32 {
-            re: state_vector[basis0],
-            im: state_vector[basis0 + 1],
-        };
-        let amp1 = ComplexF32 {
-            re: state_vector[basis1],
-            im: state_vector[basis1 + 1],
-        };
-
-        let new_amp0 = u00.mul(amp0).add(u01.mul(amp1));
-        let new_amp1 = u10.mul(amp0).add(u11.mul(amp1));
-
-        state_vector[basis0] = new_amp0.re;
-        state_vector[basis0 + 1] = new_amp0.im;
-
-        state_vector[basis1] = new_amp1.re;
-        state_vector[basis1 + 1] = new_amp1.im;
-    }
-}
-
-#[cube]
-fn block_index(mut superblock: usize, mut target_mask: usize, local_index: usize) -> usize {
-    let mut shift = 0usize;
-    while target_mask != 0 {
-        let lowest = target_mask & ((!target_mask) + 1);
-        let pos = (lowest - 1).count_ones() as usize;
-        let bit = (local_index >> shift) & 1;  // take next bit from local_index
-        let lower = superblock & ((1 << pos) - 1);
-        let upper = superblock >> pos;
-        superblock = lower | (bit << pos) | (upper << (pos + 1)); // Reconstruct blockindex
-        target_mask &= target_mask - 1;
-        shift += 1;
-    }
-    superblock
-}
-
-fn block_indices(targets: QBits) -> Vec<u32> {
-    let k = targets.count();
-    let mut indices = Vec::with_capacity(1 << k);
-
-    for mask in 0..(1 << k) {
-        let mut idx = 0;
-        // We embed the bits of mask into the corresponding target qubit positions
-        for (j, &target_bit_pos) in targets.get_indices().iter().enumerate() {
-            // Take the j:th bit of the mask and place it at the correct position
-            // of the target bit
-            idx |= ((mask >> j) & 1) << target_bit_pos;
-        }
-        indices.push(idx);
-    }
-
-    indices
-}
-
-fn bytes_from_complex<T: CubeElement>(data: &[Complex<T>]) -> &[u8] {
-    let flat: &[T] =
-        unsafe { std::slice::from_raw_parts(data.as_ptr() as *const T, data.len() * 2) };
-
-    T::as_bytes(flat)
-}
-
-fn complex_from_bytes<T: CubeElement>(bytes: &[u8]) -> &[Complex<T>] {
-    let data = T::from_bytes(&bytes);
-
-    unsafe { std::slice::from_raw_parts(data.as_ptr() as *const Complex<T>, data.len() / 2) }
-}
-
-fn bytes_from_complex_mut<T: CubeElement>(data: &mut [Complex<T>]) -> &mut [u8] {
-    unsafe {
-        std::slice::from_raw_parts_mut(
-            data.as_mut_ptr() as *mut u8,
-            data.len() * size_of::<Complex<T>>(),
-        )
-    }
-}
-
-fn complex_from_bytes_mut<T: CubeElement>(bytes: &mut Bytes) -> &mut [Complex<T>] {
-    unsafe {
-        std::slice::from_raw_parts_mut(
-            bytes.as_mut_ptr() as *mut Complex<T>,
-            bytes.len() / size_of::<Complex<T>>(),
-        )
-    }
-}
-
 pub struct GpuStateVectorSimulator<R: Runtime> {
     circuit: Circuit<HybridCircuit>,
     _runtime: std::marker::PhantomData<R>,
@@ -467,6 +285,10 @@ mod tests {
 
         println!("{}", &gpu.final_state());
         println!("{}", &cpu.final_state());
-        assert!(equal_to_matrix_c(&gpu.final_state(), &cpu.final_state(), 0.001));
+        assert!(equal_to_matrix_c(
+            &gpu.final_state(),
+            &cpu.final_state(),
+            0.001
+        ));
     }
 }
