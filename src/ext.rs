@@ -419,10 +419,10 @@ pub fn measure_no_observe_dm(
     proj_0.clone() * density * proj_0 + proj_1.clone() * density * proj_1
 }
 
-/// # reduced_state
+/// # partial_trace
 /// Returns the reduced state (partial trace) of a density matrix,
 /// where `targets` specifies the subsystem of qubits.
-pub fn reduced_state(
+pub fn partial_trace(
     density: &DMatrix<Complex<f64>>,
     targets: &[usize],
     n_qubits: usize,
