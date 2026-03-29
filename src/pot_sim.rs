@@ -33,6 +33,7 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
 
         match inst {
             Instruction::Gate(gate) => {
+                self.pc.increment();
                 let ctrl = gate.get_control_bits();
                 let mut targets = TargetIter::from(gate.get_target_bits());
                 match gate.get_type() {
