@@ -658,6 +658,11 @@ mod tests {
     }
 
     #[test]
+    fn apply_gates() {
+        common_test::apply_gates::<SVSimulatorDebugger>();
+    }
+
+    #[test]
     fn double_sub() {
         common_test::double_sub::<SVSimulatorDebugger>();
     }

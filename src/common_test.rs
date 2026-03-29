@@ -4,10 +4,99 @@ use nalgebra::{Complex, DVector, dvector};
 
 use crate::{
     cart,
-    circuit::{Circuit, HybridCircuit},
+    circuit::{Circuit, HybridCircuit, PureCircuit},
     ext::equal_to_matrix_c,
     simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
 };
+
+pub fn apply_gates<D: BuildSimulator<PureCircuit> + DebuggableSimulator>() {
+    let mut circuit = Circuit::new(3);
+    circuit = circuit.h(0);
+    let s1 = dvector![
+        cart!(FRAC_1_SQRT_2),
+        cart!(FRAC_1_SQRT_2),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0)
+    ];
+    circuit = circuit.y(1);
+    let s2 = dvector![
+        cart!(0),
+        cart!(0),
+        cart!(0, FRAC_1_SQRT_2),
+        cart!(0, FRAC_1_SQRT_2),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0)
+    ];
+    circuit = circuit.z(2);
+    let s3 = s2.clone();
+    circuit = circuit.z(1);
+    let s4 = dvector![
+        cart!(0),
+        cart!(0),
+        cart!(0, -FRAC_1_SQRT_2),
+        cart!(0, -FRAC_1_SQRT_2),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0)
+    ];
+    circuit = circuit.h(1);
+    let s5 = dvector![
+        cart!(0, -0.5),
+        cart!(0, -0.5),
+        cart!(0, 0.5),
+        cart!(0, 0.5),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0)
+    ];
+    circuit = circuit.y(2);
+    let s6 = dvector![
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0.5),
+        cart!(0.5),
+        cart!(-0.5),
+        cart!(-0.5),
+    ];
+    circuit = circuit.swap(0, 2);
+    let s7 = dvector![
+        cart!(0),
+        cart!(0.5),
+        cart!(0),
+        cart!(-0.5),
+        cart!(0),
+        cart!(0.5),
+        cart!(0),
+        cart!(-0.5),
+    ];
+
+    let mut sim = D::build(circuit).expect("Could not build simulator");
+
+    #[rustfmt::skip]
+    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s1, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s2, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s3, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s4, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s5, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s6, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s7, 0.000001));
+}
 
 pub fn double_sub<
     D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,

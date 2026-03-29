@@ -591,6 +591,11 @@ mod tests {
     }
 
     #[test]
+    fn apply_gates() {
+        common_test::apply_gates::<DebugSimulator>();
+    }
+
+    #[test]
     fn double_sub() {
         common_test::double_sub::<DebugSimulator>();
     }
