@@ -32,7 +32,7 @@ impl ComplexF32 {
 ///
 /// Assumes `state_vector`, `partial_sums`, and `block_size` is a power of 2.
 #[cube(launch)]
-pub fn reduce_complex(
+pub fn reduce_complex_norm(
     state_vector: &Array<f32>,
     partial_sums: &mut Array<f32>,
     #[comptime] block_size: usize,
@@ -107,6 +107,17 @@ pub fn reduce_pass(
 
     if tid == 0 {
         partial_out[bid] = shared[0];
+    }
+}
+
+/// Normalize state vector using a norm
+#[cube(launch)]
+pub fn array_divide(
+    array: &mut Array<f32>,
+    divisor: f32,
+) {
+    if ABSOLUTE_POS < array.len() {
+        array[ABSOLUTE_POS] /= divisor;
     }
 }
 
