@@ -439,7 +439,8 @@ impl Iterator for TargetIter {
 #[derive(Debug, Clone)]
 /// ## Examples:
 /// ```
-/// let it = BitMaskIter::from(0b101);
+/// use quasim::ext::BitMaskIter;
+/// let mut it = BitMaskIter::from(0b101);
 /// assert_eq!(it.next(), Some(0b000));
 /// assert_eq!(it.next(), Some(0b001));
 /// assert_eq!(it.next(), Some(0b100));

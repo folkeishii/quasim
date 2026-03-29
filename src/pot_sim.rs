@@ -45,7 +45,7 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
                     | ty @ GateType::S => {
                         let mat = ty.unchecked_matrix2x2();
                         for target in targets {
-                            let dont_care = !(*ctrl | (1 << target));
+                            let dont_care = !(*ctrl | (1 << target)) & !(usize::MAX << self.circuit.n_qubits());
                             let combinations = BitMaskIter::from(dont_care).map(Into::into);
                             for combination in combinations {
                                 let base = ctrl | combination;
@@ -60,7 +60,7 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
                         let t2 = targets.next().expect("invalid circuit");
                         let t2_mask = 1 << t2;
 
-                        let dont_care = !(*ctrl | t1_mask | t2_mask);
+                        let dont_care = !(*ctrl | t1_mask | t2_mask)& !(usize::MAX << self.circuit.n_qubits());
                         let combinations = BitMaskIter::from(dont_care).map(Into::into);
                         for combination in combinations {
                             let qs1 = ctrl | combination | t1_mask.into();
@@ -80,6 +80,10 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
             Instruction::Call(_, _, qbits) => todo!(),
         }
 
+        for i in 0..(1 << self.circuit.n_qubits()) {
+            self.null_state[i] = self.state.state(i.into());
+        }
+
         Some(&self.null_state)
     }
 
@@ -92,7 +96,7 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
-        todo!()
+        &self.null_state
     }
 }
 
@@ -102,14 +106,16 @@ where
     Circuit<B>: Into<Circuit<HybridCircuit>>,
     C: StateCollection,
 {
-    type Error = ();
+    type Error = GenericSimError;
 
     fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
+        let mut state = DVector::zeros(1 <<value.n_qubits());
+        state[0] = cart!(1);
         Ok(Self {
             state: C::new(value.n_qubits()),
             circuit: value.into(),
             pc: CircuitPc::new(0),
-            null_state: dvector![cart!(0)],
+            null_state: state,
         })
     }
 }
@@ -135,6 +141,7 @@ impl StateCollection for DVector<Complex<f64>> {
     }
 
     fn state(&self, qbits: QBits) -> Complex<f64> {
+        println!("{:?}", qbits);
         self[*qbits]
     }
 
@@ -227,5 +234,20 @@ impl<'a, C: StateCollection + ?Sized> StatePairMut<'a, C> {
             .insert(self.qbits & !self.target_mask, res[0]);
         self.collection
             .insert(self.qbits | self.target_mask, res[1]);
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum GenericSimError {}
+
+#[cfg(test)]
+mod tests {
+    use nalgebra::{Complex, DVector};
+
+    use crate::{common_test, pot_sim::GenericSim};
+
+    #[test]
+    fn apply_gates() {
+        common_test::apply_gates::<GenericSim<DVector<Complex<f64>>>>();
     }
 }
