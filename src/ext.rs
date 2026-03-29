@@ -7,7 +7,7 @@ use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, Matrix2, RawStorage, dmat
 use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
 
-use crate::gate::{Gate, GateType};
+use crate::gate::{Gate, GateType, QBits};
 
 #[macro_export]
 macro_rules! cart {
@@ -402,11 +402,105 @@ impl<T: Ord> OrdByKey<T> for T {
     }
 }
 
+#[derive(Debug, Clone)]
+/// Items are offsets of targets
+pub struct TargetIter {
+    rem: QBits,
+    removed: usize
+}
+impl From<QBits> for TargetIter {
+    fn from(value: QBits) -> Self {
+        Self {
+            rem: value,
+            removed: 0,
+        }
+    }
+}
+impl Iterator for TargetIter {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if *self.rem == 0 {
+            return None
+        }
+
+        while *self.rem & 1 == 0 {
+            self.rem >>= 1;
+            self.removed += 1;
+        }
+
+        self.rem >>= 1;
+        self.removed += 1;
+
+        Some(self.removed - 1)
+    }
+}
+
+#[derive(Debug, Clone)]
+/// ## Examples:
+/// ```
+/// let it = BitMaskIter::from(0b101);
+/// assert_eq!(it.next(), Some(0b000));
+/// assert_eq!(it.next(), Some(0b001));
+/// assert_eq!(it.next(), Some(0b100));
+/// assert_eq!(it.next(), Some(0b101));
+/// assert_eq!(it.next(), None);
+/// ```
+pub struct BitMaskIter {
+    bitmask: usize,
+    next: usize,
+    exhausted: bool,
+}
+impl From<usize> for BitMaskIter {
+    fn from(value: usize) -> Self {
+        Self {
+            bitmask: value,
+            next: 0,
+            exhausted: false
+        }
+    }
+}
+impl Iterator for BitMaskIter {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.exhausted {
+            return None
+        }
+
+        let mut ret = 0;
+        let mut next_i = 1;
+        let mut mask_i = 1;
+        while mask_i > 0 && next_i > 0 {
+            match (self.bitmask & mask_i > 0, self.next & next_i > 0) {
+                (true, true) => {
+                    ret |= mask_i;
+                    mask_i <<= 1;
+                    next_i <<= 1;
+                },
+                (true, false) => {
+                    mask_i <<= 1;
+                    next_i <<= 1;
+                },
+                (false, _) => {
+                    mask_i <<= 1;
+                },
+            }
+        }
+
+        if ret ^ self.bitmask == 0 {
+            self.exhausted = true
+        }
+        self.next += 1;
+        Some(ret)
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use crate::ext::{
-        convert_matrix, convert_vector, equal_to_matrix_c, expand_matrix_from_gate,
-        get_gate_matrix, swap_matrix,
+        BitMaskIter, convert_matrix, convert_vector, equal_to_matrix_c, expand_matrix_from_gate, get_gate_matrix, swap_matrix
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
@@ -488,5 +582,27 @@ mod tests {
             &sim_ch,
             0.001
         ));
+    }
+
+    #[test]
+    fn bitmask_iter() {
+        let mut it = BitMaskIter::from(0b011101);
+        assert_eq!(it.next(), Some(0b000000));
+        assert_eq!(it.next(), Some(0b000001));
+        assert_eq!(it.next(), Some(0b000100));
+        assert_eq!(it.next(), Some(0b000101));
+        assert_eq!(it.next(), Some(0b001000));
+        assert_eq!(it.next(), Some(0b001001));
+        assert_eq!(it.next(), Some(0b001100));
+        assert_eq!(it.next(), Some(0b001101));
+        assert_eq!(it.next(), Some(0b010000));
+        assert_eq!(it.next(), Some(0b010001));
+        assert_eq!(it.next(), Some(0b010100));
+        assert_eq!(it.next(), Some(0b010101));
+        assert_eq!(it.next(), Some(0b011000));
+        assert_eq!(it.next(), Some(0b011001));
+        assert_eq!(it.next(), Some(0b011100));
+        assert_eq!(it.next(), Some(0b011101));
+        assert!(it.next().is_none())
     }
 }

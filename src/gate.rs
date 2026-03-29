@@ -1,13 +1,13 @@
 use std::{
     f64::consts::{FRAC_1_SQRT_2, PI},
-    ops::{BitAnd, BitOr, BitOrAssign, Deref, Shl, Shr, ShrAssign},
+    ops::{BitAnd, BitOr, BitOrAssign, Deref, Not, Shl, Shr, ShrAssign},
 };
 
-use nalgebra::Complex;
+use nalgebra::{Complex, Matrix2, matrix};
 
-use crate::cart;
+use crate::{cart, ext::get_u_matrix2};
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Default, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Default, Hash)]
 pub struct QBits(usize);
 
 impl QBits {
@@ -49,6 +49,13 @@ impl QBits {
         self.0
     }
 }
+impl Deref for QBits {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 impl From<usize> for QBits {
     fn from(value: usize) -> Self {
         QBits(value)
@@ -80,6 +87,13 @@ impl BitAnd<usize> for QBits {
         Self(self.0 & rhs)
     }
 }
+impl BitAnd for QBits {
+    type Output = QBits;
+
+    fn bitand(self, rhs: QBits) -> Self::Output {
+        Self(self.0 & rhs.0)
+    }
+}
 impl BitOr for QBits {
     type Output = Self;
 
@@ -90,6 +104,13 @@ impl BitOr for QBits {
 impl BitOrAssign for QBits {
     fn bitor_assign(&mut self, rhs: Self) {
         self.0 |= rhs.0
+    }
+}
+impl Not for QBits {
+    type Output = QBits;
+
+    fn not(self) -> Self::Output {
+        QBits(!self.0)
     }
 }
 
@@ -117,6 +138,35 @@ impl GateType {
             Self::X | Self::Y | Self::Z | Self::H | Self::SWAP => *self,
             Self::S => Self::U(0.0, 0.0, -PI / 2.0),
             Self::U(theta, phi, lambda) => Self::U(-theta, -lambda, -phi),
+        }
+    }
+
+    /// ## Panics
+    /// if matches!(self, GateType::SWAP)
+    pub fn unchecked_matrix2x2(&self) -> Matrix2<Complex<f64>> {
+        match *self {
+            GateType::X => matrix![
+                cart!(0), cart!(1);
+                cart!(1), cart!(0);
+            ],
+            GateType::Y => matrix![
+                cart!(0.0), cart!(0.0, -1.0);
+                cart!(0.0, 1.0), cart!(0.0);
+            ],
+            GateType::Z => matrix![
+                cart!(1.0), cart!(0.0);
+                cart!(0.0), cart!(-1.0, 0.0);
+            ],
+            GateType::H => matrix![
+                cart!(FRAC_1_SQRT_2, 0.0), cart!(FRAC_1_SQRT_2, 0.0);
+                cart!(FRAC_1_SQRT_2, 0.0), cart!(-FRAC_1_SQRT_2, 0.0);
+            ],
+            GateType::SWAP => panic!("Can not represent GateType::SWAP with a 2x2 matrix"),
+            GateType::U(theta, phi, lambda) => get_u_matrix2(theta, phi, lambda),
+            GateType::S => matrix![
+                cart!(1.0), cart!(0.0);
+                cart!(0.0), cart!(0.0, 1.0);
+            ],
         }
     }
 }
