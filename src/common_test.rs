@@ -96,6 +96,57 @@ pub fn apply_gates<D: BuildSimulator<PureCircuit> + DebuggableSimulator>() {
     assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s6, 0.000001));
     #[rustfmt::skip]
     assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s7, 0.000001));
+
+    apply_cswap::<D>();
+}
+
+fn apply_cswap<D: BuildSimulator<PureCircuit> + DebuggableSimulator>() {
+    let mut circuit = Circuit::new(4);
+    circuit = circuit.h(0).h(1).h(2);
+    let s1 = dvector![
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+    ];
+    circuit = circuit.cswap(&[0,2], 1, 3);
+    let s2 = dvector![
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0.35355),
+        cart!(0),
+        cart!(0),
+    ];
+    let mut sim = D::build(circuit).expect("Could not build simulator");
+    sim.next();
+    sim.next();
+    #[rustfmt::skip]
+    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s1, 0.00001));
+    #[rustfmt::skip]
+    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s2, 0.00001));
 }
 
 pub fn double_sub<
