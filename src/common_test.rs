@@ -46,36 +46,36 @@ pub fn apply_gates<D: BuildSimulator<PureCircuit> + DebuggableSimulator>() {
         cart!(0),
         cart!(0)
     ];
-    circuit = circuit.h(1);
+    circuit = circuit.ch(&[0], 1);
     let s5 = dvector![
+        cart!(0),
         cart!(0, -0.5),
-        cart!(0, -0.5),
-        cart!(0, 0.5),
+        cart!(0, -FRAC_1_SQRT_2),
         cart!(0, 0.5),
         cart!(0),
         cart!(0),
         cart!(0),
         cart!(0)
     ];
-    circuit = circuit.y(2);
+    circuit = circuit.cy(&[0, 1], 2);
     let s6 = dvector![
         cart!(0),
+        cart!(0, -0.5),
+        cart!(0, -FRAC_1_SQRT_2),
         cart!(0),
         cart!(0),
         cart!(0),
-        cart!(0.5),
-        cart!(0.5),
-        cart!(-0.5),
+        cart!(0),
         cart!(-0.5),
     ];
     circuit = circuit.swap(0, 2);
     let s7 = dvector![
         cart!(0),
-        cart!(0.5),
         cart!(0),
-        cart!(-0.5),
+        cart!(0, -FRAC_1_SQRT_2),
         cart!(0),
-        cart!(0.5),
+        cart!(0, -0.5),
+        cart!(0),
         cart!(0),
         cart!(-0.5),
     ];
