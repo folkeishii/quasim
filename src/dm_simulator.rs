@@ -4,7 +4,7 @@ use crate::{
     expr_dsl::{Expr, Value},
     ext::{
         collapse_probs, eval_tensor_product, expand_matrix_from_gate, measure_and_observe_dm,
-        partial_trace, swap_matrix,
+        reduced_state, swap_matrix,
     },
     gate::{Gate, GateType},
     instruction::Instruction,
@@ -129,7 +129,7 @@ impl DMSimulator {
          *      - if gate acts on multiple systems,
          *      then combine those systems and then
          *      apply gate to the total system.
-         *      (Exception: SWAP gates, they do not 
+         *      (Exception: SWAP gates, they do not
          *      cause entanglement)
          *
          * */
@@ -285,7 +285,7 @@ impl DMSimulator {
 
         // "Split" density matrix.
         sys.qubits.remove(local_target);
-        sys.density = partial_trace(&post_measure_density, &local_non_targets, local_n_qubits);
+        sys.density = reduced_state(&post_measure_density, &local_non_targets, local_n_qubits);
 
         self.systems[target_system] = sys;
 
@@ -440,7 +440,7 @@ pub enum DMSimulatorError {
 
 #[cfg(test)]
 mod tests {
-    use crate::ext::{equal_to_matrix_c, partial_trace};
+    use crate::ext::{equal_to_matrix_c, reduced_state};
     use crate::{
         cart, circuit::Circuit, dm_simulator::DMSimulator, expr_dsl::expr_helpers::r,
         simulator::DebuggableSimulator,
@@ -498,7 +498,7 @@ mod tests {
                     .x(4),
             );
             while let Some(_) = sim.next() {}
-            let q4 = partial_trace(&sim.density(), &[4], 5);
+            let q4 = reduced_state(&sim.density(), &[4], 5);
             assert!(equal_to_matrix_c(
                 &q4,
                 &dmatrix![cart!(0.0), cart!(0.0);
