@@ -1,288 +1,219 @@
-use std::fmt::{Display, Formatter};
 use std::ops::{Add, BitAnd, BitOr, BitXor, Div, Mul, Not, Rem, Sub};
 
 use serde::{Deserialize, Serialize};
 
 use crate::register_file::RegisterFile;
 
-#[derive(Debug, thiserror::Error)]
-pub enum ValueError {
-    #[error("Operation type mismatch")]
-    TypeMismatch,
-}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum BitExpr {
+    Val(u64),
+    Reg(String),
+    RegBit(String, usize),
 
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Value {
-    Int(i32),
-    Float(f32),
-    Bool(bool),
-}
+    Not(Box<Self>),
+    And(Box<Self>, Box<Self>),
+    Or(Box<Self>, Box<Self>),
+    Xor(Box<Self>, Box<Self>),
 
-impl Display for Value {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Value::Int(i) => {
-                write!(f, "{}", i)
-            }
-            Value::Float(fl) => {
-                write!(f, "{}", fl)
-            }
-            Value::Bool(b) => {
-                write!(f, "{}", b)
-            }
-        }
-    }
-}
-
-impl Default for Value {
-    fn default() -> Self {
-        Value::Int(0)
-    }
-}
-
-impl Value {
-    pub fn not(self) -> Result<Value, ValueError> {
-        match self {
-            Value::Int(x) => Ok(Value::Int(!x)),
-            Value::Bool(x) => Ok(Value::Bool(!x)),
-            _ => Err(ValueError::TypeMismatch),
-        }
-    }
-
-    pub fn and(self, rhs: Value) -> Result<Value, ValueError> {
-        match (self, rhs) {
-            (Value::Int(x), Value::Int(y)) => Ok(Value::Int(x & y)),
-            (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x && y)),
-            _ => Err(ValueError::TypeMismatch),
-        }
-    }
-
-    pub fn or(self, rhs: Value) -> Result<Value, ValueError> {
-        match (self, rhs) {
-            (Value::Int(x), Value::Int(y)) => Ok(Value::Int(x | y)),
-            (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x || y)),
-            _ => Err(ValueError::TypeMismatch),
-        }
-    }
-
-    pub fn xor(self, rhs: Value) -> Result<Value, ValueError> {
-        match (self, rhs) {
-            (Value::Int(x), Value::Int(y)) => Ok(Value::Int(x ^ y)),
-            (Value::Bool(x), Value::Bool(y)) => Ok(Value::Bool(x ^ y)),
-            _ => Err(ValueError::TypeMismatch),
-        }
-    }
-
-    pub fn add(self, rhs: Value) -> Result<Value, ValueError> {
-        self.numeric_binop(rhs, |a, b| Value::Int(a + b), |x, y| Value::Float(x + y))
-    }
-
-    pub fn sub(self, rhs: Value) -> Result<Value, ValueError> {
-        self.numeric_binop(rhs, |a, b| Value::Int(a - b), |x, y| Value::Float(x - y))
-    }
-
-    pub fn mul(self, rhs: Value) -> Result<Value, ValueError> {
-        self.numeric_binop(rhs, |a, b| Value::Int(a * b), |x, y| Value::Float(x * y))
-    }
-
-    pub fn div(self, rhs: Value) -> Result<Value, ValueError> {
-        self.numeric_binop(rhs, |a, b| Value::Int(a / b), |x, y| Value::Float(x / y))
-    }
-
-    pub fn rem(self, rhs: Value) -> Result<Value, ValueError> {
-        self.numeric_binop(rhs, |a, b| Value::Int(a % b), |x, y| Value::Float(x % y))
-    }
-
-    pub fn lt(self, rhs: Value) -> Result<Value, ValueError> {
-        self.numeric_binop(rhs, |a, b| Value::Bool(a < b), |x, y| Value::Bool(x < y))
-    }
-
-    pub fn eq(self, rhs: Value) -> Value {
-        Value::Bool(self == rhs)
-    }
-
-    fn numeric_binop<FInt, FFloat>(
-        self,
-        rhs: Value,
-        int_fn: FInt,
-        float_fn: FFloat,
-    ) -> Result<Value, ValueError>
-    where
-        FInt: Fn(i32, i32) -> Value,
-        FFloat: Fn(f32, f32) -> Value,
-    {
-        match (self, rhs) {
-            (Value::Int(x), Value::Int(y)) => Ok(int_fn(x, y)),
-            (Value::Float(x), Value::Float(y)) => Ok(float_fn(x, y)),
-            (Value::Int(x), Value::Float(y)) => Ok(float_fn(x as f32, y)),
-            (Value::Float(x), Value::Int(y)) => Ok(float_fn(x, y as f32)),
-            _ => Err(ValueError::TypeMismatch),
-        }
-    }
+    Add(Box<Self>, Box<Self>),
+    Sub(Box<Self>, Box<Self>),
+    Mul(Box<Self>, Box<Self>),
+    Div(Box<Self>, Box<Self>),
+    Rem(Box<Self>, Box<Self>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum Expr {
-    Val(Value),
-    Reg(String),
+pub enum BoolExpr {
+    Eq(Box<BitExpr>, Box<BitExpr>),
+    Lt(Box<BitExpr>, Box<BitExpr>),
 
-    Not(Box<Expr>),
-    And(Box<Expr>, Box<Expr>),
-    Or(Box<Expr>, Box<Expr>),
-    Xor(Box<Expr>, Box<Expr>),
-
-    Add(Box<Expr>, Box<Expr>),
-    Sub(Box<Expr>, Box<Expr>),
-    Mul(Box<Expr>, Box<Expr>),
-    Div(Box<Expr>, Box<Expr>),
-    Rem(Box<Expr>, Box<Expr>),
-
-    Eq(Box<Expr>, Box<Expr>),
-    Lt(Box<Expr>, Box<Expr>),
+    Not(Box<Self>),
+    And(Box<Self>, Box<Self>),
+    Or(Box<Self>, Box<Self>),
+    Xor(Box<Self>, Box<Self>),
 }
 
-impl Expr {
-    pub fn eq<V: Into<Expr>>(self, rhs: V) -> Expr {
-        Expr::Eq(Box::new(self), Box::new(rhs.into()))
+impl BitExpr {
+    pub fn eq<T: Into<BitExpr>>(self, rhs: T) -> BoolExpr {
+        BoolExpr::Eq(Box::new(self), Box::new(rhs.into()))
     }
 
-    pub fn lt<V: Into<Expr>>(self, rhs: V) -> Expr {
-        Expr::Lt(Box::new(self), Box::new(rhs.into()))
+    pub fn lt<T: Into<BitExpr>>(self, rhs: T) -> BoolExpr {
+        BoolExpr::Lt(Box::new(self), Box::new(rhs.into()))
     }
 
-    pub fn lte<V: Into<Expr>>(self, rhs: V) -> Expr {
-        Expr::Not(Box::new(Expr::Lt(Box::new(rhs.into()), Box::new(self))))
+    pub fn lte<T: Into<BitExpr>>(self, rhs: T) -> BoolExpr {
+        BoolExpr::Not(Box::new(BoolExpr::Lt(Box::new(rhs.into()), Box::new(self))))
     }
 
-    pub fn gt<V: Into<Expr>>(self, rhs: V) -> Expr {
-        Expr::Lt(Box::new(rhs.into()), Box::new(self))
+    pub fn gt<T: Into<BitExpr>>(self, rhs: T) -> BoolExpr {
+        BoolExpr::Lt(Box::new(rhs.into()), Box::new(self))
     }
 
-    pub fn gte<V: Into<Expr>>(self, rhs: V) -> Expr {
-        Expr::Not(Box::new(Expr::Lt(Box::new(self), Box::new(rhs.into()))))
+    pub fn gte<T: Into<BitExpr>>(self, rhs: T) -> BoolExpr {
+        BoolExpr::Not(Box::new(BoolExpr::Lt(Box::new(self), Box::new(rhs.into()))))
     }
 
-    pub fn eval(&self, regs: &RegisterFile<Value>) -> Result<Value, ValueError> {
+    pub fn eval(&self, regs: &RegisterFile) -> u64 {
         match self {
-            Expr::Val(v) => Ok(*v),
-            Expr::Reg(name) => Ok(regs[name]),
+            Self::Val(v) => *v,
+            Self::Reg(name) => regs[name].read(),
+            Self::RegBit(name, usize) => regs[name].read_bit(*usize),
 
-            Expr::Not(e) => e.eval(regs)?.not(),
-            Expr::And(a, b) => a.eval(regs)?.and(b.eval(regs)?),
-            Expr::Or(a, b) => a.eval(regs)?.or(b.eval(regs)?),
-            Expr::Xor(a, b) => a.eval(regs)?.xor(b.eval(regs)?),
+            Self::Not(e) => e.eval(regs).not(),
+            Self::And(a, b) => a.eval(regs) & b.eval(regs),
+            Self::Or(a, b) => a.eval(regs) | b.eval(regs),
+            Self::Xor(a, b) => a.eval(regs) ^ b.eval(regs),
 
-            Expr::Add(a, b) => a.eval(regs)?.add(b.eval(regs)?),
-            Expr::Sub(a, b) => a.eval(regs)?.sub(b.eval(regs)?),
-            Expr::Mul(a, b) => a.eval(regs)?.mul(b.eval(regs)?),
-            Expr::Div(a, b) => a.eval(regs)?.div(b.eval(regs)?),
-            Expr::Rem(a, b) => a.eval(regs)?.rem(b.eval(regs)?),
+            Self::Add(a, b) => a.eval(regs) + b.eval(regs),
+            Self::Sub(a, b) => a.eval(regs) - b.eval(regs),
+            Self::Mul(a, b) => a.eval(regs) * b.eval(regs),
+            Self::Div(a, b) => a.eval(regs) / b.eval(regs),
+            Self::Rem(a, b) => a.eval(regs) % b.eval(regs),
+        }
+    }
+}
 
-            Expr::Eq(a, b) => Ok(a.eval(regs)?.eq(b.eval(regs)?)),
-            Expr::Lt(a, b) => a.eval(regs)?.lt(b.eval(regs)?),
+impl BoolExpr {
+    pub fn eval(&self, regs: &RegisterFile) -> bool {
+        match self {
+            Self::Not(e) => !e.eval(regs),
+            Self::And(a, b) => a.eval(regs) && b.eval(regs),
+            Self::Or(a, b) => a.eval(regs) || b.eval(regs),
+            Self::Xor(a, b) => a.eval(regs) ^ b.eval(regs),
+
+            Self::Eq(a, b) => a.eval(regs) == b.eval(regs),
+            Self::Lt(a, b) => a.eval(regs) < b.eval(regs),
         }
     }
 }
 
 // Into types
 
-impl From<i32> for Expr {
-    fn from(v: i32) -> Self {
-        Expr::Val(Value::Int(v))
+impl From<u64> for BitExpr {
+    fn from(v: u64) -> Self {
+        Self::Val(v)
     }
 }
 
-impl From<f32> for Expr {
-    fn from(v: f32) -> Self {
-        Expr::Val(Value::Float(v))
-    }
-}
+// Arithmetic operators for BitExpr
 
-impl From<bool> for Expr {
-    fn from(v: bool) -> Self {
-        Expr::Val(Value::Bool(v))
-    }
-}
-
-// Arithmetic operators for expressions
-
-impl<V: Into<Expr>> Add<V> for Expr {
-    type Output = Expr;
+impl<V: Into<Self>> Add<V> for BitExpr {
+    type Output = Self;
 
     fn add(self, rhs: V) -> Self::Output {
-        Expr::Add(Box::new(self), Box::new(rhs.into()))
+        Self::Add(Box::new(self), Box::new(rhs.into()))
     }
 }
 
-impl<V: Into<Expr>> Sub<V> for Expr {
-    type Output = Expr;
+impl<V: Into<Self>> Sub<V> for BitExpr {
+    type Output = Self;
 
     fn sub(self, rhs: V) -> Self::Output {
-        Expr::Sub(Box::new(self), Box::new(rhs.into()))
+        Self::Sub(Box::new(self), Box::new(rhs.into()))
     }
 }
 
-impl<V: Into<Expr>> Mul<V> for Expr {
-    type Output = Expr;
+impl<V: Into<Self>> Mul<V> for BitExpr {
+    type Output = Self;
 
     fn mul(self, rhs: V) -> Self::Output {
-        Expr::Mul(Box::new(self), Box::new(rhs.into()))
+        Self::Mul(Box::new(self), Box::new(rhs.into()))
     }
 }
 
-impl<V: Into<Expr>> Div<V> for Expr {
-    type Output = Expr;
+impl<V: Into<Self>> Div<V> for BitExpr {
+    type Output = Self;
 
     fn div(self, rhs: V) -> Self::Output {
-        Expr::Div(Box::new(self), Box::new(rhs.into()))
+        Self::Div(Box::new(self), Box::new(rhs.into()))
     }
 }
 
-impl<V: Into<Expr>> Rem<V> for Expr {
-    type Output = Expr;
+impl<V: Into<Self>> Rem<V> for BitExpr {
+    type Output = Self;
 
     fn rem(self, rhs: V) -> Self::Output {
-        Expr::Rem(Box::new(self), Box::new(rhs.into()))
+        Self::Rem(Box::new(self), Box::new(rhs.into()))
     }
 }
 
-impl<V: Into<Expr>> BitXor<V> for Expr {
-    type Output = Expr;
+impl<V: Into<Self>> BitXor<V> for BitExpr {
+    type Output = Self;
 
     fn bitxor(self, rhs: V) -> Self::Output {
-        Expr::Xor(Box::new(self), Box::new(rhs.into()))
+        Self::Xor(Box::new(self), Box::new(rhs.into()))
     }
 }
 
-impl<V: Into<Expr>> BitAnd<V> for Expr {
-    type Output = Expr;
+impl<V: Into<Self>> BitAnd<V> for BitExpr {
+    type Output = Self;
 
     fn bitand(self, rhs: V) -> Self::Output {
-        Expr::And(Box::new(self), Box::new(rhs.into()))
+        Self::And(Box::new(self), Box::new(rhs.into()))
     }
 }
 
-impl<V: Into<Expr>> BitOr<V> for Expr {
-    type Output = Expr;
+impl<V: Into<Self>> BitOr<V> for BitExpr {
+    type Output = Self;
 
     fn bitor(self, rhs: V) -> Self::Output {
-        Expr::Or(Box::new(self), Box::new(rhs.into()))
+        Self::Or(Box::new(self), Box::new(rhs.into()))
     }
 }
 
-impl Not for Expr {
-    type Output = Expr;
+impl Not for BitExpr {
+    type Output = Self;
 
     fn not(self) -> Self::Output {
-        Expr::Not(Box::new(self))
+        Self::Not(Box::new(self))
+    }
+}
+
+// Boolean operators for BoolExpr
+
+impl<V: Into<Self>> BitXor<V> for BoolExpr {
+    type Output = Self;
+
+    fn bitxor(self, rhs: V) -> Self::Output {
+        Self::Xor(Box::new(self), Box::new(rhs.into()))
+    }
+}
+
+impl<V: Into<Self>> BitAnd<V> for BoolExpr {
+    type Output = Self;
+
+    fn bitand(self, rhs: V) -> Self::Output {
+        Self::And(Box::new(self), Box::new(rhs.into()))
+    }
+}
+
+impl<V: Into<Self>> BitOr<V> for BoolExpr {
+    type Output = Self;
+
+    fn bitor(self, rhs: V) -> Self::Output {
+        Self::Or(Box::new(self), Box::new(rhs.into()))
+    }
+}
+
+impl Not for BoolExpr {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        Self::Not(Box::new(self))
     }
 }
 
 pub mod expr_helpers {
-    use crate::expr_dsl::Expr;
+    use crate::expr_dsl::BitExpr;
 
-    /// Read register
-    pub fn r(reg: &str) -> Expr {
-        Expr::Reg(reg.to_owned())
+    /// Read whole register
+    pub fn r<S: Into<String>>(reg: S) -> BitExpr {
+        BitExpr::Reg(reg.into())
+    }
+
+    /// Read bit in register
+    pub fn rb<S: Into<String>>(reg: S, bit: usize) -> BitExpr {
+        BitExpr::RegBit(reg.into(), bit)
     }
 }

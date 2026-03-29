@@ -10,7 +10,6 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::debug_simulator::DebugSimulator;
-use crate::expr_dsl::Value;
 use crate::simulator::HybridSimulator;
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
@@ -29,7 +28,7 @@ pub struct DebugTerminal<S = DebugSimulator> {
 
 impl<S> DebugTerminal<S>
 where
-    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit> + HybridSimulator<Value>,
+    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit> + HybridSimulator,
 {
     pub fn new<B: CircuitBehaviour>(
         circuit: Circuit<B>,

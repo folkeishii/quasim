@@ -1,32 +1,101 @@
 use std::fmt::Display;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     ops::{Index, IndexMut},
 };
 
+#[derive(Debug, Clone, thiserror::Error)]
+pub enum RegisterError {
+    #[error("tried to create register with invalid size {0}")]
+    InitSize(usize),
+    #[error("tried to write to out of bounds bit {0}")]
+    WriteBitError(usize),
+    #[error("tried to write invalid value {0}, expected 0 or 1")]
+    WriteBitValueError(u64),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct Register {
+    value: u64,
+    size: usize,
+}
+
+impl Register {
+    /// Expects size in range 0 to 64
+    pub fn new(size: usize) -> Result<Self, RegisterError> {
+        if size > 64 {
+            Err(RegisterError::InitSize(size))
+        } else {
+            Ok(Self { value: 0, size })
+        }
+    }
+
+    /// Expects value as 0 or 1
+    pub fn write_bit(&mut self, bit: usize, value: u64) -> Result<u64, RegisterError> {
+        if bit >= self.size {
+            return Err(RegisterError::WriteBitError(bit));
+        }
+        if !(value == 0 || value == 1) {
+            return Err(RegisterError::WriteBitValueError(value));
+        }
+
+        // Reset bit pos
+        self.value &= !(1 << bit);
+        // Write new bit value
+        self.value |= value << bit;
+
+        Ok(self.value)
+    }
+
+    pub fn write(&mut self, value: u64) {
+        // Write mask is 1's in writable bit positions
+        let write_mask = (1 << self.size) - 1;
+        self.value = value & write_mask;
+    }
+
+    pub fn read_bit(&self, bit: usize) -> u64 {
+        (self.value >> bit) & 1
+    }
+
+    pub fn read(&self) -> u64 {
+        self.value
+    }
+}
+
+impl Display for Register {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:0>width$b}", self.value, width = self.size)
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 /// Map containing named registers
-pub struct RegisterFile<T>(HashMap<String, T>);
+pub struct RegisterFile(HashMap<String, Register>);
 
-impl<T> RegisterFile<T> {
-    pub fn get(&self, key: &str) -> Option<&T> {
+impl RegisterFile {
+    pub fn get(&self, key: &str) -> Option<&Register> {
         self.0.get(key)
     }
 }
 
-impl<T: Default> From<&HashSet<String>> for RegisterFile<T> {
-    fn from(value: &HashSet<String>) -> Self {
-        let map = value
-            .into_iter()
-            .map(|name| (name.clone(), T::default()))
-            .collect();
+impl TryFrom<&HashMap<String, usize>> for RegisterFile {
+    type Error = RegisterError;
 
-        Self(map)
+    fn try_from(value: &HashMap<String, usize>) -> Result<Self, Self::Error> {
+        let mut reg_map = HashMap::new();
+
+        for (name, &size) in value {
+            let new_reg = Register::new(size)?;
+
+            reg_map.insert(name.clone(), new_reg);
+        }
+
+        Ok(Self(reg_map))
     }
 }
 
-impl<T> Index<&str> for RegisterFile<T> {
-    type Output = T;
+impl Index<&str> for RegisterFile {
+    type Output = Register;
 
     fn index(&self, index: &str) -> &Self::Output {
         self.0
@@ -34,7 +103,7 @@ impl<T> Index<&str> for RegisterFile<T> {
             .expect(&format!("Unknown register {}", index))
     }
 }
-impl<T> IndexMut<&str> for RegisterFile<T> {
+impl IndexMut<&str> for RegisterFile {
     fn index_mut(&mut self, index: &str) -> &mut Self::Output {
         self.0
             .get_mut(index)
@@ -42,16 +111,13 @@ impl<T> IndexMut<&str> for RegisterFile<T> {
     }
 }
 
-impl<T: Clone> From<&RegisterFile<T>> for HashMap<String, T> {
-    fn from(value: &RegisterFile<T>) -> Self {
+impl From<&RegisterFile> for HashMap<String, Register> {
+    fn from(value: &RegisterFile) -> Self {
         value.0.clone()
     }
 }
 
-impl<T> Display for RegisterFile<T>
-where
-    T: Display,
-{
+impl Display for RegisterFile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let key_width = self.0.keys().map(|k| k.len()).max().unwrap_or(1);
 

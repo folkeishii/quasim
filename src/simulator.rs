@@ -1,6 +1,6 @@
 use crate::circuit::CircuitBehaviour;
 use crate::circuit::pc::CircuitPc;
-use crate::register_file::RegisterFile;
+use crate::register_file::{Register, RegisterFile};
 use crate::{circuit::Circuit, instruction::Instruction};
 use nalgebra::{Complex, DVector};
 
@@ -119,10 +119,10 @@ pub trait StoredCircuitSimulator {
 /// # HybridSimulator
 /// Any simulator that implements classical operations
 /// and stores registers should implement this trait
-pub trait HybridSimulator<T: Copy> {
-    fn registers(&self) -> &RegisterFile<T>;
+pub trait HybridSimulator {
+    fn registers(&self) -> &RegisterFile;
 
-    fn register(&self, register: &str) -> T {
+    fn register(&self, register: &str) -> Register {
         self.registers()[register]
     }
 }
