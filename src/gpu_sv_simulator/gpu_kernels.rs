@@ -26,13 +26,31 @@ impl ComplexF32 {
     }
 }
 
+/// Removes amplitudes in statevector where basis doesnt align with measurement
+#[cube(launch)]
+pub fn state_vector_observe(state_vector: &mut Array<f32>, measurement: u32) {
+    let basis = ABSOLUTE_POS;
+    if ((basis as u32) & measurement) != measurement {
+        state_vector[basis * 2] = 0.0; // re
+        state_vector[basis * 2 + 1] = 0.0; // im
+    }
+}
+
+#[cube(launch)]
+pub fn state_vector_observe_full(state_vector: &mut Array<f32>, measurement: u32) {
+    let basis = ABSOLUTE_POS;
+    if ((basis as u32) & measurement) == measurement {
+        state_vector[basis * 2] = 1.0; // re
+        state_vector[basis * 2 + 1] = 0.0; // im
+    } else {
+        state_vector[basis * 2] = 0.0; // re
+        state_vector[basis * 2 + 1] = 0.0; // im
+    }
+}
+
 /// Copy a slice of from some array into another
 #[cube(launch)]
-pub fn copy_slice(
-    from: &Array<f32>,
-    to: &mut Array<f32>,
-    offset: usize,
-) {
+pub fn copy_slice(from: &Array<f32>, to: &mut Array<f32>, offset: usize) {
     if ABSOLUTE_POS + offset < from.len() {
         to[ABSOLUTE_POS] = from[ABSOLUTE_POS + offset];
     }
@@ -83,10 +101,7 @@ pub fn reduce_pass(
 }
 
 #[cube(launch)]
-pub fn calculate_probs(
-    state_vector: &Array<f32>,
-    probs: &mut Array<f32>,
-) {
+pub fn calculate_probs(state_vector: &Array<f32>, probs: &mut Array<f32>) {
     let gid = ABSOLUTE_POS;
     let amp_count = state_vector.len() / 2;
 

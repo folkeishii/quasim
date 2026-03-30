@@ -3,6 +3,7 @@ use cubecl::{Runtime, bytes::Bytes, client::ComputeClient, server::Handle};
 use nalgebra::Complex;
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
+use crate::gate::QBits;
 use crate::gate_batcher::BatchCommand;
 use crate::gpu_sv_simulator::gpu_kernels;
 use crate::{batched_circuit::BatchedCircuit, gpu_sv_simulator::mem_helpers};
@@ -95,10 +96,12 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
+    /// Avoid using this function unless necessary, downloads whole state vector from gpu
     pub fn sync_state_to_cpu(&mut self) {
         self.state_vector_cache = self.client.read_one(self.state_vector_handle.clone());
     }
 
+    /// Avoid using this function unless necessary, uploads whole state vector to gpu
     pub fn sync_state_to_gpu(&mut self) {
         self.state_vector_handle = self.client.create(self.state_vector_cache.clone());
     }
@@ -135,7 +138,114 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    pub fn normalize(&mut self) {
+    pub fn sample(&self) -> usize {
+        self.build_reduction_hierarchy();
+
+        let mut sample = 0;
+        for (prob_handle, prob_len) in self
+            .reduced_probs
+            .iter()
+            .rev()
+            .map(|level| (&level.handle, level.len))
+            .chain(std::iter::once((&self.probs_handle, self.state_vector_len)))
+        {
+            let local_index = self.sample_prob_block(prob_handle, prob_len, sample);
+            sample = sample * GPU_REDUCE_FACTOR + local_index;
+        }
+
+        sample
+    }
+
+    pub fn measure_bits(&mut self, targets: QBits) -> usize {
+        let measurement = self.sample() & targets.get_bitstring();
+
+        let (cube_dim, cube_count) = self.cube_opts(self.state_vector_len);
+
+        unsafe {
+            let _ = gpu_kernels::state_vector_observe::launch(
+                &self.client,
+                cube_count,
+                cube_dim,
+                ArrayArg::from_raw_parts::<f32>(
+                    &self.state_vector_handle,
+                    self.state_vector_len * 2,
+                    1,
+                ),
+                ScalarArg::new(measurement as u32),
+            );
+        }
+        self.normalize();
+
+        measurement
+    }
+
+    pub fn measure(&mut self) -> usize {
+        let measurement = self.sample();
+
+        let (cube_dim, cube_count) = self.cube_opts(self.state_vector_len);
+
+        unsafe {
+            let _ = gpu_kernels::state_vector_observe_full::launch(
+                &self.client,
+                cube_count,
+                cube_dim,
+                ArrayArg::from_raw_parts::<f32>(
+                    &self.state_vector_handle,
+                    self.state_vector_len * 2,
+                    1,
+                ),
+                ScalarArg::new(measurement as u32),
+            );
+        }
+
+        measurement
+    }
+
+    // Helpers
+
+    fn cube_opts(&self, num_elems: usize) -> (CubeDim, CubeCount) {
+        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_MAX_CUBE_DIM) as u32);
+        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
+
+        (cube_dim, cube_count)
+    }
+
+    fn build_reduction_hierarchy(&self) {
+        self.launch_calculate_probs();
+
+        let mut in_handle = &self.probs_handle;
+        let mut in_len = self.state_vector_len;
+
+        for out_level in &self.reduced_probs {
+            self.launch_reduce_pass(in_len, in_handle, &out_level.handle);
+            in_handle = &out_level.handle;
+            in_len = out_level.len;
+        }
+    }
+
+    fn sample_prob_block(&self, prob_handle: &Handle, prob_len: usize, sample: usize) -> usize {
+        self.launch_copy_sampling_probs(prob_handle, prob_len, sample);
+
+        let offset = sample * GPU_REDUCE_FACTOR;
+        let valid_len = (prob_len - offset).min(GPU_REDUCE_FACTOR);
+        let bytes = self.client.read_one(self.sampling_handle.clone());
+        let weights = &f32::from_bytes(&bytes)[..valid_len];
+
+        Self::sample_weights(weights.iter().copied())
+    }
+
+    fn sample_weights<I>(weights: I) -> usize
+    where
+        I: IntoIterator<Item = f32>,
+    {
+        let dist = WeightedIndex::new(weights)
+            .expect("Failed to sample from state vector. Invalid or empty probability slice?");
+        let mut rng = rand::rng();
+
+        dist.sample(&mut rng)
+    }
+
+    fn normalize(&mut self) {
         // If state vector is smaller than `GPU_REDUCE_FACTOR`, then no reduce handles
         // will have been generated, and we can just do the normalization on the cpu
         if self.reduced_probs.is_empty() {
@@ -165,29 +275,7 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    fn build_reduction_hierarchy(&self) {
-        for (i, out_level) in self.reduced_probs.iter().enumerate() {
-            // First iteration we always have to first calculate probs from amplitudes
-            if i == 0 {
-                self.launch_calculate_probs();
-                self.launch_reduce_pass(self.state_vector_len, &self.probs_handle, &out_level.handle);
-
-            } else {
-                let in_level = &self.reduced_probs[i - 1];
-                self.launch_reduce_pass(in_level.len, &in_level.handle, &out_level.handle);
-            }
-        }
-    }
-
-    fn cube_opts(&self, num_elems: usize) -> (CubeDim, CubeCount) {
-        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_MAX_CUBE_DIM) as u32);
-        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
-
-        (cube_dim, cube_count)
-    }
-
     // Kernel launch wrappers
-
 
     fn launch_calculate_probs(&self) {
         let num_elems = self.state_vector_len;
@@ -253,34 +341,5 @@ impl<R: Runtime> GpuStateVector<R> {
                 ScalarArg::new(sample_offset),
             );
         }
-    }
-
-    pub fn sample_state_vector(&self) -> usize {
-        self.build_reduction_hierarchy();
-
-        // TODO implement
-        todo!()
-    }
-
-    fn sample_prob_block(&self, prob_handle: &Handle, prob_len: usize, sample: usize) -> usize {
-        self.launch_copy_sampling_probs(prob_handle, prob_len, sample);
-
-        let offset = sample * GPU_REDUCE_FACTOR;
-        let valid_len = (prob_len - offset).min(GPU_REDUCE_FACTOR);
-        let bytes = self.client.read_one(self.sampling_handle.clone());
-        let weights = &f32::from_bytes(&bytes)[..valid_len];
-
-        Self::sample_weights(weights.iter().copied())
-    }
-
-    fn sample_weights<I>(weights: I) -> usize
-    where
-        I: IntoIterator<Item = f32>,
-    {
-        let dist = WeightedIndex::new(weights)
-            .expect("Failed to sample from state vector. Invalid or empty probability slice?");
-        let mut rng = rand::rng();
-
-        dist.sample(&mut rng)
     }
 }

@@ -2,7 +2,9 @@ use cubecl::Runtime;
 use nalgebra::{Complex, DVector};
 
 use crate::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
+use crate::cart;
 use crate::circuit::HybridCircuit;
+use crate::gate::QBits;
 use crate::gpu_sv_simulator::gpu_state_vector::GpuStateVector;
 use crate::simulator::RunnableSimulator;
 use crate::{
@@ -63,15 +65,33 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
 
     /// Gets a collapsed result from the current state vector
     pub fn get_collapsed_state(&self) -> usize {
-        self.gpu_state_vector.sample_state_vector()
+        self.gpu_state_vector.sample()
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
-        todo!()
+        let measurement = self
+            .gpu_state_vector
+            .measure_bits(QBits::from_bitstring(1 << target));
+
+        let shifted_measurement = ((measurement >> target) & 1) << bit_pos;
+        let register_bit_mask = 1 << bit_pos;
+
+        if let Value::Int(val) = self.registers[reg] {
+            let val_cleared = (val as usize) & !register_bit_mask;
+            self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
+        } else {
+            self.registers[reg] = Value::Int(shifted_measurement as i32)
+        }
+
+        self.pc += 1;
     }
 
     fn measure_all(&mut self, reg: &str) {
-        todo!()
+        let measurement = self.gpu_state_vector.measure();
+
+        self.registers[reg] = Value::Int(measurement as i32);
+
+        self.pc += 1;
     }
 
     fn jump(&mut self, label_pc: usize) {
