@@ -1,6 +1,5 @@
 use cubecl::Runtime;
 use nalgebra::{Complex, DVector};
-use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
 use crate::circuit::HybridCircuit;
@@ -64,7 +63,7 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
 
     /// Gets a collapsed result from the current state vector
     pub fn get_collapsed_state(&self) -> usize {
-        todo!()
+        self.gpu_state_vector.sample_state_vector()
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
@@ -172,5 +171,13 @@ mod tests {
             &cpu.final_state(),
             0.001
         ));
+    }
+
+    #[test]
+    fn sampling_basis_state_walks_back_to_state_vector() {
+        let circuit = Circuit::<PureCircuit>::new(15).x(0).x(7).x(14);
+        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.into()).unwrap();
+
+        assert_eq!(gpu.run(), (1 << 14) | (1 << 7) | 1);
     }
 }

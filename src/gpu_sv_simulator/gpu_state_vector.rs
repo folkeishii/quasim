@@ -1,6 +1,7 @@
 use cubecl::prelude::*;
 use cubecl::{Runtime, bytes::Bytes, client::ComputeClient, server::Handle};
 use nalgebra::Complex;
+use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::gate_batcher::BatchCommand;
 use crate::gpu_sv_simulator::gpu_kernels;
@@ -24,8 +25,8 @@ pub struct GpuStateVector<R: Runtime> {
     control_data_handle: Handle,
 
     sampling_handle: Handle,
-
-    reduce_levels: Vec<ReduceLevel>,
+    probs_handle: Handle,
+    reduced_probs: Vec<ReduceLevel>,
 }
 
 #[derive(Clone)]
@@ -71,8 +72,13 @@ impl<R: Runtime> GpuStateVector<R> {
         let mut init_state: Vec<f32> = vec![0.0; state_vector_len * 2]; // two floats for each complex number
         init_state[0] = 1.0; // Sets first complex re = 1.0
         let init_bytes = Bytes::from_elems(init_state);
-
         let state_vector_handle = client.create_from_slice(&init_bytes);
+
+        // Probs init
+        let mut init_probs: Vec<f32> = vec![0.0; state_vector_len];
+        init_probs[0] = 1.0; // Sets first state prob = 1.0
+        let init_probs = Bytes::from_elems(init_probs);
+        let probs_handle = client.create_from_slice(&init_probs);
 
         Self {
             client,
@@ -84,7 +90,8 @@ impl<R: Runtime> GpuStateVector<R> {
             target_data_handle,
             control_data_handle,
             sampling_handle,
-            reduce_levels,
+            probs_handle,
+            reduced_probs: reduce_levels,
         }
     }
 
@@ -110,9 +117,7 @@ impl<R: Runtime> GpuStateVector<R> {
 
         let n_superblocks = n_amplitudes >> batch_target_count;
 
-        let cube_dim = CubeDim::new_1d(min(n_superblocks, GPU_MAX_CUBE_DIM) as u32);
-        let cube_count =
-            cubecl::calculate_cube_count_elemwise(&self.client, n_superblocks, cube_dim);
+        let (cube_dim, cube_count) = self.cube_opts(n_superblocks);
 
         unsafe {
             let _ = gpu_kernels::batched_gate2::launch(
@@ -130,22 +135,10 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    fn build_reduction_tree(&self) {
-        for (i, out_level) in self.reduce_levels.iter().enumerate() {
-            // First iteration we always have to reduce with complex numbers in mind
-            if i == 0 {
-                self.launch_reduce_state_vector(out_level);
-            } else {
-                let in_level = &self.reduce_levels[i - 1];
-                self.launch_reduce_pass(in_level, out_level);
-            }
-        }
-    }
-
-    fn normalize(&mut self) {
+    pub fn normalize(&mut self) {
         // If state vector is smaller than `GPU_REDUCE_FACTOR`, then no reduce handles
         // will have been generated, and we can just do the normalization on the cpu
-        if self.reduce_levels.is_empty() {
+        if self.reduced_probs.is_empty() {
             self.sync_state_to_cpu();
 
             let norm = self
@@ -161,60 +154,80 @@ impl<R: Runtime> GpuStateVector<R> {
         }
         // Else we do the normalization with reduce passes on the gpu:
         else {
-            self.build_reduction_tree();
+            self.build_reduction_hierarchy();
 
-            let final_level = self.reduce_levels.last().unwrap(); // safe unwrap
+            let final_level = self.reduced_probs.last().unwrap(); // safe unwrap
             let bytes = self.client.read_one(final_level.handle.clone());
             let reduced_sums = f32::from_bytes(&bytes);
             let norm = reduced_sums.iter().sum::<f32>().sqrt();
 
-            self.launch_state_vector_divide(norm);
+            self.launch_state_vector_division(norm);
         }
+    }
+
+    fn build_reduction_hierarchy(&self) {
+        for (i, out_level) in self.reduced_probs.iter().enumerate() {
+            // First iteration we always have to first calculate probs from amplitudes
+            if i == 0 {
+                self.launch_calculate_probs();
+                self.launch_reduce_pass(self.state_vector_len, &self.probs_handle, &out_level.handle);
+
+            } else {
+                let in_level = &self.reduced_probs[i - 1];
+                self.launch_reduce_pass(in_level.len, &in_level.handle, &out_level.handle);
+            }
+        }
+    }
+
+    fn cube_opts(&self, num_elems: usize) -> (CubeDim, CubeCount) {
+        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_MAX_CUBE_DIM) as u32);
+        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
+
+        (cube_dim, cube_count)
     }
 
     // Kernel launch wrappers
 
-    fn launch_reduce_state_vector(&self, out_level: &ReduceLevel) {
+
+    fn launch_calculate_probs(&self) {
         let num_elems = self.state_vector_len;
-        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_REDUCE_FACTOR) as u32);
-        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
+        let (cube_dim, cube_count) = self.cube_opts(num_elems);
 
         unsafe {
-            let _ = gpu_kernels::reduce_complex::launch(
+            let _ = gpu_kernels::calculate_probs::launch(
                 &self.client,
                 cube_count,
                 cube_dim,
                 ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, num_elems * 2, 1),
-                ArrayArg::from_raw_parts::<f32>(&out_level.handle, out_level.len, 1),
-                GPU_REDUCE_FACTOR,
+                ArrayArg::from_raw_parts::<f32>(&self.probs_handle, num_elems, 1),
             );
         }
     }
 
-    fn launch_reduce_pass(&self, in_level: &ReduceLevel, out_level: &ReduceLevel) {
-        let num_elems = in_level.len;
-        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_REDUCE_FACTOR) as u32);
-        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
+    fn launch_reduce_pass(&self, in_len: usize, in_handle: &Handle, out_handle: &Handle) {
+        let cube_dim = CubeDim::new_1d(min(in_len, GPU_REDUCE_FACTOR) as u32);
+        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, in_len, cube_dim);
+
+        let out_len = in_len / GPU_REDUCE_FACTOR;
 
         unsafe {
             let _ = gpu_kernels::reduce_pass::launch(
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(&in_level.handle, in_level.len, 1),
-                ArrayArg::from_raw_parts::<f32>(&out_level.handle, out_level.len, 1),
+                ArrayArg::from_raw_parts::<f32>(in_handle, in_len, 1),
+                ArrayArg::from_raw_parts::<f32>(out_handle, out_len, 1),
                 GPU_REDUCE_FACTOR,
             );
         }
     }
 
-    fn launch_state_vector_divide(&self, norm: f32) {
+    fn launch_state_vector_division(&self, norm: f32) {
         let num_elems = self.state_vector_len * 2;
-        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_MAX_CUBE_DIM) as u32);
-        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
+        let (cube_dim, cube_count) = self.cube_opts(num_elems);
 
         unsafe {
-            let _ = gpu_kernels::array_divide::launch(
+            let _ = gpu_kernels::vector_division::launch(
                 &self.client,
                 cube_count,
                 cube_dim,
@@ -224,42 +237,50 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    fn launch_copy_sampling_probs(&self, level: ReduceLevel, sample: usize) {
+    fn launch_copy_sampling_probs(&self, from_handle: &Handle, from_len: usize, sample: usize) {
         let num_elems = GPU_REDUCE_FACTOR;
-        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_MAX_CUBE_DIM) as u32);
-        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
+        let (cube_dim, cube_count) = self.cube_opts(num_elems);
 
         let sample_offset = sample * num_elems;
 
         unsafe {
-            let _ = gpu_kernels::copy_offset::launch(
+            let _ = gpu_kernels::copy_slice::launch(
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(&level.handle, level.len, 1),
+                ArrayArg::from_raw_parts::<f32>(&from_handle, from_len, 1),
                 ArrayArg::from_raw_parts::<f32>(&self.sampling_handle, num_elems, 1),
                 ScalarArg::new(sample_offset),
             );
         }
     }
 
+    pub fn sample_state_vector(&self) -> usize {
+        self.build_reduction_hierarchy();
 
-    fn launch_copy_sampling_amplitudes(&self, sample: usize) {
-        let num_elems = GPU_REDUCE_FACTOR * 2;
-        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_MAX_CUBE_DIM) as u32);
-        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
+        // TODO implement
+        todo!()
+    }
 
-        let sample_offset = sample * num_elems;
+    fn sample_prob_block(&self, prob_handle: &Handle, prob_len: usize, sample: usize) -> usize {
+        self.launch_copy_sampling_probs(prob_handle, prob_len, sample);
 
-        unsafe {
-            let _ = gpu_kernels::copy_offset::launch(
-                &self.client,
-                cube_count,
-                cube_dim,
-                ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, self.state_vector_len * 2, 1),
-                ArrayArg::from_raw_parts::<f32>(&self.sampling_handle, num_elems, 1),
-                ScalarArg::new(sample_offset),
-            );
-        }
+        let offset = sample * GPU_REDUCE_FACTOR;
+        let valid_len = (prob_len - offset).min(GPU_REDUCE_FACTOR);
+        let bytes = self.client.read_one(self.sampling_handle.clone());
+        let weights = &f32::from_bytes(&bytes)[..valid_len];
+
+        Self::sample_weights(weights.iter().copied())
+    }
+
+    fn sample_weights<I>(weights: I) -> usize
+    where
+        I: IntoIterator<Item = f32>,
+    {
+        let dist = WeightedIndex::new(weights)
+            .expect("Failed to sample from state vector. Invalid or empty probability slice?");
+        let mut rng = rand::rng();
+
+        dist.sample(&mut rng)
     }
 }

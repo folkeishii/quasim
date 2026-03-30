@@ -26,64 +26,23 @@ impl ComplexF32 {
     }
 }
 
-
+/// Copy a slice of from some array into another
 #[cube(launch)]
-pub fn copy_offset(
-    array: &Array<f32>,
-    out: &mut Array<f32>,
+pub fn copy_slice(
+    from: &Array<f32>,
+    to: &mut Array<f32>,
     offset: usize,
 ) {
-    if ABSOLUTE_POS < out.len() && ABSOLUTE_POS + offset < array.len() {
-        out[ABSOLUTE_POS] = array[ABSOLUTE_POS + offset];
+    if ABSOLUTE_POS + offset < from.len() {
+        to[ABSOLUTE_POS] = from[ABSOLUTE_POS + offset];
     }
 }
 
 /// Compute partial sums from an array with interleaved complex numbers
 ///
-/// `block_size` should match number of units launched and is the number of complex amplitudes.
+/// `block_size` should match number of units launched
 ///
-/// Assumes `state_vector`, `partial_sums`, and `block_size` is a power of 2.
-#[cube(launch)]
-pub fn reduce_complex(
-    state_vector: &Array<f32>,
-    partial_sums: &mut Array<f32>,
-    #[comptime] block_size: usize,
-) {
-    let tid = UNIT_POS as usize;
-    let bid = CUBE_POS;
-    let gid = ABSOLUTE_POS;
-
-    // Shared scratch memory between all threads in a block
-    let mut shared: SharedMemory<f32> = SharedMemory::new(block_size);
-
-    let amp_count = state_vector.len() / 2;
-
-    // Initiate shared memory with the squared amplitudes
-    shared[tid] = if gid < amp_count {
-        let re = state_vector[2 * gid];
-        let im = state_vector[2 * gid + 1];
-        re * re + im * im
-    } else {
-        0.0.into()
-    };
-
-    sync_storage();
-
-    let mut stride = block_size >> 1;
-    while stride > 0 {
-        if tid < stride {
-            shared[tid] += shared[tid + stride];
-        }
-
-        stride >>= 1;
-        sync_storage();
-    }
-
-    if tid == 0 {
-        partial_sums[bid] = shared[0];
-    }
-}
-
+/// Assumes `partial_out`, and `block_size` is a power of 2.
 #[cube(launch)]
 pub fn reduce_pass(
     partial_in: &Array<f32>,
@@ -107,13 +66,14 @@ pub fn reduce_pass(
 
     sync_storage();
 
-    let mut stride = block_size >> 1;
-    while stride > 0 {
-        if tid < stride {
-            shared[tid] += shared[tid + stride];
+    let stride = RuntimeCell::<usize>::new(block_size >> 1);
+    while stride.read() > 0 {
+        let current_stride: usize = stride.read();
+        if tid < current_stride {
+            shared[tid] += shared[tid + current_stride];
         }
 
-        stride >>= 1;
+        stride.store(current_stride >> 1);
         sync_storage();
     }
 
@@ -122,9 +82,26 @@ pub fn reduce_pass(
     }
 }
 
+#[cube(launch)]
+pub fn calculate_probs(
+    state_vector: &Array<f32>,
+    probs: &mut Array<f32>,
+) {
+    let gid = ABSOLUTE_POS;
+    let amp_count = state_vector.len() / 2;
+
+    probs[gid] = if gid < amp_count {
+        let re = state_vector[2 * gid];
+        let im = state_vector[2 * gid + 1];
+        re * re + im * im
+    } else {
+        0.0.into()
+    };
+}
+
 /// Divide all elements in an array with some divisor
 #[cube(launch)]
-pub fn array_divide(array: &mut Array<f32>, divisor: f32) {
+pub fn vector_division(array: &mut Array<f32>, divisor: f32) {
     if ABSOLUTE_POS < array.len() {
         array[ABSOLUTE_POS] /= divisor;
     }
