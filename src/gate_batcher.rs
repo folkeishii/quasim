@@ -173,17 +173,6 @@ impl GateBatcher {
         }
     }
 
-    /* TODO Getting batch matrix data
-     *
-     * Go through the nodes vec for each batch in order and create a contigous vec of
-     * matrix data, target data, control data, which will be passed to the gpu once on simulator init.
-     * Then i will pass a command specifying offset in matrix and target/control data and size of batch
-     * in order to execute the batch on the gpu.
-     *
-     * Since nodes are always appended after their predecessors during construction,
-     * iterating the vec in order is a valid execution sequence.
-     */
-
     pub fn add_gate(&mut self, gate: &Gate) {
         match gate.get_type() {
             GateType::SWAP => self.add_swap(gate),
@@ -259,8 +248,8 @@ impl GateBatcher {
      *    - If all map to the same NodeId AND signatures match:
      *      multiply matrix in-place, done.
      *    - If all map to the same NodeId BUT signatures differ:
-     *      create new node in same batch, prev = [that node], update frontier.
-     *    - If they differ (multiple nodes, or some qubits have no frontier):
+     *      create new node in same batch, update frontier.
+     *    - If they differ:
      *
      * 2. Check the combined target qubit range if you were to combine the nodes
      *    - If exceeds limit:
@@ -269,7 +258,7 @@ impl GateBatcher {
      *    - If within limit:
      *
      * 3. Merge all involved batches into one (lower id absorbs).
-     *    Create new node in merged batch, prev = [all distinct frontier nodes], update frontier.
+     *    Create new node in merged batch, update frontier.
      */
     fn add_gate2(&mut self, gate: &Gate) {
         // This function only handles single qubit gates
