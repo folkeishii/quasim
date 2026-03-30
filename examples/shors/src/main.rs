@@ -1,101 +1,147 @@
-use quasim::circuit::Circuit;
+use quasim::circuit::{Circuit, HybridCircuit};
+use quasim::expr_dsl::Value;
+use quasim::expr_dsl::expr_helpers::r;
 use std::f64::consts::PI;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 use gcd::Gcd;
 use rand::RngExt;
 
-// Expects a QFT'd register of n qubits
-fn adder(a: usize, n: usize) -> Circuit {
-    let n_bits = (n as f64).log2().ceil() as usize;
-    let mut c = Circuit::new(n+1);
-    // Bitwise representation of a in the computational basis
-    let a_bit_array = (0..n_bits)
-    .map(|i| a & (1 << (n_bits - 1 - i)) != 0)
-    .rev()
-    .collect::<Vec<bool>>();
+// Adds a to the second n bits of the register
+fn create_adder(n: usize, a: usize) -> Circuit {
 
-    // Apply rz to the second register based on the bits of a
-    for i in 0..n {
-        for j in a_bit_array[i..].iter() {
-            if *j {
-                let theta = 2.0 * PI / (1 << (i+1)) as f64;
-                c = c.rz(theta, i);
+    // Number of bits needed to represent n and one overflow bit
+    let n_bits = 1 + ((n as f64)+1.0).log2().ceil() as usize;
+
+    // Bitwise representation of a
+    let a_bit_array = (0..n_bits)
+    .map(|i| a & (1 << i) != 0)
+    .collect::<Vec<bool>>();
+    println!("n_bits: {}, a: {}", n_bits, a);
+    println!("a bit array: {:?}", a_bit_array);
+
+    let mut circuit = Circuit::new(n_bits);
+
+    // Apply rz to the qubits based on the bits of a
+    for i in 0..n_bits {
+        for j in 0..=i {
+            if a_bit_array[j]{
+                let bitshift = 1 << (i-j+1);
+                let theta = 2.0 * PI / bitshift as f64;
+                println!("{} applied for bit {} with theta {}",i+1, i, theta);
+                circuit = circuit.rz(theta, n_bits-1-i)
             }
         }
     }
 
-    c
+    circuit
 }
 
-fn mod_adder (a: usize, n: usize, circuit: Circuit) -> Circuit {
-    let n_bits = (n as f64).log2().ceil() as usize;
-    let c_array = (0..n_bits - 1).collect::<Vec<usize>>();
+// Adds a to the second n bits of the register mod n
+fn create_mod_adder (n: usize, a: usize) -> Circuit {
+    let n_bits = 1 + (n as f64).log2().ceil() as usize;
+    let c_array = (0..n_bits).collect::<Vec<usize>>();
 
-    circuit.adder(a,n);
-    circuit.adder(n,n).rev();
+    let mut circuit = Circuit::new(n_bits+2)
+        .new_sub_circuit("adder_a", create_adder(n, a))
+        .new_sub_circuit("adder_n", create_adder(n, n))
+        .new_sub_circuit("adder_n_inv", create_adder(n, n).inverse())
+        .new_sub_circuit("adder_a_inverse", create_adder(n, a).inverse());
 
-    circuit.qft(&c_array).rev();
-    circuit.cx(last_adder_bit, last_bit);
+    circuit.call("adder_a", 0);
+    circuit.call("adder_n_inv", 0).ctrl(n_bits);
+
+    circuit.qft(&c_array).inverse();
+    circuit.cx(&[n], n+1);
     circuit.qft(&c_array);
 
-    circuit.adder(n,n);
-    circuit.adder(a,n).rev();
+    circuit.call("adder_n", 0).ctrl(n_bits);
+    circuit.call("adder_a", 0).inverse();
 
-    circuit.qft(&c_array).rev();
-    circuit.x(last_adder_bit);
-    circuit.cx(last_adder_bit, last_bit);
-    circuit.x(last_adder_bit);
+    circuit.qft(&c_array).inverse();
+    circuit.x(n_bits-1);
+    circuit.cx(&[n_bits-1], n_bits);
+    circuit.x(n_bits-1);
     circuit.qft(&c_array);
 
-    circuit.adder(a,n);
+    circuit.call("adder_a", 0);
+
+    circuit
 }
 
-fn cmult (a: usize, n: usize, circuit: Circuit) -> Circuit {
-    let n_bits = (n as f64).log2().ceil() as usize;
-    let c_array = (0..n_bits - 1).collect::<Vec<usize>>();
+/* 
+/*
+    Test check, current implementation ignores inner controls
+    and treats them as outer controls. Check if this works
+*/
+fn create_cmult (n: usize, a: usize) -> Circuit {
+    let n_bits = 1 + (n as f64).log2().ceil() as usize;
+    let c_array = (n_bits..2*n_bits - 1).collect::<Vec<usize>>();
 
-    circuit.qft(bottom_n_register);
+    let mut circuit = Circuit::new(2*n_bits+2);
+
+    circuit.qft(&c_array);
 
     for i in 0..n_bits{
-        circuit = circuit.mod_adder(2.pow(i)*a, n);
+        circuit = circuit.call_new("mod_adder{i}",
+            create_mod_adder(2usize.pow(i as u32) * a, n), n_bits).ctrl(i);
     }
 
-    circuit.qft(bottom_n_register).rev();
+    circuit.qft(&c_array).inverse();
+
+    circuit
 }
 
-fn u_a (a: usize, n: usize, circuit: Circuit) -> Circuit {
+fn create_swap(a: usize, n: usize) -> Circuit {
     let n_bits = (n as f64).log2().ceil() as usize;
     let c_array = (0..n_bits - 1).collect::<Vec<usize>>();
 
-    circuit.cmult(a, n);
-    circuit.swap(top_n_register, bottom_n_register);
-    circuit.cmult(a, n).rev();
+    let mut circuit = Circuit::new(2*n_bits);
+
+    for i in 0..n_bits {
+        circuit = circuit.swap(i, i+n_bits);
+    }
+
+    circuit
 }
 
-fn quantum(n: usize, a: usize) -> usize {
+fn create_u_a (a: usize, n: usize) -> Circuit {
+    let n_bits = (n as f64).log2().ceil() as usize;
+
+    let mut circuit = Circuit::new(2*n_bits+2)
+        .new_sub_circuit("cmult", create_cmult(n, a))
+        .new_sub_circuit("inv_cmult", create_cmult(n, 1/a).inverse())
+        .new_sub_circuit("swap", create_swap(a, n));
+
+    circuit = circuit.call("cmult", 0);
+    circuit = circuit.call("swap", 0);
+    circuit = circuit.call("inv_cmult", 0);
+
+    circuit
+}
+
+fn create_circuit(n: usize, a: usize) -> Circuit<HybridCircuit> {
     let n_bits: usize = (n as f64).log2().ceil() as usize;
     let mut final_bit_array: Vec<usize> = vec![Default::default();2*n_bits];
 
-    let mut circuit = Circuit::new(2*n_bits+3).new_reg("res");
+    let mut circuit = Circuit::new(2*n_bits+3)
+        .new_reg("res");
 
     circuit = circuit.h(0);
-    circuit = circuit.u_a(a, n);
+    circuit = circuit.call_new("u_a0", create_u_a(a, n), 1).ctrl(0);
     circuit = circuit.h(0);
-    circuit = circuit.measure_bit(0, "reg");
-    final_bit_array[0] = circuit.register("res").into_int().unwrap() as usize;
+    circuit = circuit.measure_bit(0, ("res",0));
 
     for i in 0..2*n_bits-1 {
 
         // Check previous bit and apply X if 1
-        if final_bit_array[i] == 1 {
-            circuit = circuit.x(0);
-        }
+        circuit = circuit.apply_if(r("res").eq(1)).x(0);
 
         circuit = circuit.h(0);
-        circuit = circuit.u_a(a.pow(2.pow(i+1)), n);
+        circuit = circuit.call_new(format!("u_a{}", i+1), create_u_a(a.pow(2.pow(i+1)), n), 1).ctrl(0);
 
         // R gates based on previous bits
+        // TODO: Change to register based checking
         for j in 1..i+2 {
             if final_bit_array[j-1] == 1 {
                 let theta = 2.0 * PI / (1 << (j+1)) as f64;
@@ -104,12 +150,27 @@ fn quantum(n: usize, a: usize) -> usize {
         }
 
         // Measure the next bit and store it in the result register
-        circuit = circuit.measure_bit(0, "reg");
-        final_bit_array[i+1] = circuit.register("res").into_int().unwrap() as usize;
+        circuit = circuit.measure_bit(0, ("res",i+1));
     }
 
-    // Return the measured bits as a number
-    final_bit_array.iter().rev().enumerate().map(|(i, &b)| b << i).sum()
+    circuit
+}
+
+fn quantum(n: usize, a: usize) -> usize {
+    let mut sim = SVSimulatorDebugger::build(create_circuit(n, a)).unwrap();
+    sim.cont();
+    
+    match sim.register("res") {
+        Value::Int(res) => {
+            res as usize
+        }
+        Value::Float(_) => {
+            panic!("Unexpected float register")
+        }
+        Value::Bool(_) => {
+            panic!("Unexpected bool register")
+        }
+    }
 }
 
 fn shors(n: usize, init_a: usize) -> Vec<usize> {
@@ -122,7 +183,7 @@ fn shors(n: usize, init_a: usize) -> Vec<usize> {
         if a.gcd(n) > 1 {
             return vec![n, a];
         }
-        
+
         let l = quantum(n, a);
 
         if l == 0 {
@@ -157,10 +218,60 @@ fn shors_random(n: usize) -> Vec<usize> {
     let a = n/2; // Randomly chosen coprime to n
     return shors(n, a);
 }
-
+*/
 
 fn main() {
     let a = 15;
+    let n = 3;
+    let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
-    println!("Bits of {}: {:?}", a, quant_adder(a));
+    let c_array = (0..=n_bits).collect::<Vec<usize>>();
+
+
+    let mut c = Circuit::new(n_bits+1).new_reg("res");
+    c=c.breakpoint();
+    c=c.qft(&c_array);
+    c=c.breakpoint();
+    c=c.call_new("adder", create_adder(n, a), 0);
+    c=c.breakpoint();
+    c=c.call_new("qft_inv", Circuit::new(n_bits).qft(&c_array).inverse(), 0);
+    c=c.breakpoint();
+    c=c.measure("res");
+    let mut sim = SVSimulatorDebugger::build(c).unwrap();
+
+    sim.cont();
+    
+    println!("Initial state: {}", sim.current_state());
+
+    sim.cont();
+    
+    println!("After QFT: {}", sim.current_state());
+
+    sim.cont();
+    
+    println!("After adder: {}", sim.current_state());
+
+    sim.cont();
+
+    println!("After inverse QFT: {}", sim.current_state());
+
+    sim.cont();
+
+    println!("After measurement: {}", sim.current_state());
+
+
+
+    
+
+    match sim.register("res") {
+        Value::Int(res) => {
+            println!("Result: {}", res);
+        }
+        Value::Float(_) => {
+            panic!("Unexpected float register")
+        }
+        Value::Bool(_) => {
+            panic!("Unexpected bool register")
+        }
+    }
 }
