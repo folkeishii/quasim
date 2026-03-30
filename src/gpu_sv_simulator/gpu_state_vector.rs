@@ -8,6 +8,7 @@ use crate::{batched_circuit::BatchedCircuit, gpu_sv_simulator::mem_helpers};
 
 const GPU_REDUCE_FACTOR_EXP: usize = 7;
 const GPU_REDUCE_FACTOR: usize = 1 << GPU_REDUCE_FACTOR_EXP;
+const GPU_MAX_CUBE_DIM: usize = 128;
 
 #[derive(Clone)]
 pub struct GpuStateVector<R: Runtime> {
@@ -21,6 +22,8 @@ pub struct GpuStateVector<R: Runtime> {
     gate_data_handle: Handle,
     target_data_handle: Handle,
     control_data_handle: Handle,
+
+    sampling_handle: Handle,
 
     reduce_levels: Vec<ReduceLevel>,
 }
@@ -45,6 +48,10 @@ impl<R: Runtime> GpuStateVector<R> {
         let gate_data_handle = client.create_from_slice(mem_helpers::bytes_from_complex(gate_data));
         let target_data_handle = client.create_from_slice(u32::as_bytes(target_data));
         let control_data_handle = client.create_from_slice(u32::as_bytes(control_data));
+
+        // Temporary mem handle for sampling
+        // Allocate enough for either probs (128 f32) or amplitudes (256 f32)
+        let sampling_handle = client.empty(GPU_REDUCE_FACTOR * size_of::<f32>() * 2);
 
         // Reduction init
         let n_reduce_passes = n_qubits / GPU_REDUCE_FACTOR_EXP;
@@ -76,6 +83,7 @@ impl<R: Runtime> GpuStateVector<R> {
             gate_data_handle,
             target_data_handle,
             control_data_handle,
+            sampling_handle,
             reduce_levels,
         }
     }
@@ -102,7 +110,7 @@ impl<R: Runtime> GpuStateVector<R> {
 
         let n_superblocks = n_amplitudes >> batch_target_count;
 
-        let cube_dim = CubeDim::new_1d(min(n_superblocks as u32, 128));
+        let cube_dim = CubeDim::new_1d(min(n_superblocks, GPU_MAX_CUBE_DIM) as u32);
         let cube_count =
             cubecl::calculate_cube_count_elemwise(&self.client, n_superblocks, cube_dim);
 
@@ -155,7 +163,7 @@ impl<R: Runtime> GpuStateVector<R> {
         else {
             self.build_reduction_tree();
 
-            let final_level = self.reduce_levels.last().unwrap();
+            let final_level = self.reduce_levels.last().unwrap(); // safe unwrap
             let bytes = self.client.read_one(final_level.handle.clone());
             let reduced_sums = f32::from_bytes(&bytes);
             let norm = reduced_sums.iter().sum::<f32>().sqrt();
@@ -202,7 +210,7 @@ impl<R: Runtime> GpuStateVector<R> {
 
     fn launch_state_vector_divide(&self, norm: f32) {
         let num_elems = self.state_vector_len * 2;
-        let cube_dim = CubeDim::new_1d(min(num_elems, 128) as u32);
+        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_MAX_CUBE_DIM) as u32);
         let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
 
         unsafe {
@@ -212,6 +220,45 @@ impl<R: Runtime> GpuStateVector<R> {
                 cube_dim,
                 ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, num_elems, 1),
                 ScalarArg::new(norm),
+            );
+        }
+    }
+
+    fn launch_copy_sampling_probs(&self, level: ReduceLevel, sample: usize) {
+        let num_elems = GPU_REDUCE_FACTOR;
+        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_MAX_CUBE_DIM) as u32);
+        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
+
+        let sample_offset = sample * num_elems;
+
+        unsafe {
+            let _ = gpu_kernels::copy_offset::launch(
+                &self.client,
+                cube_count,
+                cube_dim,
+                ArrayArg::from_raw_parts::<f32>(&level.handle, level.len, 1),
+                ArrayArg::from_raw_parts::<f32>(&self.sampling_handle, num_elems, 1),
+                ScalarArg::new(sample_offset),
+            );
+        }
+    }
+
+
+    fn launch_copy_sampling_amplitudes(&self, sample: usize) {
+        let num_elems = GPU_REDUCE_FACTOR * 2;
+        let cube_dim = CubeDim::new_1d(min(num_elems, GPU_MAX_CUBE_DIM) as u32);
+        let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, num_elems, cube_dim);
+
+        let sample_offset = sample * num_elems;
+
+        unsafe {
+            let _ = gpu_kernels::copy_offset::launch(
+                &self.client,
+                cube_count,
+                cube_dim,
+                ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, self.state_vector_len * 2, 1),
+                ArrayArg::from_raw_parts::<f32>(&self.sampling_handle, num_elems, 1),
+                ScalarArg::new(sample_offset),
             );
         }
     }

@@ -26,6 +26,18 @@ impl ComplexF32 {
     }
 }
 
+
+#[cube(launch)]
+pub fn copy_offset(
+    array: &Array<f32>,
+    out: &mut Array<f32>,
+    offset: usize,
+) {
+    if ABSOLUTE_POS < out.len() && ABSOLUTE_POS + offset < array.len() {
+        out[ABSOLUTE_POS] = array[ABSOLUTE_POS + offset];
+    }
+}
+
 /// Compute partial sums from an array with interleaved complex numbers
 ///
 /// `block_size` should match number of units launched and is the number of complex amplitudes.
