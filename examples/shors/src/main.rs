@@ -1,6 +1,7 @@
 use quasim::circuit::{Circuit, HybridCircuit};
 use quasim::expr_dsl::Value;
 use quasim::expr_dsl::expr_helpers::r;
+use std::env;
 use std::f64::consts::PI;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
@@ -17,8 +18,6 @@ fn create_adder(n: usize, a: usize) -> Circuit {
     let a_bit_array = (0..n_bits)
     .map(|i| a & (1 << i) != 0)
     .collect::<Vec<bool>>();
-    println!("n_bits: {}, a: {}", n_bits, a);
-    println!("a bit array: {:?}", a_bit_array);
 
     let mut circuit = Circuit::new(n_bits);
 
@@ -28,7 +27,6 @@ fn create_adder(n: usize, a: usize) -> Circuit {
             if a_bit_array[j]{
                 let bitshift = 1 << (i-j+1);
                 let theta = 2.0 * PI / bitshift as f64;
-                println!("{} applied for bit {} with theta {}",i+1, i, theta);
                 circuit = circuit.rz(theta, n_bits-1-i)
             }
         }
@@ -39,59 +37,76 @@ fn create_adder(n: usize, a: usize) -> Circuit {
 
 // Adds a to the second n bits of the register mod n
 fn create_mod_adder (n: usize, a: usize) -> Circuit {
-    let n_bits = 1 + (n as f64).log2().ceil() as usize;
-    let c_array = (0..n_bits).collect::<Vec<usize>>();
 
+    // n-bits to represent the number being added to
+    let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
+
+    // QFT n_bits and the overflow bit
+    let c_array = (0..n_bits+1).collect::<Vec<usize>>();
+
+    // Circuit has n-bits for the number, aswell as an overflow bit and a control bit, in that order
     let mut circuit = Circuit::new(n_bits+2)
         .new_sub_circuit("adder_a", create_adder(n, a))
         .new_sub_circuit("adder_n", create_adder(n, n))
         .new_sub_circuit("adder_n_inv", create_adder(n, n).inverse())
-        .new_sub_circuit("adder_a_inverse", create_adder(n, a).inverse());
+        .new_sub_circuit("adder_a_inverse", create_adder(n, a).inverse())
+        .new_sub_circuit("qft_inv", Circuit::new(n_bits).qft(&c_array).inverse());
 
-    circuit.call("adder_a", 0);
-    circuit.call("adder_n_inv", 0).ctrl(n_bits);
+    circuit = circuit.call("adder_a", 0);
+    circuit = circuit.call("adder_n_inv", 0);
 
-    circuit.qft(&c_array).inverse();
-    circuit.cx(&[n], n+1);
-    circuit.qft(&c_array);
+    circuit = circuit.call("qft_inv", 0);
+    circuit = circuit.cx(&[n_bits], n_bits+1);
+    circuit = circuit.qft(&c_array);
 
-    circuit.call("adder_n", 0).ctrl(n_bits);
-    circuit.call("adder_a", 0).inverse();
+    circuit = circuit.ccall("adder_n", 0, &[n_bits+1]);
+    circuit = circuit.call("adder_a_inverse", 0);
 
-    circuit.qft(&c_array).inverse();
-    circuit.x(n_bits-1);
-    circuit.cx(&[n_bits-1], n_bits);
-    circuit.x(n_bits-1);
-    circuit.qft(&c_array);
+    circuit = circuit.call("qft_inv", 0);
+    circuit = circuit.x(n_bits);
+    circuit = circuit.cx(&[n_bits], n_bits+1);
+    circuit = circuit.x(n_bits);
+    circuit = circuit.qft(&c_array);
 
-    circuit.call("adder_a", 0);
+    circuit = circuit.call("adder_a", 0);
 
     circuit
 }
 
-/* 
+
 /*
     Test check, current implementation ignores inner controls
     and treats them as outer controls. Check if this works
 */
 fn create_cmult (n: usize, a: usize) -> Circuit {
-    let n_bits = 1 + (n as f64).log2().ceil() as usize;
-    let c_array = (n_bits..2*n_bits - 1).collect::<Vec<usize>>();
+    let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
+
+    // QFT the second n_bits and its overflow bit
+    let c_array = (n_bits..2*n_bits+1).collect::<Vec<usize>>();
+
+    // Bitwise representation of a
+    let a_bit_array = (0..n_bits)
+    .map(|i| (a & (1 << i) != 0) as usize)
+    .collect::<Vec<usize>>();
 
     let mut circuit = Circuit::new(2*n_bits+2);
 
-    circuit.qft(&c_array);
+    circuit = circuit.qft(&c_array);
 
-    for i in 0..n_bits{
-        circuit = circuit.call_new("mod_adder{i}",
-            create_mod_adder(2usize.pow(i as u32) * a, n), n_bits).ctrl(i);
+    for i in 0..n_bits {
+        circuit = circuit.breakpoint();
+        circuit = circuit.ccall_new("mod_adder{i}",
+            create_mod_adder(n, a_bit_array[i] * (1 << i)), n_bits,&[i]);
     }
 
-    circuit.qft(&c_array).inverse();
+    circuit = circuit.breakpoint();
+    
+    circuit = circuit.call_new("qft-inv", Circuit::new(n_bits+1).qft(&(0..n_bits+1).collect::<Vec<usize>>()).inverse(), n_bits);
 
     circuit
 }
 
+/*
 fn create_swap(a: usize, n: usize) -> Circuit {
     let n_bits = (n as f64).log2().ceil() as usize;
     let c_array = (0..n_bits - 1).collect::<Vec<usize>>();
@@ -221,39 +236,35 @@ fn shors_random(n: usize) -> Vec<usize> {
 */
 
 fn main() {
-    let a = 15;
+
+    let a = 2;
     let n = 3;
     let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
-    let c_array = (0..=n_bits).collect::<Vec<usize>>();
+    let c_array = (0..2*n_bits+1).collect::<Vec<usize>>();
 
-
-    let mut c = Circuit::new(n_bits+1).new_reg("res");
+    let mut c = Circuit::new(2*n_bits+2).x(0).new_reg("res");
     c=c.breakpoint();
-    c=c.qft(&c_array);
+    c=c.call_new("cmult", create_cmult(n, a), 0);
     c=c.breakpoint();
-    c=c.call_new("adder", create_adder(n, a), 0);
-    c=c.breakpoint();
-    c=c.call_new("qft_inv", Circuit::new(n_bits).qft(&c_array).inverse(), 0);
-    c=c.breakpoint();
-    c=c.measure("res");
+    c=c.measure_bits(&c_array,"res");
     let mut sim = SVSimulatorDebugger::build(c).unwrap();
 
     sim.cont();
-    
     println!("Initial state: {}", sim.current_state());
 
     sim.cont();
     
-    println!("After QFT: {}", sim.current_state());
+    for i in 0..n_bits{
+        println!("State before {}: {}", i, sim.current_state());
+        sim.cont();
+    }
+
+    println!("Before reverse QFT: {}", sim.current_state());
 
     sim.cont();
     
-    println!("After adder: {}", sim.current_state());
-
-    sim.cont();
-
-    println!("After inverse QFT: {}", sim.current_state());
+    println!("After cmult: {}", sim.current_state());
 
     sim.cont();
 
