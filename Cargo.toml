@@ -1,9 +1,15 @@
-[package]
-name = "quasim"
-version = "0.1.0"
-edition = "2024"
+[workspace]
+members = [
+  "examples/*",
+  "quasim",
+]
+resolver = "2"
 
-[dependencies]
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+
+[workspace.dependencies]
 crossterm = "0.29.0"
 array-init = "2.1.0"
 divan = "0.1.21"
@@ -13,15 +19,3 @@ thiserror = "2.0.18"
 oq3_syntax = "0.7.0"
 log = "0.4.29"
 serde = { version = "1.0.228", features = ["derive"] }
-
-[[bench]]
-name = "gate-dsl"
-harness = false
-
-[[bench]]
-name = "debug-simulator"
-harness = false
-
-[[bench]]
-name = "simulator-comparison"
-harness = false

@@ -1,0 +1,27 @@
+[package]
+name = "quasim"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+crossterm.workspace = true
+array-init.workspace = true
+divan.workspace = true
+nalgebra.workspace = true
+rand.workspace = true
+thiserror.workspace = true
+oq3_syntax.workspace = true
+log.workspace = true
+serde.workspace = true
+
+[[bench]]
+name = "gate-dsl"
+harness = false
+
+[[bench]]
+name = "debug-simulator"
+harness = false
+
+[[bench]]
+name = "simulator-comparison"
+harness = false
