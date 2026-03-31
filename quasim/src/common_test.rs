@@ -43,7 +43,7 @@ pub fn double_sub<
     let mut sim = D::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
-    while sim.next().is_some() {
+    while sim.next() {
         forward_steps += 1;
     }
 
@@ -72,7 +72,7 @@ pub fn double_sub<
 
     if sim.double_ended() {
         let mut backward_steps = 0;
-        while sim.prev().is_some() {
+        while sim.prev() {
             backward_steps += 1;
         }
         assert_eq!(forward_steps, backward_steps);
@@ -125,7 +125,7 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
     let mut sim = D::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
-    while sim.next().is_some() {
+    while sim.next() {
         forward_steps += 1;
     }
 
@@ -137,7 +137,7 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
 
     if sim.double_ended() {
         let mut backward_steps = 0;
-        while sim.prev().is_some() {
+        while sim.prev() {
             backward_steps += 1;
         }
         assert_eq!(forward_steps, backward_steps);
@@ -175,7 +175,7 @@ pub fn hybrid_test<
         .x(3);
 
     let mut sim = D::build(circuit).unwrap();
-    while let Some(_) = sim.next() {}
+    while sim.next() {}
 
     let mut expected = DVector::<Complex<f64>>::zeros(16);
     expected[0] = cart!(1.0);
@@ -192,7 +192,7 @@ pub fn register_test<
         .measure_bit(1, ("r0", 0));
 
     let mut sim = D::build(circuit).unwrap();
-    while let Some(_) = sim.next() {}
+    while sim.next() {}
 
     assert_eq!(sim.registers()["r0"].read(), 1);
 }
@@ -230,7 +230,7 @@ pub fn deep_ctrl_sub<
     let mut sim = D::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
-    while sim.next().is_some() {
+    while sim.next() {
         forward_steps += 1;
     }
 
@@ -247,7 +247,7 @@ pub fn deep_ctrl_sub<
 
     if sim.double_ended() {
         let mut backward_steps = 0;
-        while sim.prev().is_some() {
+        while sim.prev() {
             backward_steps += 1;
         }
         assert_eq!(forward_steps, backward_steps);
