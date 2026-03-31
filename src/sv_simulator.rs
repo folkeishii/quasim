@@ -356,8 +356,11 @@ where
 }
 
 impl DebuggableSimulator for SVSimulatorDebugger {
-    fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
-        self.executor.step()
+    fn next(&mut self) -> bool {
+        match self.executor.step() {
+            Some(_) => true,
+            None => false,
+        }
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
@@ -369,8 +372,8 @@ impl DebuggableSimulator for SVSimulatorDebugger {
         &self.executor.state_vector
     }
 
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
-        None
+    fn prev(&mut self) -> bool {
+        false
     }
 
     fn double_ended(&self) -> bool {

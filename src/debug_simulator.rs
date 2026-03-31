@@ -56,15 +56,15 @@ impl HybridSimulator<Value> for DebugSimulator {
 }
 
 impl DebuggableSimulator for DebugSimulator {
-    fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
             if self.pc_mut().ret() {
-                return Some(&self.current_state);
+                return true;
             }
 
             // Could not return: End of circuit
-            return None;
+            return false;
         };
 
         match inst {
@@ -80,7 +80,7 @@ impl DebuggableSimulator for DebugSimulator {
             Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
             Instruction::Call(name, lsq, ctrl) => self.pc_mut().jump_and_link(name, lsq, ctrl),
         }
-        Some(&self.current_state)
+        true
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
@@ -91,22 +91,22 @@ impl DebuggableSimulator for DebugSimulator {
         &self.current_state
     }
 
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn prev(&mut self) -> bool {
         if !self.pc_mut().decrement() {
             // Beginnning of (sub) circuit: Try to return
             if self.pc_mut().ret_backwards() {
-                return Some(&self.current_state);
+                return true;
             }
 
             // Could not return: Beginning of circuit
-            return None;
+            return false;
         }
 
         // Will happen if doing prev into a sub circuit
         // i.e. we are at the end of a sub circuit
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // Pc already decremented: do nothing
-            return Some(&self.current_state);
+            return true;
         };
 
         match inst {
@@ -128,7 +128,7 @@ impl DebuggableSimulator for DebugSimulator {
                 self.pc_mut().jump(inst_count); // Place pc at end of sub circuit
             }
         }
-        Some(&self.current_state)
+        true
     }
 
     fn double_ended(&self) -> bool {
@@ -599,30 +599,30 @@ mod tests {
         ];
         let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
         assert!(equal_to_matrix_c(&psi0, &sim.current_state(), 0.001));
-        sim.next().expect("Apply Hadamard.");
+        sim.next();
         assert!(equal_to_matrix_c(&psi1, &sim.current_state(), 0.001));
-        sim.next().expect("Apply first CNOT.");
+        sim.next();
         assert!(equal_to_matrix_c(&psi2, &sim.current_state(), 0.001));
-        sim.next().expect("Apply second CNOT.");
+        sim.next();
         assert!(equal_to_matrix_c(&psi3, &sim.current_state(), 0.001));
 
         let res = sim.next();
         match res {
-            Some(_) => panic!("Does not err correctly when stepping forwards."),
-            None => println!("Errs correctly when stepping forwards"),
+            true => panic!("Does not err correctly when stepping forwards."),
+            false => println!("Errs correctly when stepping forwards"),
         }
 
-        sim.prev().expect("Revert second CNOT");
+        sim.prev();
         assert!(equal_to_matrix_c(&psi2, &sim.current_state(), 0.001));
-        sim.prev().expect("Revert first CNOT");
+        sim.prev();
         assert!(equal_to_matrix_c(&psi1, &sim.current_state(), 0.001));
-        sim.prev().expect("Revert Hadamard");
+        sim.prev();
         assert!(equal_to_matrix_c(&psi0, &sim.current_state(), 0.001));
 
         let res = sim.prev();
         match res {
-            Some(_) => panic!("Does not err correctly when stepping forwards."),
-            None => println!("Errs correctly when stepping backwards"),
+            true => panic!("Does not err correctly when stepping forwards."),
+            false => println!("Errs correctly when stepping backwards"),
         }
     }
 
