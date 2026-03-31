@@ -1,13 +1,15 @@
-use std::{collections::BTreeMap, ops::Mul};
+use std::{collections::BTreeMap, ops::Mul, usize};
 
 use nalgebra::{Complex, DVector, Matrix2, SMatrix, dvector};
 
 use crate::{
     cart,
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, pc::CircuitPc},
+    expr_dsl::{Expr, Value},
     ext::{BitMaskIter, TargetIter},
-    gate::{GateType, QBits},
+    gate::{Gate, GateType, QBits},
     instruction::Instruction,
+    register_file::RegisterFile,
     simulator::DebuggableSimulator,
 };
 
@@ -15,8 +17,123 @@ pub struct GenericSim<C: StateCollection> {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     state: C,
+    register_file: RegisterFile<Value>,
     /// dvector_state, remove for system change
     null_state: DVector<Complex<f64>>,
+}
+
+impl<C: StateCollection> GenericSim<C> {
+    pub fn collapse_peek(&self) -> usize {
+        let mut ri = rand::random_range(0.0..1.0);
+        for state in 0..self.circuit.n_qubits() {
+            let val = self.state.state(state.into());
+            let prob = val.norm();
+            ri -= prob;
+            if ri <= 0.0 {
+                return state;
+            }
+        }
+        !(usize::MAX << self.circuit.n_qubits())
+    }
+
+    fn handle_gate(&mut self, gate: &Gate) {
+        self.pc.increment();
+        let ctrl = gate.get_control_bits();
+        let mut targets = TargetIter::from(gate.get_target_bits());
+        match gate.get_type() {
+            ty @ GateType::X
+            | ty @ GateType::Y
+            | ty @ GateType::Z
+            | ty @ GateType::H
+            | ty @ GateType::U(_, _, _)
+            | ty @ GateType::S => {
+                let mat = ty.unchecked_matrix2x2();
+                for target in targets {
+                    let dont_care =
+                        !(*ctrl | (1 << target)) & !(usize::MAX << self.circuit.n_qubits());
+                    let combinations = BitMaskIter::from(dont_care).map(Into::into);
+                    for combination in combinations {
+                        let base = ctrl | combination;
+                        let mut pair = self.state.pair_mut(base, target);
+                        pair.apply2x2(mat);
+                    }
+                }
+            }
+            GateType::SWAP => {
+                let t1 = targets.next().expect("invalid circuit");
+                let t1_mask = 1 << t1;
+                let t2 = targets.next().expect("invalid circuit");
+                let t2_mask = 1 << t2;
+
+                let dont_care =
+                    !(*ctrl | t1_mask | t2_mask) & !(usize::MAX << self.circuit.n_qubits());
+                let combinations = BitMaskIter::from(dont_care).map(Into::into);
+                for combination in combinations {
+                    let qs1 = ctrl | combination | t1_mask.into();
+                    let qs2 = ctrl | combination | t2_mask.into();
+                    let s1 = self.state.state(qs1);
+                    let s2 = self.state.insert(qs2, s1);
+                    self.state.insert(qs1, s2);
+                }
+            }
+        }
+    }
+
+    fn handle_measure_bit(&mut self, target: usize, (reg, c_target): (&str, usize)) {
+        self.pc.increment();
+        let collapsed = self.collapse_peek();
+        let q_mask = 1 << target;
+        let c_mask = 1 << c_target;
+        let q_masked = collapsed & q_mask;
+        let c_masked = ((collapsed >> target) & 1) << c_target;
+
+        if let Value::Int(val) = &mut self.register_file[reg] {
+            *val = *val & !c_mask;
+            *val = *val | (c_masked as i32);
+        } else {
+            self.register_file[reg] = Value::Int(c_masked as i32);
+        }
+
+        self.state.retain_norm(|state, _| {
+            let s_mask = *state & q_masked;
+            s_mask ^ q_masked == 0
+        });
+    }
+
+    fn handle_measure_all(&mut self, reg: &str) {
+        self.pc.increment();
+        let collapsed = self.collapse_peek();
+        self.register_file[reg] = Value::Int(collapsed as i32);
+        self.state.retain(|_, _| false);
+        self.state.insert(collapsed.into(), cart!(1));
+    }
+
+    fn handle_jump(&mut self, pc: usize) {
+        self.pc.jump(pc);
+    }
+
+    fn handle_jump_if(&mut self, expr: &Expr, pc: usize) {
+        match expr.eval(&self.register_file) {
+            Ok(Value::Bool(true)) => self.handle_jump(pc),
+            Ok(Value::Bool(false)) => self.pc.increment(),
+            Err(err) => panic!("{}", err),
+            _ => panic!(
+                "Expression was expected to evaluate to boolean type but got something else."
+            ),
+        }
+    }
+
+    fn handle_assign(&mut self, expr: &Expr, reg: &str) {
+        self.pc.increment();
+        match expr.eval(&self.register_file) {
+            Ok(value) => self.register_file[reg] = value,
+            Err(err) => panic!("{}", err),
+        }
+    }
+
+    fn handle_call(&mut self, name: String, lsq: usize, ctrl: QBits) {
+        self.pc.jump_and_link(name, lsq, ctrl);
+    }
 }
 
 impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
@@ -32,52 +149,15 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
         };
 
         match inst {
-            Instruction::Gate(gate) => {
-                self.pc.increment();
-                let ctrl = gate.get_control_bits();
-                let mut targets = TargetIter::from(gate.get_target_bits());
-                match gate.get_type() {
-                    ty @ GateType::X
-                    | ty @ GateType::Y
-                    | ty @ GateType::Z
-                    | ty @ GateType::H
-                    | ty @ GateType::U(_, _, _)
-                    | ty @ GateType::S => {
-                        let mat = ty.unchecked_matrix2x2();
-                        for target in targets {
-                            let dont_care = !(*ctrl | (1 << target)) & !(usize::MAX << self.circuit.n_qubits());
-                            let combinations = BitMaskIter::from(dont_care).map(Into::into);
-                            for combination in combinations {
-                                let base = ctrl | combination;
-                                let mut pair = self.state.pair_mut(base, target);
-                                pair.apply2x2(mat);
-                            }
-                        }
-                    }
-                    GateType::SWAP => {
-                        let t1 = targets.next().expect("invalid circuit");
-                        let t1_mask = 1 << t1;
-                        let t2 = targets.next().expect("invalid circuit");
-                        let t2_mask = 1 << t2;
-
-                        let dont_care = !(*ctrl | t1_mask | t2_mask)& !(usize::MAX << self.circuit.n_qubits());
-                        let combinations = BitMaskIter::from(dont_care).map(Into::into);
-                        for combination in combinations {
-                            let qs1 = ctrl | combination | t1_mask.into();
-                            let qs2 = ctrl | combination | t2_mask.into();
-                            let s1 = self.state.state(qs1);
-                            let s2 = self.state.insert(qs2, s1);
-                            self.state.insert(qs1, s2);
-                        }
-                    }
-                }
+            Instruction::Gate(gate) => self.handle_gate(&gate),
+            Instruction::MeasureBit(target, (reg, c_target)) => {
+                self.handle_measure_bit(target, (&reg, c_target))
             }
-            Instruction::MeasureBit(_, _) => todo!(),
-            Instruction::MeasureAll(_) => todo!(),
-            Instruction::Jump(_) => todo!(),
-            Instruction::JumpIf(expr, _) => todo!(),
-            Instruction::Assign(expr, _) => todo!(),
-            Instruction::Call(_, _, qbits) => todo!(),
+            Instruction::MeasureAll(reg) => self.handle_measure_all(&reg),
+            Instruction::Jump(pc) => self.handle_jump(pc),
+            Instruction::JumpIf(expr, pc) => self.handle_jump_if(&expr, pc),
+            Instruction::Assign(expr, reg) => self.handle_assign(&expr, &reg),
+            Instruction::Call(name, lsq, ctrl) => self.handle_call(name, lsq, ctrl),
         }
 
         for i in 0..(1 << self.circuit.n_qubits()) {
@@ -88,11 +168,11 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
     }
 
     fn double_ended(&self) -> bool {
-        todo!()
+        false
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<crate::instruction::Instruction>) {
-        todo!()
+        (&self.pc, self.circuit.instruction(&self.pc))
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
@@ -109,10 +189,11 @@ where
     type Error = GenericSimError;
 
     fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
-        let mut state = DVector::zeros(1 <<value.n_qubits());
+        let mut state = DVector::zeros(1 << value.n_qubits());
         state[0] = cart!(1);
         Ok(Self {
             state: C::new(value.n_qubits()),
+            register_file: RegisterFile::from(value.registers()),
             circuit: value.into(),
             pc: CircuitPc::new(0),
             null_state: state,
@@ -124,6 +205,23 @@ pub trait StateCollection {
     fn new(n_qbits: usize) -> Self;
     fn state(&self, qbits: QBits) -> Complex<f64>;
     fn insert(&mut self, qbits: QBits, state: Complex<f64>) -> Complex<f64>;
+    fn non_zero(&self) -> impl Iterator<Item = (QBits, Complex<f64>)>;
+    fn normalize_with(&mut self, divisor: f64);
+    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F);
+    fn retain_norm<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F) {
+        let mut total_prob = 0.0;
+        let mut f = f;
+        self.retain(|state, prob| {
+            if f(state, prob) {
+                total_prob += prob.norm_sqr();
+                true
+            } else {
+                false
+            }
+        });
+
+        self.normalize_with(total_prob);
+    }
     fn pair_mut(&mut self, qbits: QBits, target: usize) -> StatePairMut<'_, Self> {
         StatePairMut {
             collection: self,
@@ -149,6 +247,32 @@ impl StateCollection for DVector<Complex<f64>> {
         let ret = self[*qbits];
         self[*qbits] = state;
         ret
+    }
+
+    fn non_zero(&self) -> impl Iterator<Item = (QBits, Complex<f64>)> {
+        self.iter().enumerate().filter_map(|(i, val)| {
+            if val.norm() > 0.0 {
+                Some((QBits::from(i), *val))
+            } else {
+                None
+            }
+        })
+    }
+
+    fn normalize_with(&mut self, divisor: f64) {
+        for i in 0..self.len() {
+            self[i] /= divisor;
+        }
+    }
+
+    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F) {
+        let mut f = f;
+        for i in 0..self.len() {
+            let qbits = i.into();
+            if !f(qbits, self.state(qbits)) {
+                self.insert(qbits, cart!(0));
+            }
+        }
     }
 }
 
@@ -184,6 +308,18 @@ where
             self.collection.insert(qbits, state).unwrap_or(cart!(0))
         }
     }
+
+    fn non_zero(&self) -> impl Iterator<Item = (QBits, Complex<f64>)> {
+        self.collection.iter()
+    }
+
+    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F) {
+        self.collection.retain(f);
+    }
+
+    fn normalize_with(&mut self, divisor: f64) {
+        self.collection.normalize_with(divisor);
+    }
 }
 
 pub trait IncompleteStateCollection {
@@ -191,6 +327,9 @@ pub trait IncompleteStateCollection {
     fn state(&self, qbits: QBits) -> Option<Complex<f64>>;
     fn insert(&mut self, qbits: QBits, state: Complex<f64>) -> Option<Complex<f64>>;
     fn remove(&mut self, qbits: QBits) -> Option<Complex<f64>>;
+    fn normalize_with(&mut self, divisor: f64);
+    fn iter(&self) -> impl Iterator<Item = (QBits, Complex<f64>)>;
+    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F);
 }
 
 impl IncompleteStateCollection for BTreeMap<QBits, Complex<f64>> {
@@ -208,6 +347,21 @@ impl IncompleteStateCollection for BTreeMap<QBits, Complex<f64>> {
 
     fn remove(&mut self, qbits: QBits) -> Option<Complex<f64>> {
         self.remove(&qbits)
+    }
+
+    fn iter(&self) -> impl Iterator<Item = (QBits, Complex<f64>)> {
+        self.keys().copied().zip(self.values().copied())
+    }
+
+    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F) {
+        let mut f = f;
+        self.retain(|k, v| f(*k, *v));
+    }
+
+    fn normalize_with(&mut self, divisor: f64) {
+        for val in self.values_mut() {
+            *val /= divisor
+        }
     }
 }
 
