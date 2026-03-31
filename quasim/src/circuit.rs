@@ -601,7 +601,7 @@ where
         ret_self
     }
 
-    pub fn jump_if<S: Into<String>>(self, expr: BoolExpr, label: S) -> Circuit<HybridCircuit> {
+    pub fn jump_if<T: Into<BoolExpr>, S: Into<String>>(self, expr: T, label: S) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
 
         let circuit_pc = match ret_self.try_to_resolve_label(label.into()) {
@@ -611,16 +611,16 @@ where
 
         ret_self
             .instructions
-            .push(Instruction::JumpIf(expr, circuit_pc));
+            .push(Instruction::JumpIf(expr.into(), circuit_pc));
         ret_self
     }
 
     /// Conditionally apply whichever instruction that comes after
-    pub fn apply_if(self, expr: BoolExpr) -> Circuit<HybridCircuit> {
+    pub fn apply_if<T: Into<BoolExpr>>(self, expr: T) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
         ret_self
             .instructions
-            .push(Instruction::JumpIf(!expr, ret_self.instructions.len() + 2));
+            .push(Instruction::JumpIf(!expr.into(), ret_self.instructions.len() + 2));
         ret_self
     }
 
@@ -632,7 +632,7 @@ where
     }
 
     // takes register nr directly for now
-    pub fn assign<S: Into<String>>(self, reg: S, expr: BitExpr) -> Circuit<HybridCircuit> {
+    pub fn assign<S: Into<String>, T: Into<BitExpr>>(self, reg: S, expr: T) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
         let reg = reg.into();
         if !ret_self.registers.contains_key(&reg) {
@@ -641,7 +641,7 @@ where
                 &reg
             )
         }
-        ret_self.instructions.push(Instruction::Assign(expr, reg));
+        ret_self.instructions.push(Instruction::Assign(expr.into(), reg));
         ret_self
     }
 

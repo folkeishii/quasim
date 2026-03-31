@@ -1,5 +1,4 @@
 use quasim::circuit::Circuit;
-use quasim::expr_dsl::Value;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
@@ -51,7 +50,7 @@ fn check_classic(f: fn(u8) -> bool) -> FunctionType {
 ///
 /// Return true if constant, false if balanced
 fn check_quantum(function_type: FunctionType) -> bool {
-    let mut circuit = Circuit::new(2).new_reg("res");
+    let mut circuit = Circuit::new(2).new_reg("res", 1);
     circuit = circuit.x(1);
     circuit = circuit.h(0).h(1);
 
@@ -72,15 +71,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.cont();
 
-    match sim.register("res") {
-        Value::Int(i) => i == 0,
-        Value::Float(_) => {
-            panic!("Unexpected float register")
-        }
-        Value::Bool(_) => {
-            panic!("Unexpected bool register")
-        }
-    }
+    sim.register("res").read() == 0
 }
 
 fn main() {
