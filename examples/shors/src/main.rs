@@ -84,22 +84,14 @@ fn create_cmult (n: usize, a: usize) -> Circuit {
     // QFT the second n_bits and its overflow bit
     let c_array = (n_bits..2*n_bits+1).collect::<Vec<usize>>();
 
-    // Bitwise representation of a
-    let a_bit_array = (0..n_bits)
-    .map(|i| (a & (1 << i) != 0) as usize)
-    .collect::<Vec<usize>>();
-
     let mut circuit = Circuit::new(2*n_bits+2);
 
     circuit = circuit.qft(&c_array);
 
     for i in 0..n_bits {
-        circuit = circuit.breakpoint();
-        circuit = circuit.ccall_new("mod_adder{i}",
-            create_mod_adder(n, a_bit_array[i] * (1 << i)), n_bits,&[i]);
+        circuit = circuit.ccall_new(format!("mod_adder{}", i),
+            create_mod_adder(n, a * (1 << i)), n_bits, &[i]);
     }
-
-    circuit = circuit.breakpoint();
     
     circuit = circuit.call_new("qft-inv", Circuit::new(n_bits+1).qft(&(0..n_bits+1).collect::<Vec<usize>>()).inverse(), n_bits);
 
@@ -238,12 +230,12 @@ fn shors_random(n: usize) -> Vec<usize> {
 fn main() {
 
     let a = 2;
-    let n = 3;
+    let n = 6;
     let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
-    let c_array = (0..2*n_bits+1).collect::<Vec<usize>>();
+    let c_array = (n_bits..=2*n_bits).collect::<Vec<usize>>();
 
-    let mut c = Circuit::new(2*n_bits+2).x(0).new_reg("res");
+    let mut c = Circuit::new(2*n_bits+2).x(1).new_reg("res");
     c=c.breakpoint();
     c=c.call_new("cmult", create_cmult(n, a), 0);
     c=c.breakpoint();
@@ -283,6 +275,65 @@ fn main() {
         }
         Value::Bool(_) => {
             panic!("Unexpected bool register")
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests{
+    use quasim::{circuit::Circuit, simulator::{BuildSimulator, RunnableSimulator}, sv_simulator::{SVSimulator}};
+
+    use crate::{create_cmult, create_mod_adder};
+
+    #[test]
+    fn test_mod_adder(){
+        let n = 14;
+
+        let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
+
+        let c_array = (0..n_bits+1).collect::<Vec<usize>>();
+
+        for a in 0..=n{
+
+            let mut c = Circuit::new(n_bits+2).qft(&c_array);
+            
+            c = c.call_new("mod-adder", create_mod_adder(n, a), 0);
+
+            c = c.call_new("qft-inv", Circuit::new(n_bits+1).qft(&(0..n_bits+1).collect::<Vec<usize>>()).inverse(), 0);
+
+            
+            let sim = SVSimulator::build(c).unwrap();
+
+        assert_eq!(sim.run(), a % n);
+        }
+    }
+
+    #[test]
+    fn test_cmult(){
+        let n = 14;
+        let x = [0,1];
+
+
+        let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
+
+        let c_array = (n_bits..=2*n_bits).collect::<Vec<usize>>();
+
+        for a in 0..=n{
+
+            let mut c = Circuit::new(2*n_bits+2).new_reg("res");
+
+            for i in x.iter().rev(){
+                c = c.x(*i);
+            }
+            
+            c = c.call_new("cmult", create_cmult(n, a), 0);
+
+            c = c.measure_bits(&c_array, "res");
+            
+            let sim = SVSimulator::build(c).unwrap();
+
+            let x_tot = x.iter().rev().fold(0, |acc, x| acc + 2usize.pow(*x as u32));
+            assert_eq!(sim.run(), (a * x_tot) % n);
         }
     }
 }
