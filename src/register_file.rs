@@ -11,12 +11,12 @@ pub enum RegisterError {
     #[error("tried to write to out of bounds bit {0}")]
     WriteBitError(usize),
     #[error("tried to write invalid value {0}, expected 0 or 1")]
-    WriteBitValueError(u64),
+    WriteBitValueError(usize),
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Register {
-    value: u64,
+    value: usize,
     size: usize,
 }
 
@@ -31,7 +31,7 @@ impl Register {
     }
 
     /// Expects value as 0 or 1
-    pub fn write_bit(&mut self, bit: usize, value: u64) -> Result<u64, RegisterError> {
+    pub fn write_bit(&mut self, bit: usize, value: usize) -> Result<usize, RegisterError> {
         if bit >= self.size {
             return Err(RegisterError::WriteBitError(bit));
         }
@@ -47,17 +47,17 @@ impl Register {
         Ok(self.value)
     }
 
-    pub fn write(&mut self, value: u64) {
+    pub fn write(&mut self, value: usize) {
         // Write mask is 1's in writable bit positions
         let write_mask = (1 << self.size) - 1;
         self.value = value & write_mask;
     }
 
-    pub fn read_bit(&self, bit: usize) -> u64 {
+    pub fn read_bit(&self, bit: usize) -> usize {
         (self.value >> bit) & 1
     }
 
-    pub fn read(&self) -> u64 {
+    pub fn read(&self) -> usize {
         self.value
     }
 }

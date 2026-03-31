@@ -186,7 +186,7 @@ impl SVExecutor {
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
         let mask = 1 << target;
         let measurement = self.get_collapsed_state() & mask;
-        let measured_bit = ((measurement >> target) & 1) as u64;
+        let measured_bit = (measurement >> target) & 1;
 
         self.registers[reg]
             .write_bit(bit_pos, measured_bit)
@@ -214,7 +214,7 @@ impl SVExecutor {
     fn measure_all(&mut self, reg: &str) {
         let measurement = self.get_collapsed_state();
 
-        self.registers[reg].write(measurement as u64);
+        self.registers[reg].write(measurement);
 
         // Collapse whole state vector
         self.state_vector.fill(cart!(0.0));

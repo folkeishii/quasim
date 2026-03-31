@@ -142,7 +142,7 @@ impl DebugSimulator {
             measure_and_observe_sv(target, &self.current_state, self.n_qubits());
 
         self.registers[reg]
-            .write_bit(bit_pos, measurement as u64)
+            .write_bit(bit_pos, measurement)
             .expect("invalid register write");
 
         self.current_state = new_state;
@@ -153,7 +153,7 @@ impl DebugSimulator {
     fn measure_all(&mut self, reg: &str) {
         let measurement = collapse(self.current_state.as_slice());
 
-        self.registers[reg].write(measurement as u64);
+        self.registers[reg].write(measurement);
 
         // Collapse whole state vector
         self.current_state.fill(cart!(0.0));

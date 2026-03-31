@@ -6,7 +6,7 @@ use crate::register_file::RegisterFile;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum BitExpr {
-    Val(u64),
+    Val(usize),
     Reg(String),
     RegBit(String, usize),
 
@@ -54,7 +54,7 @@ impl BitExpr {
         BoolExpr::Not(Box::new(BoolExpr::Lt(Box::new(self), Box::new(rhs.into()))))
     }
 
-    pub fn eval(&self, regs: &RegisterFile) -> u64 {
+    pub fn eval(&self, regs: &RegisterFile) -> usize {
         match self {
             Self::Val(v) => *v,
             Self::Reg(name) => regs[name].read(),
@@ -90,8 +90,8 @@ impl BoolExpr {
 
 // Into types
 
-impl From<u64> for BitExpr {
-    fn from(v: u64) -> Self {
+impl From<usize> for BitExpr {
+    fn from(v: usize) -> Self {
         Self::Val(v)
     }
 }
