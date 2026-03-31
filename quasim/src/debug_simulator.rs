@@ -36,7 +36,7 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
         let mut init_state = vec![cart!(0.0); 1 << k];
         init_state[0] = cart!(1.0);
 
-        let registers = RegisterFile::try_from(circuit.registers())?;
+        let registers = RegisterFile::from(circuit.registers());
 
         let sim = DebugSimulator {
             current_state: DVector::from_vec(init_state),

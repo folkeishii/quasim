@@ -276,7 +276,7 @@ where
         let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
         init_state_vector[0] = cart![1.0];
 
-        let registers = RegisterFile::try_from(value.registers())?;
+        let registers = RegisterFile::from(value.registers());
 
         Ok(Self {
             state_vector: init_state_vector,
@@ -483,25 +483,25 @@ mod tests {
             .new_reg("tmp", 1)
             .new_sub_circuit("U", sub)
             // Hybrid check
-            .assign("tmp", 0.into())
+            .assign("tmp", 0)
             .call("U", 0)
             .measure_bit(0, ("tmp", 0))
             .apply_if(r("tmp").gt(0))
             .x(0)
             // Hybrid check
-            .assign("tmp", 0.into())
+            .assign("tmp", 0)
             .call("U", 1)
             .measure_bit(1, ("tmp", 0))
             .apply_if(r("tmp").gt(0))
             .x(1)
             // Hybrid check
-            .assign("tmp", 0.into())
+            .assign("tmp", 0)
             .call("U", 2)
             .measure_bit(2, ("tmp", 0))
             .apply_if(r("tmp").gt(0))
             .x(2)
             // Hybrid check
-            .assign("tmp", 0.into())
+            .assign("tmp", 0)
             .call("U", 3)
             .measure_bit(3, ("tmp", 0))
             .apply_if(r("tmp").gt(0))

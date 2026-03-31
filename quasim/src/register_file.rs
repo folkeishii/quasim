@@ -22,12 +22,8 @@ pub struct Register {
 
 impl Register {
     /// Expects size in range 0 to 64
-    pub fn new(size: usize) -> Result<Self, RegisterError> {
-        if size > 64 {
-            Err(RegisterError::InitSize(size))
-        } else {
-            Ok(Self { value: 0, size })
-        }
+    pub fn new(size: usize) -> Self {
+        Self { value: 0, size }
     }
 
     /// Expects value as 0 or 1
@@ -48,9 +44,14 @@ impl Register {
     }
 
     pub fn write(&mut self, value: usize) {
-        // Write mask is 1's in writable bit positions
-        let write_mask = (1 << self.size) - 1;
-        self.value = value & write_mask;
+        // No write mask needed if size of value matches reg size
+        if self.size == size_of_val(&self.value) * 8 {
+            self.value = value
+        } else {
+            // Write mask is 1's in writable bit positions
+            let write_mask = (1 << self.size) - 1;
+            self.value = value & write_mask;
+        }
     }
 
     pub fn read_bit(&self, bit: usize) -> usize {
@@ -78,19 +79,17 @@ impl RegisterFile {
     }
 }
 
-impl TryFrom<&HashMap<String, usize>> for RegisterFile {
-    type Error = RegisterError;
-
-    fn try_from(value: &HashMap<String, usize>) -> Result<Self, Self::Error> {
+impl From<&HashMap<String, usize>> for RegisterFile {
+    fn from(value: &HashMap<String, usize>) -> Self {
         let mut reg_map = HashMap::new();
 
         for (name, &size) in value {
-            let new_reg = Register::new(size)?;
+            let new_reg = Register::new(size);
 
             reg_map.insert(name.clone(), new_reg);
         }
 
-        Ok(Self(reg_map))
+        Self(reg_map)
     }
 }
 
