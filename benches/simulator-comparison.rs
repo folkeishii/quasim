@@ -96,7 +96,7 @@ fn circuit_size_measurement<S>(n_qubits: usize)
 where
     S: RunnableSimulator + BuildSimulator<HybridCircuit>,
 {
-    let circuit = Circuit::new(n_qubits).new_reg("r0").measure("r0");
+    let circuit = Circuit::new(n_qubits).new_reg("r0").measure_bit(0, ("r0", 0));
 
     let sim = S::build(circuit).expect("Couldnt build circuit...");
     sim.run();
@@ -104,8 +104,8 @@ where
 
 #[divan::bench(
     types = [SVSimulator, GpuStateVectorSimulator<WgpuRuntime>],
-    args = [250, 500, 1000, 2000],
-    sample_count = 10,
+    args = [100, 200, 400, 800],
+    sample_count = 3,
 )]
 fn circuit_num_measurements<S>(n_measure: usize)
 where
@@ -114,7 +114,7 @@ where
     let mut circuit = Circuit::new(18).new_reg("r0");
 
     for _ in 0..n_measure {
-        circuit = circuit.measure("r0");
+        circuit = circuit.measure_bit(0, ("r0", 0));
     }
 
     let sim = S::build(circuit).expect("Couldnt build circuit...");

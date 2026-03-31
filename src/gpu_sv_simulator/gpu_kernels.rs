@@ -28,9 +28,9 @@ impl ComplexF32 {
 
 /// Removes amplitudes in statevector where basis doesnt align with measurement
 #[cube(launch)]
-pub fn state_vector_observe(state_vector: &mut Array<f32>, measurement: u32) {
+pub fn state_vector_observe(state_vector: &mut Array<f32>, measurement: u32, target_mask: u32) {
     let basis = ABSOLUTE_POS;
-    if ((basis as u32) & measurement) != measurement {
+    if ((basis as u32) & target_mask) != measurement {
         state_vector[basis * 2] = 0.0; // re
         state_vector[basis * 2 + 1] = 0.0; // im
     }
@@ -39,7 +39,7 @@ pub fn state_vector_observe(state_vector: &mut Array<f32>, measurement: u32) {
 #[cube(launch)]
 pub fn state_vector_observe_full(state_vector: &mut Array<f32>, measurement: u32) {
     let basis = ABSOLUTE_POS;
-    if ((basis as u32) & measurement) == measurement {
+    if (basis as u32) == measurement {
         state_vector[basis * 2] = 1.0; // re
         state_vector[basis * 2 + 1] = 0.0; // im
     } else {
@@ -48,19 +48,6 @@ pub fn state_vector_observe_full(state_vector: &mut Array<f32>, measurement: u32
     }
 }
 
-/// Copy a slice of from some array into another
-#[cube(launch)]
-pub fn copy_slice(from: &Array<f32>, to: &mut Array<f32>, offset: usize) {
-    if ABSOLUTE_POS + offset < from.len() {
-        to[ABSOLUTE_POS] = from[ABSOLUTE_POS + offset];
-    }
-}
-
-/// Compute partial sums from an array with interleaved complex numbers
-///
-/// `block_size` should match number of units launched
-///
-/// Assumes `partial_out`, and `block_size` is a power of 2.
 #[cube(launch)]
 pub fn reduce_pass(
     partial_in: &Array<f32>,
@@ -114,11 +101,65 @@ pub fn calculate_probs(state_vector: &Array<f32>, probs: &mut Array<f32>) {
     };
 }
 
-/// Divide all elements in an array with some divisor
 #[cube(launch)]
-pub fn vector_division(array: &mut Array<f32>, divisor: f32) {
+pub fn probs_observe(probs: &mut Array<f32>, measurement: u32, target_mask: u32) {
+    let basis = ABSOLUTE_POS;
+    if basis < probs.len() && ((basis as u32) & target_mask) != measurement {
+        probs[basis] = 0.0;
+    }
+}
+
+#[cube(launch)]
+pub fn scale_threshold(threshold: &mut Array<f32>, total_prob: &Array<f32>) {
+    if UNIT_POS == 0 {
+        threshold[0] *= total_prob[0];
+    }
+}
+
+#[cube(launch)]
+pub fn sample_cdf_block(
+    probs: &Array<f32>,
+    sample_index: &mut Array<u32>,
+    threshold: &mut Array<f32>,
+    #[comptime] block_size: usize,
+) {
+    let tid = UNIT_POS as usize;
+    let block_index = sample_index[0] as usize;
+    let base = block_index * block_size;
+    let mut shared: SharedMemory<f32> = SharedMemory::new(block_size);
+
+    shared[tid] = if base + tid < probs.len() {
+        probs[base + tid]
+    } else {
+        0.0.into()
+    };
+
+    sync_storage();
+
+    if UNIT_POS == 0 {
+        let target = threshold[0];
+        let mut prefix = 0.0;
+        let mut previous_prefix = 0.0;
+        let mut chosen = 0u32;
+
+        for i in 0..block_size {
+            prefix += shared[i];
+            if target < prefix {
+                chosen = i as u32;
+                break;
+            }
+            previous_prefix = prefix;
+        }
+
+        sample_index[0] = sample_index[0] * block_size as u32 + chosen;
+        threshold[0] = target - previous_prefix;
+    }
+}
+
+#[cube(launch)]
+pub fn vector_division(array: &mut Array<f32>, divisor: &Array<f32>) {
     if ABSOLUTE_POS < array.len() {
-        array[ABSOLUTE_POS] /= divisor;
+        array[ABSOLUTE_POS] /= divisor[0].sqrt();
     }
 }
 

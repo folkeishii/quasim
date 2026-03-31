@@ -2,7 +2,6 @@ use cubecl::Runtime;
 use nalgebra::{Complex, DVector};
 
 use crate::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
-use crate::cart;
 use crate::circuit::HybridCircuit;
 use crate::gate::QBits;
 use crate::gpu_sv_simulator::gpu_state_vector::GpuStateVector;
@@ -72,7 +71,6 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
         let measurement = self
             .gpu_state_vector
             .measure_bits(QBits::from_bitstring(1 << target));
-
         let shifted_measurement = ((measurement >> target) & 1) << bit_pos;
         let register_bit_mask = 1 << bit_pos;
 
