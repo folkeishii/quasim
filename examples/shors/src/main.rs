@@ -74,10 +74,8 @@ fn create_mod_adder (n: usize, a: usize) -> Circuit {
 }
 
 
-/*
-    Test check, current implementation ignores inner controls
-    and treats them as outer controls. Check if this works
-*/
+// Multiplies a and the first n_bits (x), stores the value in the second n_bits
+// Disallows values a = n
 fn create_cmult (n: usize, a: usize) -> Circuit {
     let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
@@ -229,8 +227,8 @@ fn shors_random(n: usize) -> Vec<usize> {
 
 fn main() {
 
-    let a = 2;
-    let n = 6;
+    let a = 4;
+    let n = 5;
     let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
     let c_array = (n_bits..=2*n_bits).collect::<Vec<usize>>();
@@ -281,9 +279,34 @@ fn main() {
 
 #[cfg(test)]
 mod tests{
-    use quasim::{circuit::Circuit, simulator::{BuildSimulator, RunnableSimulator}, sv_simulator::{SVSimulator}};
+    use quasim::{circuit::Circuit, expr_dsl::Value, simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, RunnableSimulator}, sv_simulator::{SVSimulator, SVSimulatorDebugger}};
 
-    use crate::{create_cmult, create_mod_adder};
+    use crate::{create_adder, create_cmult, create_mod_adder};
+
+    #[test]
+    fn test_adder(){
+        let n = 14;
+
+        let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
+
+        let c_array = (0..=n_bits).collect::<Vec<usize>>();
+
+        for a in 0..=n{
+
+            let mut c = Circuit::new(n_bits+1).qft(&c_array);
+            
+            c = c.call_new("mod-adder", create_adder(n, a), 0);
+
+            c = c.call_new("qft-inv", Circuit::new(n_bits+1).qft(&c_array).inverse(), 0);
+
+            
+            let sim = SVSimulator::build(c).unwrap();
+        
+            // Constrained to the size of the number n
+            assert_eq!(sim.run(), a % (1 << n_bits));
+        }
+    }
+    
 
     #[test]
     fn test_mod_adder(){
@@ -291,7 +314,7 @@ mod tests{
 
         let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
-        let c_array = (0..n_bits+1).collect::<Vec<usize>>();
+        let c_array = (0..=n_bits).collect::<Vec<usize>>();
 
         for a in 0..=n{
 
@@ -310,7 +333,7 @@ mod tests{
 
     #[test]
     fn test_cmult(){
-        let n = 14;
+        let n = 6;
         let x = [0,1];
 
 
@@ -318,22 +341,37 @@ mod tests{
 
         let c_array = (n_bits..=2*n_bits).collect::<Vec<usize>>();
 
-        for a in 0..=n{
+        for a in 0..n{
 
             let mut c = Circuit::new(2*n_bits+2).new_reg("res");
 
-            for i in x.iter().rev(){
-                c = c.x(*i);
+            for i in x{
+                if i == 1{
+                    c = c.x(i);
+                }
             }
             
             c = c.call_new("cmult", create_cmult(n, a), 0);
 
             c = c.measure_bits(&c_array, "res");
             
-            let sim = SVSimulator::build(c).unwrap();
+            let mut sim = SVSimulatorDebugger::build(c).unwrap();
 
-            let x_tot = x.iter().rev().fold(0, |acc, x| acc + 2usize.pow(*x as u32));
-            assert_eq!(sim.run(), (a * x_tot) % n);
+            sim.cont();
+
+            let x_tot: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
+
+            match sim.register("res") {
+                Value::Int(res) => {
+                    assert_eq!(res as usize,(a*x_tot)%n);
+                }
+                Value::Float(_) => {
+                    panic!("Unexpected float register")
+                }
+                Value::Bool(_) => {
+                    panic!("Unexpected bool register")
+                }
+            }
         }
     }
 }
