@@ -4,15 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-crossterm.workspace = true
-array-init.workspace = true
-divan.workspace = true
+crossterm = "0.29.0"
+array-init = "2.1.0"
+divan = "0.1.21"
 nalgebra.workspace = true
-rand.workspace = true
-thiserror.workspace = true
-oq3_syntax.workspace = true
+rand = "0.9.2"
+thiserror = "2.0.18"
+oq3_syntax = "0.7.0"
 log.workspace = true
-serde.workspace = true
+serde = { version = "1.0.228", features = ["derive"] }
 
 [[bench]]
 name = "gate-dsl"
