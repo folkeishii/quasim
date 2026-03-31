@@ -88,7 +88,7 @@ fn create_cmult (n: usize, a: usize) -> Circuit {
 
     for i in 0..n_bits {
         circuit = circuit.ccall_new(format!("mod_adder{}", i),
-            create_mod_adder(n, a * (1 << i)), n_bits, &[i]);
+            create_mod_adder(n, (a * (1 << i))%n), n_bits, &[i]);
     }
     
     circuit = circuit.call_new("qft-inv", Circuit::new(n_bits+1).qft(&(0..n_bits+1).collect::<Vec<usize>>()).inverse(), n_bits);
@@ -333,8 +333,8 @@ mod tests{
 
     #[test]
     fn test_cmult(){
-        let n = 6;
-        let x = [0,1];
+        let n = 18;
+        let x = [0,1,0];
 
 
         let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
@@ -345,8 +345,8 @@ mod tests{
 
             let mut c = Circuit::new(2*n_bits+2).new_reg("res");
 
-            for i in x{
-                if i == 1{
+            for i in 0..x.len(){
+                if x[i] == 1{
                     c = c.x(i);
                 }
             }
