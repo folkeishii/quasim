@@ -51,6 +51,11 @@ impl CircuitPc {
         *self.pc_mut() = pc
     }
 
+    pub fn jump_with_offset(&mut self, offset: isize) {
+        let nn = self.pc() as isize + offset;
+        *self.pc_mut() = nn as usize;
+    }
+
     pub fn jump_and_link(&mut self, name: String, lsq: usize, ctrl: QBits) {
         if let Some((_, sub_pc)) = &mut self.sub {
             sub_pc.jump_and_link(name, lsq, ctrl);
@@ -158,6 +163,12 @@ impl CircuitPc {
 impl PartialEq for CircuitPc {
     fn eq(&self, other: &Self) -> bool {
         self.pc == other.pc
+            && self.lsq == other.lsq
+            && self.sub.is_some() == other.sub.is_some()
+            // Check that sub pc is the same
+            && self.sub.as_ref().zip(other.sub.as_ref()).map(|((sname, ssub),(oname, osub))| {
+                sname == oname && ssub.eq(osub)
+            }).unwrap_or(true)
     }
 }
 
