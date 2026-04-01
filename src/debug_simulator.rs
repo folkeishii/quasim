@@ -56,6 +56,9 @@ impl HybridSimulator<Value> for DebugSimulator {
 }
 
 impl DebuggableSimulator for DebugSimulator {
+    type Storage = DVector<Complex<f64>>;
+    type State = Complex<f64>;
+
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
@@ -89,6 +92,10 @@ impl DebuggableSimulator for DebugSimulator {
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
         &self.current_state
+    }
+
+    fn collapse_peek(&self) -> usize {
+        collapse(self.current_state.as_slice())
     }
 
     fn prev(&mut self) -> bool {
@@ -220,7 +227,7 @@ pub enum DebugSimulatorError {
 mod tests {
     use crate::common_test;
     use crate::ext::{
-        collapse, equal_to_matrix_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
+        collapse, equal_state_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
         measure_and_observe_sv,
     };
     use crate::{
@@ -237,7 +244,8 @@ mod tests {
     fn measure_hadamard_all() {
         let circ = Circuit::new(3).h(0).h(1).h(2);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
-        let mut res = sim.cont().clone();
+        sim.cont();
+        let mut res = sim.current_state().clone();
         let plus_plus_plus: DVector<Complex<f64>> = dvector![
             cart!(0.5 * FRAC_1_SQRT_2), // |000>
             cart!(0.5 * FRAC_1_SQRT_2), // |001>
@@ -248,7 +256,7 @@ mod tests {
             cart!(0.5 * FRAC_1_SQRT_2), // |110>
             cart!(0.5 * FRAC_1_SQRT_2), // |111>
         ];
-        assert!(equal_to_matrix_c(&res, &plus_plus_plus, 0.001));
+        assert!(equal_state_c(&res, &plus_plus_plus, 3, 0.001));
         let plus_plus_measure0: DVector<Complex<f64>> = dvector![
             cart!(0.5), // |000>
             cart!(0.0), // |001>
@@ -271,8 +279,8 @@ mod tests {
         ];
         (_, res) = measure_and_observe_sv(0, &res, 3);
         assert!(
-            equal_to_matrix_c(&res, &plus_plus_measure0, 0.001)
-                || equal_to_matrix_c(&res, &plus_plus_measure1, 0.001)
+            equal_state_c(&res, &plus_plus_measure0, 3, 0.001)
+                || equal_state_c(&res, &plus_plus_measure1, 3, 0.001)
         );
         let plus_measure0_measure0: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
@@ -316,10 +324,10 @@ mod tests {
         ];
         (_, res) = measure_and_observe_sv(1, &res, 3);
         assert!(
-            equal_to_matrix_c(&res, &plus_measure0_measure0, 0.001)
-                || equal_to_matrix_c(&res, &plus_measure0_measure1, 0.001)
-                || equal_to_matrix_c(&res, &plus_measure1_measure0, 0.001)
-                || equal_to_matrix_c(&res, &plus_measure1_measure1, 0.001)
+            equal_state_c(&res, &plus_measure0_measure0, 3, 0.001)
+                || equal_state_c(&res, &plus_measure0_measure1, 3, 0.001)
+                || equal_state_c(&res, &plus_measure1_measure0, 3, 0.001)
+                || equal_state_c(&res, &plus_measure1_measure1, 3, 0.001)
         );
         (_, res) = measure_and_observe_sv(2, &res, 3);
         // Now collapsed to any 3-bit-string.
@@ -344,7 +352,8 @@ mod tests {
     fn measure_entanglement() {
         let circ = Circuit::new(3).h(0).cx(&[0], 1);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
-        let mut res = sim.cont().clone();
+        sim.cont();
+        let mut res = sim.current_state().clone();
         // Expected state vector before any measurments
         let bell: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
@@ -356,7 +365,7 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
         ];
-        assert!(equal_to_matrix_c(&bell, &res, 0.001));
+        assert!(equal_state_c(&bell, &res, 3, 0.001));
         // When any qubit is measured, state vector should collapse to either |00> or |11>.
         let colapse_00: DVector<Complex<f64>> = dvector![
             cart!(1.0), // |000>
@@ -381,14 +390,14 @@ mod tests {
         (_, res) = measure_and_observe_sv(0, &res, 3);
 
         assert!(
-            equal_to_matrix_c(&res, &colapse_00, 0.001)
-                || equal_to_matrix_c(&res, &colapse_11, 0.001)
+            equal_state_c(&res, &colapse_00, 3, 0.001)
+                || equal_state_c(&res, &colapse_11, 3, 0.001)
         );
 
         (_, res) = measure_and_observe_sv(1, &res, 3);
         assert!(
-            equal_to_matrix_c(&res, &colapse_00, 0.001)
-                || equal_to_matrix_c(&res, &colapse_11, 0.001)
+            equal_state_c(&res, &colapse_00, 3, 0.001)
+                || equal_state_c(&res, &colapse_11, 3, 0.001)
         );
     }
 
@@ -397,7 +406,8 @@ mod tests {
         let circ = Circuit::new(2).h(0).cx(&[0], 1);
 
         let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
-        let collapsed = collapse(sim.cont().as_ref());
+        sim.cont();
+        let collapsed = collapse(sim.current_state().as_ref());
 
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
         assert!(collapsed == 0b00 || collapsed == 0b11);
@@ -418,7 +428,7 @@ mod tests {
     fn test_textbook_cnot() {
         let cnot = Gate::new(GateType::X, &[0], &[1]).unwrap();
         let mat = expand_matrix_from_gate(&cnot, 2);
-        assert!(equal_to_matrix_c(&mat, &textbook_cnot(), 0.001));
+        assert!(equal_state_c(&mat, &textbook_cnot(), 4, 0.001));
     }
 
     fn textbook_toffoli() -> DMatrix<Complex<f64>> {
@@ -439,7 +449,7 @@ mod tests {
     fn test_textbook_toffoli() {
         let x = Gate::new(GateType::X, &[], &[0]).unwrap();
         let mat = expand_matrix(get_gate_matrix(&x), &[0, 1], &[2], 3);
-        assert!(equal_to_matrix_c(&mat, &textbook_toffoli(), 0.001));
+        assert!(equal_state_c(&mat, &textbook_toffoli(), 6, 0.001));
     }
 
     /* Following tests are based on 'ControlledGates.tex' */
@@ -463,7 +473,7 @@ mod tests {
     fn test_cnot_01() {
         let cnot = Gate::new(GateType::X, &[0], &[1]).unwrap();
         let mat = expand_matrix_from_gate(&cnot, 3);
-        assert!(equal_to_matrix_c(&mat, &cnot_01(), 0.001));
+        assert!(equal_state_c(&mat, &cnot_01(), 6, 0.001));
     }
 
     fn cnot_02() -> DMatrix<Complex<f64>> {
@@ -485,7 +495,7 @@ mod tests {
     fn test_cnot_02() {
         let cnot = Gate::new(GateType::X, &[0], &[2]).unwrap();
         let mat = expand_matrix_from_gate(&cnot, 3);
-        assert!(equal_to_matrix_c(&mat, &cnot_02(), 0.001));
+        assert!(equal_state_c(&mat, &cnot_02(), 6, 0.001));
     }
 
     fn cnot_12() -> DMatrix<Complex<f64>> {
@@ -507,7 +517,7 @@ mod tests {
     fn test_cnot_12() {
         let cnot = Gate::new(GateType::X, &[1], &[2]).unwrap();
         let mat = expand_matrix_from_gate(&cnot, 3);
-        assert!(equal_to_matrix_c(&mat, &cnot_12(), 0.001));
+        assert!(equal_state_c(&mat, &cnot_12(), 6, 0.001));
     }
 
     fn h_0() -> DMatrix<Complex<f64>> {
@@ -529,7 +539,7 @@ mod tests {
     fn test_h_0() {
         let h = Gate::new(GateType::H, &[], &[0]).unwrap();
         let mat = expand_matrix_from_gate(&h, 3);
-        assert!(equal_to_matrix_c(&mat, &h_0(), 0.001));
+        assert!(equal_state_c(&mat, &h_0(), 6, 0.001));
     }
 
     fn cnot_201() -> DMatrix<Complex<f64>> {
@@ -550,7 +560,7 @@ mod tests {
     fn test_cnot_201() {
         let x = Gate::new(GateType::X, &[], &[0]).unwrap();
         let mat = expand_matrix(get_gate_matrix(&x), &[2], &[0, 1], 3);
-        assert!(equal_to_matrix_c(&mat, &cnot_201(), 0.001));
+        assert!(equal_state_c(&mat, &cnot_201(), 6, 0.001));
     }
 
     #[test]
@@ -598,13 +608,13 @@ mod tests {
             cart!(FRAC_1_SQRT_2) // |111>
         ];
         let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
-        assert!(equal_to_matrix_c(&psi0, &sim.current_state(), 0.001));
+        assert!(equal_state_c(&psi0, sim.current_state(), 3, 0.001));
         sim.next();
-        assert!(equal_to_matrix_c(&psi1, &sim.current_state(), 0.001));
+        assert!(equal_state_c(&psi1, sim.current_state(), 3, 0.001));
         sim.next();
-        assert!(equal_to_matrix_c(&psi2, &sim.current_state(), 0.001));
+        assert!(equal_state_c(&psi2, sim.current_state(), 3, 0.001));
         sim.next();
-        assert!(equal_to_matrix_c(&psi3, &sim.current_state(), 0.001));
+        assert!(equal_state_c(&psi3, sim.current_state(), 3, 0.001));
 
         let res = sim.next();
         match res {
@@ -613,11 +623,11 @@ mod tests {
         }
 
         sim.prev();
-        assert!(equal_to_matrix_c(&psi2, &sim.current_state(), 0.001));
+        assert!(equal_state_c(&psi2, sim.current_state(), 3, 0.001));
         sim.prev();
-        assert!(equal_to_matrix_c(&psi1, &sim.current_state(), 0.001));
+        assert!(equal_state_c(&psi1, sim.current_state(), 3, 0.001));
         sim.prev();
-        assert!(equal_to_matrix_c(&psi0, &sim.current_state(), 0.001));
+        assert!(equal_state_c(&psi0, sim.current_state(), 3, 0.001));
 
         let res = sim.prev();
         match res {

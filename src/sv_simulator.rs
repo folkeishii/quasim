@@ -320,6 +320,9 @@ where
 }
 
 impl RunnableSimulator for SVSimulator {
+    type Storage = DVector<Complex<f64>>;
+    type State = Complex<f64>;
+
     fn run(&self) -> usize {
         SVExecutor::new(self.circuit.clone())
             .step_all()
@@ -356,6 +359,9 @@ where
 }
 
 impl DebuggableSimulator for SVSimulatorDebugger {
+    type Storage = DVector<Complex<f64>>;
+    type State = Complex<f64>;
+
     fn next(&mut self) -> bool {
         match self.executor.step() {
             Some(_) => true,
@@ -370,6 +376,10 @@ impl DebuggableSimulator for SVSimulatorDebugger {
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
         &self.executor.state_vector
+    }
+
+    fn collapse_peek(&self) -> usize {
+        self.executor.get_collapsed_state()
     }
 
     fn prev(&mut self) -> bool {
@@ -409,7 +419,7 @@ mod tests {
     use nalgebra::dvector;
 
     use crate::expr_dsl::Value;
-    use crate::ext::equal_to_matrix_c;
+    use crate::ext::equal_state_c;
     use crate::simulator::{DebuggableSimulator, HybridSimulator};
     use crate::sv_simulator::SVSimulatorDebugger;
     use crate::{cart, common_test};
@@ -447,7 +457,7 @@ mod tests {
 
         let sim = SVSimulator::build(circuit.clone()).unwrap();
 
-        assert!(equal_to_matrix_c(
+        assert!(equal_state_c(
             &sim.final_state(),
             &dvector![
                 cart!(1), // |0000>
@@ -467,6 +477,7 @@ mod tests {
                 cart!(0), // |1110>
                 cart!(0), // |1111>
             ],
+            4,
             0.0001
         ));
     }
@@ -505,8 +516,9 @@ mod tests {
 
         let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
 
-        assert!(equal_to_matrix_c(
-            sim.cont(),
+        sim.cont();
+        assert!(equal_state_c(
+            sim.current_state(),
             &dvector![
                 cart!(FRAC_1_SQRT_2), // |0000>
                 cart!(FRAC_1_SQRT_2), // |0001>
@@ -525,10 +537,12 @@ mod tests {
                 cart!(0),             // |1110>
                 cart!(0),             // |1111>
             ],
+            4,
             0.0001
         ));
-        assert!(equal_to_matrix_c(
-            sim.cont(),
+        sim.cont();
+        assert!(equal_state_c(
+            sim.current_state(),
             &dvector![
                 cart!(FRAC_1_SQRT_2), // |0000>
                 cart!(0),             // |0001>
@@ -547,10 +561,12 @@ mod tests {
                 cart!(0),             // |1110>
                 cart!(0),             // |1111>
             ],
+            4,
             0.0001
         ));
-        assert!(equal_to_matrix_c(
-            sim.cont(),
+        sim.cont();
+        assert!(equal_state_c(
+            sim.current_state(),
             &dvector![
                 cart!(FRAC_1_SQRT_2), // |0000>
                 cart!(0),             // |0001>
@@ -569,10 +585,12 @@ mod tests {
                 cart!(0),             // |1110>
                 cart!(0),             // |1111>
             ],
+            4,
             0.0001
         ));
-        assert!(equal_to_matrix_c(
-            sim.cont(),
+        sim.cont();
+        assert!(equal_state_c(
+            sim.current_state(),
             &dvector![
                 cart!(FRAC_1_SQRT_2), // |0000>
                 cart!(0),             // |0001>
@@ -591,10 +609,12 @@ mod tests {
                 cart!(0),             // |1110>
                 cart!(0),             // |1111>
             ],
+            4,
             0.0001
         ));
-        assert!(equal_to_matrix_c(
-            sim.cont(),
+        sim.cont();
+        assert!(equal_state_c(
+            sim.current_state(),
             &dvector![
                 cart!(1), // |0000>
                 cart!(0), // |0001>
@@ -613,6 +633,7 @@ mod tests {
                 cart!(0), // |1110>
                 cart!(0), // |1111>
             ],
+            4,
             0.0001
         ));
     }

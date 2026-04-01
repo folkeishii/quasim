@@ -15,10 +15,6 @@ log = "0.4.29"
 serde = { version = "1.0.228", features = ["derive"] }
 
 [[bench]]
-name = "gate-dsl"
-harness = false
-
-[[bench]]
 name = "debug-simulator"
 harness = false
 

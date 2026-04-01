@@ -15,9 +15,9 @@ use crate::simulator::HybridSimulator;
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
     debug_terminal::{parse::into_tokens, show_circuit::show_circuit},
-    ext::collapse,
     simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
 };
+use std::ops::Index;
 use std::{
     io::{self, Write},
     ops::Div,
@@ -27,9 +27,11 @@ pub struct DebugTerminal<S = DebugSimulator> {
     simulator: S,
 }
 
-impl<S> DebugTerminal<S>
+impl<S, Storage, State> DebugTerminal<S>
 where
-    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit> + HybridSimulator<Value>,
+    S: DebuggableSimulator<Storage = Storage, State = State> + StoredCircuitSimulator<B = HybridCircuit> + HybridSimulator<Value>,
+    Storage: Index<usize, Output = State>,
+    State: ToString,
 {
     pub fn new<B: CircuitBehaviour>(
         circuit: Circuit<B>,
@@ -501,7 +503,7 @@ where
 
     fn handle_state<W: Write>(&mut self, stdout: &mut W, state_args: &StateArgs) -> io::Result<()> {
         let current_state = self.simulator.current_state();
-        let to_show = match StateArgs::from_state(current_state, state_args) {
+        let to_show = match StateArgs::from_state(current_state, state_args, self.simulator.circuit().n_qubits()) {
             Ok(v) => v,
             Err(e) => {
                 errorln!(stdout; e)?;
@@ -538,7 +540,7 @@ where
         stdout: &mut W,
         collapse_args: &CollapseArgs,
     ) -> io::Result<()> {
-        let state = self.simulator.current_state();
+        let sim = &self.simulator;
         let mut count_map: Vec<(usize, usize)> = Vec::new();
         let count = match collapse_args {
             CollapseArgs::Collapse => 1,
@@ -548,7 +550,7 @@ where
         let mut max_state = 0; // Only used for formatting
         let mut max_count = 0; // Only used for formatting
         for _ in 0..count {
-            let collapsed = collapse(state.as_ref());
+            let collapsed = sim.collapse_peek();
             max_state = max_state.max(collapsed);
             let new_count = match count_map.binary_search_by_key(&collapsed, |(state, _)| *state) {
                 // state already recorded
