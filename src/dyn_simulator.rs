@@ -73,7 +73,7 @@ fn system_product(systems: &[EntSys]) -> EntSys {
 }
 
 #[derive(Debug, Clone)]
-pub struct DMSimulator {
+pub struct DynSimulator {
     systems: Vec<EntSys>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
@@ -81,7 +81,7 @@ pub struct DMSimulator {
     state_cache: DVector<Complex<f64>>,
 }
 
-impl DMSimulator {
+impl DynSimulator {
     fn init(circuit: Circuit<HybridCircuit>) -> Self {
         // Initial state assumed to be |000..>
         // No entanglement -> one system for each qubit.
@@ -100,7 +100,7 @@ impl DMSimulator {
         let mut init_state = DVector::<Complex<f64>>::zeros(1 << circuit.n_qubits());
         init_state[0] = cart!(1.0);
 
-        DMSimulator {
+        DynSimulator {
             systems: init_sys,
             circuit: circuit,
             pc: Default::default(),
@@ -344,16 +344,16 @@ impl DMSimulator {
     }
 }
 
-impl TryFrom<Circuit<PureCircuit>> for DMSimulator {
-    type Error = DMSimulatorError;
+impl TryFrom<Circuit<PureCircuit>> for DynSimulator {
+    type Error = DynSimulatorError;
 
     fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
         Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
     }
 }
 
-impl TryFrom<Circuit<HybridCircuit>> for DMSimulator {
-    type Error = DMSimulatorError;
+impl TryFrom<Circuit<HybridCircuit>> for DynSimulator {
+    type Error = DynSimulatorError;
 
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         let circuit = value;
@@ -364,13 +364,13 @@ impl TryFrom<Circuit<HybridCircuit>> for DMSimulator {
     }
 }
 
-impl HybridSimulator<Value> for DMSimulator {
+impl HybridSimulator<Value> for DynSimulator {
     fn registers(&self) -> &RegisterFile<Value> {
         &self.registers
     }
 }
 
-impl DebuggableSimulator for DMSimulator {
+impl DebuggableSimulator for DynSimulator {
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             return false;
@@ -403,7 +403,7 @@ impl DebuggableSimulator for DMSimulator {
         false
     }
 }
-impl StoredCircuitSimulator for DMSimulator {
+impl StoredCircuitSimulator for DynSimulator {
     type B = HybridCircuit;
     fn circuit(&self) -> &Circuit<HybridCircuit> {
         &self.circuit
@@ -415,7 +415,7 @@ impl StoredCircuitSimulator for DMSimulator {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum DMSimulatorError {
+pub enum DynSimulatorError {
     #[error("Measurement mid-circuit")]
     MidCircuitMeasurement,
 }
@@ -425,37 +425,37 @@ mod tests {
     use crate::common_test;
     use crate::ext::{equal_to_matrix_c, reduced_state};
     use crate::{
-        cart, circuit::Circuit, dm_simulator::DMSimulator, expr_dsl::expr_helpers::r,
+        cart, circuit::Circuit, dyn_simulator::DynSimulator, expr_dsl::expr_helpers::r,
         simulator::DebuggableSimulator,
     };
     use nalgebra::{dmatrix, dvector};
 
     #[test]
     fn hybrid_test() {
-        common_test::hybrid_test::<DMSimulator>();
+        common_test::hybrid_test::<DynSimulator>();
     }
 
     #[test]
     fn register_test() {
-        common_test::register_test::<DMSimulator>();
+        common_test::register_test::<DynSimulator>();
     }
 
     #[test]
     fn double_sub() {
-        common_test::double_sub::<DMSimulator>();
+        common_test::double_sub::<DynSimulator>();
     }
 
     #[test]
     fn deep_sub() {
-        common_test::deep_sub::<DMSimulator>();
+        common_test::deep_sub::<DynSimulator>();
     }
 
     #[test]
     fn deep_ctrl_sub() {
-        common_test::deep_ctrl_sub::<DMSimulator>();
+        common_test::deep_ctrl_sub::<DynSimulator>();
     }
 
-    fn print_systems(sim: &DMSimulator) {
+    fn print_systems(sim: &DynSimulator) {
         for sys in sim.systems.clone() {
             println!("{}", sys);
         }
@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn measure_all_test() {
-        let mut sim = DMSimulator::init(
+        let mut sim = DynSimulator::init(
             Circuit::new(5)
                 .new_reg("a")
                 .new_reg("~a")
@@ -481,7 +481,7 @@ mod tests {
                 .x(4),
         );
         while sim.next() {}
-        let q4 = reduced_state(&sim.density(), &[4], 5);
+        let q4 = reduced_state(&sim.density_matrix(), &[4], 5);
         assert!(equal_to_matrix_c(
             &q4,
             &dmatrix![cart!(0.0), cart!(0.0);
@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn measure_bit_test() {
-        let mut sim = DMSimulator::init(
+        let mut sim = DynSimulator::init(
             Circuit::new(5)
                 .new_reg("a")
                 .new_reg("~a")
@@ -516,7 +516,7 @@ mod tests {
                 .x(4),
         );
         while sim.next() {}
-        let q4 = reduced_state(&sim.density(), &[4], 5);
+        let q4 = reduced_state(&sim.density_matrix(), &[4], 5);
         assert!(equal_to_matrix_c(
             &q4,
             &dmatrix![cart!(0.0), cart!(0.0);
@@ -527,7 +527,7 @@ mod tests {
 
     #[test]
     fn interleaved_ch_test() {
-        let mut sim = DMSimulator::init(
+        let mut sim = DynSimulator::init(
             Circuit::new(4)
                 .h(0)
                 .ch(&[0], 2)
