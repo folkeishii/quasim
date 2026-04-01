@@ -28,7 +28,7 @@ where
     }
 
     let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
-    sim.cont();
+    while sim.next() {}
 }
 #[divan::bench(
     types = [SVSimulatorDebugger, DMSimulator, DebugSimulator],
@@ -46,7 +46,7 @@ where
     }
 
     let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
-    sim.cont();
+    while sim.next() {}
 }
 #[divan::bench(
     types = [SVSimulatorDebugger, DMSimulator, DebugSimulator],
@@ -66,7 +66,7 @@ where
     }
 
     let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
-    sim.cont();
+    while sim.next() {}
 }
 #[divan::bench(
     types = [SVSimulatorDebugger, DMSimulator, DebugSimulator],
@@ -95,5 +95,5 @@ where
     }
 
     let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
-    sim.cont();
+    while sim.next() {}
 }

@@ -11,7 +11,7 @@ use crate::{
     register_file::RegisterFile,
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
-use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
+use nalgebra::{Complex, DMatrix, DVector, dmatrix};
 
 /// A system of potentially entangled qubits.
 #[derive(Debug, Clone)]
@@ -84,7 +84,6 @@ pub struct DMSimulator {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile<Value>,
-    state_vector: DVector<Complex<f64>>,
 }
 
 impl DMSimulator {
@@ -104,15 +103,11 @@ impl DMSimulator {
 
         let registers = RegisterFile::from(circuit.registers());
 
-        let mut init_sv = DVector::zeros(1 << circuit.n_qubits());
-        init_sv[0] = cart!(1.0);
-
         DMSimulator {
             systems: init_sys,
             circuit: circuit,
             pc: Default::default(),
             registers: registers,
-            state_vector: init_sv,
         }
     }
 
@@ -423,9 +418,9 @@ impl HybridSimulator<Value> for DMSimulator {
 }
 
 impl DebuggableSimulator for DMSimulator {
-    fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
-            return None;
+            return false;
         };
 
         match inst {
@@ -437,7 +432,7 @@ impl DebuggableSimulator for DMSimulator {
             Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
             Instruction::Call(name, lsq, ctrl) => self.pc_mut().jump_and_link(name, lsq, ctrl),
         }
-        Some(&self.state_vector) //TODO: when next/prev returns bool, remove this
+        true
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
@@ -488,11 +483,10 @@ mod tests {
         assert!(equal_to_matrix_c(&probs, &expected.diagonal(), 0.001));
     }
 
-     #[test]
+    #[test]
     fn hch_test() {
         let mut sim = DMSimulator::init(Circuit::new(2).h(0).ch(&[0], 1).into());
-        sim.next();
-        sim.next();
+        while sim.next() {}
         let expected_mat = dmatrix![
             cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.353553);
             cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
@@ -529,7 +523,7 @@ mod tests {
                     .apply_if((r("a") + r("~a")).eq(0b1111))
                     .x(4),
             );
-            while let Some(_) = sim.next() {}
+            while sim.next() {}
             let q4 = reduced_state(&sim.density(), &[4], 5);
             assert!(equal_to_matrix_c(
                 &q4,
@@ -556,16 +550,7 @@ mod tests {
                 .swap(0, 1)
                 .into(),
         );
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
-        sim.next();
+        while sim.next() {}
         let mut expected = DMatrix::<Complex<f64>>::zeros(16, 16);
 
         expected[(0, 0)] = cart!(0.2500000298023224);
