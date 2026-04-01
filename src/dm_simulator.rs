@@ -9,7 +9,7 @@ use crate::{
     gate::{Gate, GateType},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::{DebuggableSimulator, StoredCircuitSimulator},
+    simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
 
@@ -84,7 +84,7 @@ pub struct DMSimulator {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile<Value>,
-    dummy_state: DVector<Complex<f64>>, //TODO: when next/prev returns bool, remove this
+    state_vector: DVector<Complex<f64>>,
 }
 
 impl DMSimulator {
@@ -104,12 +104,15 @@ impl DMSimulator {
 
         let registers = RegisterFile::from(circuit.registers());
 
+        let mut init_sv = DVector::zeros(1 << circuit.n_qubits());
+        init_sv[0] = cart!(1.0);
+
         DMSimulator {
             systems: init_sys,
             circuit: circuit,
             pc: Default::default(),
             registers: registers,
-            dummy_state: dvector![], //TODO: when next/prev returns bool, remove this
+            state_vector: init_sv,
         }
     }
 
@@ -259,6 +262,27 @@ impl DMSimulator {
             .collect::<Vec<f64>>()
     }
 
+    /// Only works for pure states
+    fn state_vector(&self) -> DVector<Complex<f64>> {
+        let sys_eigens = self
+            .systems
+            .iter()
+            .map(|sys| EntSys {
+                density: sys.density.clone().symmetric_eigen().eigenvectors,
+                qubits: sys.qubits.clone(),
+            })
+            .collect::<Vec<EntSys>>();
+
+        let mut tot_sys_eigen = system_product(&sys_eigens);
+
+        tot_sys_eigen.sort_with(|t1, t2, n, v| {
+            let mat = swap_matrix(&[], t1, t2, n);
+            mat * v
+        });
+
+        DVector::from(tot_sys_eigen.density.column(0))
+    }
+
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
         /* Idea:
          *      - Once a qubit is measured and observed
@@ -391,6 +415,13 @@ impl TryFrom<Circuit<HybridCircuit>> for DMSimulator {
         Ok(sim)
     }
 }
+
+impl HybridSimulator<Value> for DMSimulator {
+    fn registers(&self) -> &RegisterFile<Value> {
+        &self.registers
+    }
+}
+
 impl DebuggableSimulator for DMSimulator {
     fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
@@ -406,7 +437,7 @@ impl DebuggableSimulator for DMSimulator {
             Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
             Instruction::Call(name, lsq, ctrl) => self.pc_mut().jump_and_link(name, lsq, ctrl),
         }
-        Some(&self.dummy_state) //TODO: when next/prev returns bool, remove this
+        Some(&self.state_vector) //TODO: when next/prev returns bool, remove this
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
@@ -414,7 +445,7 @@ impl DebuggableSimulator for DMSimulator {
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
-        &self.dummy_state //TODO: when next/prev returns bool, remove this
+        todo!()
     }
 
     fn double_ended(&self) -> bool {
@@ -457,10 +488,11 @@ mod tests {
         assert!(equal_to_matrix_c(&probs, &expected.diagonal(), 0.001));
     }
 
-    #[test]
+     #[test]
     fn hch_test() {
         let mut sim = DMSimulator::init(Circuit::new(2).h(0).ch(&[0], 1).into());
-        sim.cont();
+        sim.next();
+        sim.next();
         let expected_mat = dmatrix![
             cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.353553);
             cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
@@ -524,7 +556,16 @@ mod tests {
                 .swap(0, 1)
                 .into(),
         );
-        sim.cont();
+        sim.next();
+        sim.next();
+        sim.next();
+        sim.next();
+        sim.next();
+        sim.next();
+        sim.next();
+        sim.next();
+        sim.next();
+        sim.next();
         let mut expected = DMatrix::<Complex<f64>>::zeros(16, 16);
 
         expected[(0, 0)] = cart!(0.2500000298023224);
