@@ -535,6 +535,41 @@ mod tests {
     }
 
     #[test]
+    fn measure_bit_test() {
+        let mut sim = DMSimulator::init(
+            Circuit::new(5)
+                .new_reg("a")
+                .new_reg("~a")
+                .h(0)
+                .h(1)
+                .h(2)
+                .h(3)
+                .measure_bit(0, ("a", 0))
+                .measure_bit(1, ("a", 1))
+                .measure_bit(2, ("a", 2))
+                .measure_bit(3, ("a", 3))
+                .x(0)
+                .x(1)
+                .x(2)
+                .x(3)
+                .measure_bit(0, ("~a", 0))
+                .measure_bit(1, ("~a", 1))
+                .measure_bit(2, ("~a", 2))
+                .measure_bit(3, ("~a", 3))
+                .apply_if((r("a") + r("~a")).eq(0b1111))
+                .x(4),
+        );
+        while sim.next() {}
+        let q4 = reduced_state(&sim.density(), &[4], 5);
+        assert!(equal_to_matrix_c(
+            &q4,
+            &dmatrix![cart!(0.0), cart!(0.0);
+                      cart!(0.0), cart!(1.0)],
+            0.001
+        ));
+    }
+
+    #[test]
     fn interleaved_ch_test() {
         let mut sim = DMSimulator::init(
             Circuit::new(4)
