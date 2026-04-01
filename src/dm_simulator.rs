@@ -2,37 +2,34 @@ use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{Expr, Value},
-    ext::{
-        collapse_probs, eval_tensor_product, expand_matrix_from_gate, measure_and_observe_dm,
-        reduced_state, swap_matrix,
-    },
+    ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv, reduced_state, swap_matrix},
     gate::{Gate, GateType},
     instruction::Instruction,
     register_file::RegisterFile,
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
-use nalgebra::{Complex, DMatrix, DVector, dmatrix};
+use nalgebra::{Complex, DMatrix, DVector, dvector};
 
 /// A system of potentially entangled qubits.
 #[derive(Debug, Clone)]
 struct EntSys {
-    density: DMatrix<Complex<f64>>,
+    state: DVector<Complex<f64>>,
     qubits: Vec<usize>,
 }
 
 impl std::fmt::Display for EntSys {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Qubits: {:?}\n Density: {}", self.qubits, self.density)
+        write!(f, "Qubits: {:?}\n Density: {}", self.qubits, self.state)
     }
 }
 
 impl EntSys {
-    /// Concatinates qubit lists and "tensors" density matricies.
+    /// Concatinates qubit-lists and "tensors" state vectors.
     fn add_system(&self, rhs: &Self) -> Self {
         let mut qubits = self.qubits.clone();
         qubits.extend(rhs.qubits.clone());
         Self {
-            density: eval_tensor_product(vec![self.density.clone(), rhs.density.clone()]),
+            state: rhs.state.kronecker(&self.state),
             qubits: qubits,
         }
     }
@@ -44,12 +41,9 @@ impl EntSys {
         local_index
     }
 
-    /// Insersion sort by qubit index and swaps on density accordingly.
-    /// swap(target1: usize, target2: usize, n_qubits: usize, density: &DMatrix<Complex<f64>>)
-    fn sort_with(
-        &mut self,
-        swap: fn(usize, usize, usize, &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>>,
-    ) {
+    /// Insersion sort by qubit index and swaps on state vector :w
+    /// accordingly.
+    fn sort(&mut self) {
         let n_qubits = self.qubits.len();
         let mut i = 1;
         while i < n_qubits {
@@ -58,8 +52,8 @@ impl EntSys {
                 // Sort the list of qubit indecies.
                 self.qubits.swap(j, j - 1);
 
-                // Sort the density matrix.
-                self.density = swap(j, j - 1, n_qubits, &self.density);
+                // Sort the state vector.
+                self.state = swap_matrix(&[], j, j - 1, n_qubits) * self.state.clone();
 
                 j -= 1;
             }
@@ -71,7 +65,7 @@ impl EntSys {
 fn system_product(systems: &[EntSys]) -> EntSys {
     systems.into_iter().fold(
         EntSys {
-            density: dmatrix![cart!(1.0)],
+            state: dvector![cart!(1.0)],
             qubits: vec![],
         },
         |acc, sys| acc.add_system(&sys),
@@ -84,30 +78,34 @@ pub struct DMSimulator {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile<Value>,
+    state_cache: DVector<Complex<f64>>,
 }
 
 impl DMSimulator {
     fn init(circuit: Circuit<HybridCircuit>) -> Self {
         // Initial state assumed to be |000..>
-        // == |0><0| * |0><0| * |0><0| * ...
         // No entanglement -> one system for each qubit.
 
         let mut init_sys = vec![];
 
         for i in 0..circuit.n_qubits() {
             init_sys.push(EntSys {
-                density: dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)], // |0><0|
+                state: dvector![cart!(1.0), cart!(0.0)], // |0>
                 qubits: vec![i],
             });
         }
 
         let registers = RegisterFile::from(circuit.registers());
 
+        let mut init_state = DVector::<Complex<f64>>::zeros(1 << circuit.n_qubits());
+        init_state[0] = cart!(1.0);
+
         DMSimulator {
             systems: init_sys,
             circuit: circuit,
             pc: Default::default(),
             registers: registers,
+            state_cache: init_state, //TODO: remove cache when state is generic
         }
     }
 
@@ -194,10 +192,9 @@ impl DMSimulator {
         let local_n_qubits = sys.qubits.len();
         let local_gate = Gate::new(gate.get_type(), &local_controls, &local_targets).unwrap();
 
-        // Apply the gate to the system's density matrix using: p` == UpU'
+        // Apply the gate to the system's state vector using: |s>` == U|s>
         let mat = expand_matrix_from_gate(&local_gate, local_n_qubits);
-        let mat_adj = mat.adjoint();
-        sys.density = mat * sys.density * mat_adj;
+        sys.state = mat * sys.state;
 
         if gate_acts_on_several_systems {
             // Remove systems that were combined.
@@ -216,66 +213,20 @@ impl DMSimulator {
         // Update system acted on.
         self.systems[gate_systems[0]] = sys;
     }
-    /// The density matrix of the full system.
-    fn density(&self) -> DMatrix<Complex<f64>> {
-        // Combine all sub-systems into a single one.
-        let mut tot_sys = system_product(&self.systems);
-
-        tot_sys.sort_with(|t1, t2, n, p| {
-            let mat = swap_matrix(&[], t1, t2, n);
-            let mat_adj = mat.clone();
-            mat * p * mat_adj
-        });
-
-        tot_sys.density
+    /// The density matrix of the whole system.
+    fn density_matrix(&self) -> DMatrix<Complex<f64>> {
+        let v = self.state_vector();
+        let v_adj = v.adjoint();
+        v * v_adj // |s><s|
     }
 
-    /// Just the diagonal of the full density matrix.
-    fn probabilities(&self) -> Vec<f64> {
-        // Ok to combine diagonals in the same way
-        // as density matricies.
-        let sys_diags = self
-            .systems
-            .iter()
-            .map(|sys| EntSys {
-                density: DMatrix::<Complex<f64>>::from_columns(&[sys.density.diagonal()]),
-                qubits: sys.qubits.clone(),
-            })
-            .collect::<Vec<EntSys>>();
-
-        let mut tot_sys_diag = system_product(&sys_diags);
-
-        tot_sys_diag.sort_with(|t1, t2, n, v| {
-            let mat = swap_matrix(&[], t1, t2, n);
-            mat * v
-        });
-
-        tot_sys_diag
-            .density
-            .iter()
-            .map(|c| c.re)
-            .collect::<Vec<f64>>()
-    }
-
+    /// The state vector of the whole system.
     /// Only works for pure states
     fn state_vector(&self) -> DVector<Complex<f64>> {
-        let sys_eigens = self
-            .systems
-            .iter()
-            .map(|sys| EntSys {
-                density: sys.density.clone().symmetric_eigen().eigenvectors,
-                qubits: sys.qubits.clone(),
-            })
-            .collect::<Vec<EntSys>>();
+        let mut tot_sys = system_product(&self.systems);
 
-        let mut tot_sys_eigen = system_product(&sys_eigens);
-
-        tot_sys_eigen.sort_with(|t1, t2, n, v| {
-            let mat = swap_matrix(&[], t1, t2, n);
-            mat * v
-        });
-
-        DVector::from(tot_sys_eigen.density.column(0))
+        tot_sys.sort();
+        tot_sys.state
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
@@ -299,25 +250,29 @@ impl DMSimulator {
         let local_non_targets: Vec<usize> =
             (0..local_n_qubits).filter(|&i| i != local_target).collect();
 
-        let (measurement, post_measure_density) =
-            measure_and_observe_dm(local_target, &sys.density, local_n_qubits);
+        let (measurement, post_measure_state) =
+            measure_and_observe_sv(local_target, &sys.state, local_n_qubits);
 
-        // "Split" density matrix.
+        // "Split" state.
         sys.qubits.remove(local_target);
-        sys.density = reduced_state(&post_measure_density, &local_non_targets, local_n_qubits);
-
+        let post_measure_state_adj = post_measure_state.adjoint();
+        let density = post_measure_state * post_measure_state_adj; //|s><s|
+        sys.state = DVector::from(
+            reduced_state(&density, &local_non_targets, local_n_qubits)
+                .symmetric_eigen()
+                .eigenvectors
+                .column(0),
+        );
         self.systems[target_system] = sys;
 
-        let collapsed_density = if measurement == 0 {
-            dmatrix![cart!(1.0), cart!(0.0);
-                     cart!(0.0), cart!(0.0)] // |0><0|
+        let collapsed_state = if measurement == 0 {
+            dvector![cart!(1.0), cart!(0.0)] // |0>
         } else {
-            dmatrix![cart!(0.0), cart!(0.0);
-                     cart!(0.0), cart!(1.0)] // |1><1|
+            dvector![cart!(0.0), cart!(1.0)] // |1>
         };
 
         self.systems.push(EntSys {
-            density: collapsed_density,
+            state: collapsed_state,
             qubits: vec![target],
         });
 
@@ -335,7 +290,7 @@ impl DMSimulator {
     }
 
     fn measure_all(&mut self, reg: &str) {
-        let measurement_bitstring = collapse_probs(&self.probabilities());
+        let measurement_bitstring = collapse(&self.state_vector().as_slice());
 
         self.registers[reg] = Value::Int(measurement_bitstring as i32);
 
@@ -343,15 +298,13 @@ impl DMSimulator {
         self.systems = vec![];
 
         for qubit in 0..self.circuit.n_qubits() {
-            let collapsed_density = if (measurement_bitstring >> qubit) & 1 == 0 {
-                dmatrix![cart!(1.0), cart!(0.0);
-                         cart!(0.0), cart!(0.0)] // |0><0|
+            let collapsed_state = if (measurement_bitstring >> qubit) & 1 == 0 {
+                dvector![cart!(1.0), cart!(0.0)] // |0>
             } else {
-                dmatrix![cart!(0.0), cart!(0.0);
-                         cart!(0.0), cart!(1.0)] // |1><1|
+                dvector![cart!(0.0), cart!(1.0)] // |1>
             };
             self.systems.push(EntSys {
-                density: collapsed_density,
+                state: collapsed_state,
                 qubits: vec![qubit],
             })
         }
@@ -432,6 +385,9 @@ impl DebuggableSimulator for DMSimulator {
             Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
             Instruction::Call(name, lsq, ctrl) => self.pc_mut().jump_and_link(name, lsq, ctrl),
         }
+
+        self.state_cache = self.state_vector(); //TODO: remove cache when state is generic
+
         true
     }
 
@@ -440,7 +396,7 @@ impl DebuggableSimulator for DMSimulator {
     }
 
     fn current_state(&self) -> &DVector<Complex<f64>> {
-        todo!()
+        &self.state_cache //TODO: remove cache when state is generic
     }
 
     fn double_ended(&self) -> bool {
@@ -466,35 +422,37 @@ pub enum DMSimulatorError {
 
 #[cfg(test)]
 mod tests {
+    use crate::common_test;
     use crate::ext::{equal_to_matrix_c, reduced_state};
     use crate::{
         cart, circuit::Circuit, dm_simulator::DMSimulator, expr_dsl::expr_helpers::r,
         simulator::DebuggableSimulator,
     };
-    use nalgebra::{Complex, DMatrix, DVector, dmatrix};
+    use nalgebra::{dmatrix, dvector};
 
-    fn check_probs(sim: &DMSimulator, expected: &DMatrix<Complex<f64>>) {
-        let probs = DVector::<Complex<f64>>::from_vec(
-            sim.probabilities()
-                .iter()
-                .map(|&r| cart!(r))
-                .collect::<Vec<Complex<f64>>>(),
-        );
-        assert!(equal_to_matrix_c(&probs, &expected.diagonal(), 0.001));
+    #[test]
+    fn hybrid_test() {
+        common_test::hybrid_test::<DMSimulator>();
     }
 
     #[test]
-    fn hch_test() {
-        let mut sim = DMSimulator::init(Circuit::new(2).h(0).ch(&[0], 1).into());
-        while sim.next() {}
-        let expected_mat = dmatrix![
-            cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.353553);
-            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
-            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0);
-            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
-        ];
-        assert!(equal_to_matrix_c(&sim.density(), &expected_mat, 0.001));
-        check_probs(&sim, &expected_mat);
+    fn register_test() {
+        common_test::register_test::<DMSimulator>();
+    }
+
+    #[test]
+    fn double_sub() {
+        common_test::double_sub::<DMSimulator>();
+    }
+
+    #[test]
+    fn deep_sub() {
+        common_test::deep_sub::<DMSimulator>();
+    }
+
+    #[test]
+    fn deep_ctrl_sub() {
+        common_test::deep_ctrl_sub::<DMSimulator>();
     }
 
     fn print_systems(sim: &DMSimulator) {
@@ -505,33 +463,31 @@ mod tests {
 
     #[test]
     fn measure_all_test() {
-        for _ in 0..100 {
-            let mut sim = DMSimulator::init(
-                Circuit::new(5)
-                    .new_reg("a")
-                    .new_reg("~a")
-                    .h(0)
-                    .h(1)
-                    .h(2)
-                    .h(3)
-                    .measure("a")
-                    .x(0)
-                    .x(1)
-                    .x(2)
-                    .x(3)
-                    .measure("~a")
-                    .apply_if((r("a") + r("~a")).eq(0b1111))
-                    .x(4),
-            );
-            while sim.next() {}
-            let q4 = reduced_state(&sim.density(), &[4], 5);
-            assert!(equal_to_matrix_c(
-                &q4,
-                &dmatrix![cart!(0.0), cart!(0.0);
+        let mut sim = DMSimulator::init(
+            Circuit::new(5)
+                .new_reg("a")
+                .new_reg("~a")
+                .h(0)
+                .h(1)
+                .h(2)
+                .h(3)
+                .measure("a")
+                .x(0)
+                .x(1)
+                .x(2)
+                .x(3)
+                .measure("~a")
+                .apply_if((r("a") + r("~a")).eq(0b1111))
+                .x(4),
+        );
+        while sim.next() {}
+        let q4 = reduced_state(&sim.density(), &[4], 5);
+        assert!(equal_to_matrix_c(
+            &q4,
+            &dmatrix![cart!(0.0), cart!(0.0);
                       cart!(0.0), cart!(1.0)],
-                0.001
-            ));
-        }
+            0.001
+        ));
     }
 
     #[test]
@@ -586,219 +542,26 @@ mod tests {
                 .into(),
         );
         while sim.next() {}
-        let mut expected = DMatrix::<Complex<f64>>::zeros(16, 16);
 
-        expected[(0, 0)] = cart!(0.2500000298023224);
-        expected[(0, 1)] = cart!(0.1767767071723938);
-        expected[(0, 2)] = cart!(0.0625);
-        expected[(0, 3)] = cart!(0.0625);
-        expected[(0, 6)] = cart!(0.0625);
-        expected[(0, 7)] = cart!(-0.0625);
-        expected[(0, 8)] = cart!(0.2133883386850357);
-        expected[(0, 9)] = cart!(0.0366116538643837);
-        expected[(0, 10)] = cart!(-0.0625);
-        expected[(0, 11)] = cart!(0.1875000149011612);
-        expected[(0, 12)] = cart!(0.2133883386850357);
-        expected[(0, 13)] = cart!(0.0366116538643837);
-        expected[(0, 14)] = cart!(-0.0625);
-        expected[(0, 15)] = cart!(0.0625);
+        let expected = dvector![
+            cart!(0.5000000293365844),
+            cart!(0.35355340368276855),
+            cart!(0.12500000042912138),
+            cart!(0.12500000042912138),
+            cart!(0.0),
+            cart!(0.0),
+            cart!(0.12500000042912138),
+            cart!(-0.12500000042912138),
+            cart!(0.4267766656533139),
+            cart!(0.07322330885223931),
+            cart!(-0.12500000042912138),
+            cart!(0.37500001339455813),
+            cart!(0.4267766656533139),
+            cart!(0.07322330885223931),
+            cart!(-0.12500000042912138),
+            cart!(0.12500000042912138),
+        ];
 
-        expected[(1, 0)] = cart!(0.1767767071723938);
-        expected[(1, 1)] = cart!(0.125);
-        expected[(1, 2)] = cart!(0.04419417679309845);
-        expected[(1, 3)] = cart!(0.04419417679309845);
-        expected[(1, 6)] = cart!(0.04419417679309845);
-        expected[(1, 7)] = cart!(-0.04419417679309845);
-        expected[(1, 8)] = cart!(0.1508883386850357);
-        expected[(1, 9)] = cart!(0.0258883498609066);
-        expected[(1, 10)] = cart!(-0.04419417679309845);
-        expected[(1, 11)] = cart!(0.13258253037929535);
-        expected[(1, 12)] = cart!(0.1508883386850357);
-        expected[(1, 13)] = cart!(0.0258883498609066);
-        expected[(1, 14)] = cart!(-0.04419417679309845);
-        expected[(1, 15)] = cart!(0.04419417679309845);
-
-        expected[(2, 0)] = cart!(0.0625);
-        expected[(2, 1)] = cart!(0.04419417679309845);
-        expected[(2, 2)] = cart!(0.015625);
-        expected[(2, 3)] = cart!(0.015625);
-        expected[(2, 6)] = cart!(0.015625);
-        expected[(2, 7)] = cart!(-0.015625);
-        expected[(2, 8)] = cart!(0.05334708094596863);
-        expected[(2, 9)] = cart!(0.009152913466095924);
-        expected[(2, 10)] = cart!(-0.015625);
-        expected[(2, 11)] = cart!(0.0468750037252903);
-        expected[(2, 12)] = cart!(0.05334708094596863);
-        expected[(2, 13)] = cart!(0.009152913466095924);
-        expected[(2, 14)] = cart!(-0.015625);
-        expected[(2, 15)] = cart!(0.015625);
-
-        expected[(3, 0)] = cart!(0.0625);
-        expected[(3, 1)] = cart!(0.04419417679309845);
-        expected[(3, 2)] = cart!(0.015625);
-        expected[(3, 3)] = cart!(0.015625);
-        expected[(3, 6)] = cart!(0.015625);
-        expected[(3, 7)] = cart!(-0.015625);
-        expected[(3, 8)] = cart!(0.05334708094596863);
-        expected[(3, 9)] = cart!(0.009152913466095924);
-        expected[(3, 10)] = cart!(-0.015625);
-        expected[(3, 11)] = cart!(0.0468750037252903);
-        expected[(3, 12)] = cart!(0.05334708094596863);
-        expected[(3, 13)] = cart!(0.009152913466095924);
-        expected[(3, 14)] = cart!(-0.015625);
-        expected[(3, 15)] = cart!(0.015625);
-
-        expected[(6, 0)] = cart!(0.0625);
-        expected[(6, 1)] = cart!(0.04419417679309845);
-        expected[(6, 2)] = cart!(0.015625);
-        expected[(6, 3)] = cart!(0.015625);
-        expected[(6, 6)] = cart!(0.015625);
-        expected[(6, 7)] = cart!(-0.015625);
-        expected[(6, 8)] = cart!(0.05334708094596863);
-        expected[(6, 9)] = cart!(0.009152913466095924);
-        expected[(6, 10)] = cart!(-0.015625);
-        expected[(6, 11)] = cart!(0.0468750037252903);
-        expected[(6, 12)] = cart!(0.05334708094596863);
-        expected[(6, 13)] = cart!(0.009152913466095924);
-        expected[(6, 14)] = cart!(-0.015625);
-        expected[(6, 15)] = cart!(0.015625);
-
-        expected[(7, 0)] = cart!(-0.0625);
-        expected[(7, 1)] = cart!(-0.04419417679309845);
-        expected[(7, 2)] = cart!(-0.015625);
-        expected[(7, 3)] = cart!(-0.015625);
-        expected[(7, 6)] = cart!(-0.015625);
-        expected[(7, 7)] = cart!(0.015625);
-        expected[(7, 8)] = cart!(-0.05334708094596863);
-        expected[(7, 9)] = cart!(-0.009152913466095924);
-        expected[(7, 10)] = cart!(0.015625);
-        expected[(7, 11)] = cart!(-0.0468750037252903);
-        expected[(7, 12)] = cart!(-0.05334708094596863);
-        expected[(7, 13)] = cart!(-0.009152913466095924);
-        expected[(7, 14)] = cart!(0.015625);
-        expected[(7, 15)] = cart!(-0.015625);
-
-        expected[(8, 0)] = cart!(0.2133883386850357);
-        expected[(8, 1)] = cart!(0.1508883386850357);
-        expected[(8, 2)] = cart!(0.05334708094596863);
-        expected[(8, 3)] = cart!(0.05334708094596863);
-        expected[(8, 6)] = cart!(0.05334708094596863);
-        expected[(8, 7)] = cart!(-0.05334708094596863);
-        expected[(8, 8)] = cart!(0.1821383237838745);
-        expected[(8, 9)] = cart!(0.03125);
-        expected[(8, 10)] = cart!(-0.05334708094596863);
-        expected[(8, 11)] = cart!(0.16004124283790588);
-        expected[(8, 12)] = cart!(0.1821383237838745);
-        expected[(8, 13)] = cart!(0.03125);
-        expected[(8, 14)] = cart!(-0.05334708094596863);
-        expected[(8, 15)] = cart!(0.05334708094596863);
-
-        expected[(9, 0)] = cart!(0.0366116538643837);
-        expected[(9, 1)] = cart!(0.0258883498609066);
-        expected[(9, 2)] = cart!(0.009152913466095924);
-        expected[(9, 3)] = cart!(0.009152913466095924);
-        expected[(9, 6)] = cart!(0.009152913466095924);
-        expected[(9, 7)] = cart!(-0.009152913466095924);
-        expected[(9, 8)] = cart!(0.03125);
-        expected[(9, 9)] = cart!(0.005361652933061123);
-        expected[(9, 10)] = cart!(-0.009152913466095924);
-        expected[(9, 11)] = cart!(0.027458740398287773);
-        expected[(9, 12)] = cart!(0.03125);
-        expected[(9, 13)] = cart!(0.005361652933061123);
-        expected[(9, 14)] = cart!(-0.009152913466095924);
-        expected[(9, 15)] = cart!(0.009152913466095924);
-
-        expected[(10, 0)] = cart!(-0.0625);
-        expected[(10, 1)] = cart!(-0.04419417679309845);
-        expected[(10, 2)] = cart!(-0.015625);
-        expected[(10, 3)] = cart!(-0.015625);
-        expected[(10, 6)] = cart!(-0.015625);
-        expected[(10, 7)] = cart!(0.015625);
-        expected[(10, 8)] = cart!(-0.05334708094596863);
-        expected[(10, 9)] = cart!(-0.009152913466095924);
-        expected[(10, 10)] = cart!(0.015625);
-        expected[(10, 11)] = cart!(-0.0468750037252903);
-        expected[(10, 12)] = cart!(-0.05334708094596863);
-        expected[(10, 13)] = cart!(-0.009152913466095924);
-        expected[(10, 14)] = cart!(0.015625);
-        expected[(10, 15)] = cart!(-0.015625);
-
-        expected[(11, 0)] = cart!(0.1875000149011612);
-        expected[(11, 1)] = cart!(0.13258253037929535);
-        expected[(11, 2)] = cart!(0.0468750037252903);
-        expected[(11, 3)] = cart!(0.0468750037252903);
-        expected[(11, 6)] = cart!(0.0468750037252903);
-        expected[(11, 7)] = cart!(-0.0468750037252903);
-        expected[(11, 8)] = cart!(0.16004124283790588);
-        expected[(11, 9)] = cart!(0.027458740398287773);
-        expected[(11, 10)] = cart!(-0.0468750037252903);
-        expected[(11, 11)] = cart!(0.1406250149011612);
-        expected[(11, 12)] = cart!(0.16004124283790588);
-        expected[(11, 13)] = cart!(0.027458740398287773);
-        expected[(11, 14)] = cart!(-0.0468750037252903);
-        expected[(11, 15)] = cart!(0.0468750037252903);
-
-        expected[(12, 0)] = cart!(0.2133883386850357);
-        expected[(12, 1)] = cart!(0.1508883386850357);
-        expected[(12, 2)] = cart!(0.05334708094596863);
-        expected[(12, 3)] = cart!(0.05334708094596863);
-        expected[(12, 6)] = cart!(0.05334708094596863);
-        expected[(12, 7)] = cart!(-0.05334708094596863);
-        expected[(12, 8)] = cart!(0.1821383237838745);
-        expected[(12, 9)] = cart!(0.03125);
-        expected[(12, 10)] = cart!(-0.05334708094596863);
-        expected[(12, 11)] = cart!(0.16004124283790588);
-        expected[(12, 12)] = cart!(0.1821383237838745);
-        expected[(12, 13)] = cart!(0.03125);
-        expected[(12, 14)] = cart!(-0.05334708094596863);
-        expected[(12, 15)] = cart!(0.05334708094596863);
-
-        expected[(13, 0)] = cart!(0.0366116538643837);
-        expected[(13, 1)] = cart!(0.0258883498609066);
-        expected[(13, 2)] = cart!(0.009152913466095924);
-        expected[(13, 3)] = cart!(0.009152913466095924);
-        expected[(13, 6)] = cart!(0.009152913466095924);
-        expected[(13, 7)] = cart!(-0.009152913466095924);
-        expected[(13, 8)] = cart!(0.03125);
-        expected[(13, 9)] = cart!(0.005361652933061123);
-        expected[(13, 10)] = cart!(-0.009152913466095924);
-        expected[(13, 11)] = cart!(0.027458740398287773);
-        expected[(13, 12)] = cart!(0.03125);
-        expected[(13, 13)] = cart!(0.005361652933061123);
-        expected[(13, 14)] = cart!(-0.009152913466095924);
-        expected[(13, 15)] = cart!(0.009152913466095924);
-
-        expected[(14, 0)] = cart!(-0.0625);
-        expected[(14, 1)] = cart!(-0.04419417679309845);
-        expected[(14, 2)] = cart!(-0.015625);
-        expected[(14, 3)] = cart!(-0.015625);
-        expected[(14, 6)] = cart!(-0.015625);
-        expected[(14, 7)] = cart!(0.015625);
-        expected[(14, 8)] = cart!(-0.05334708094596863);
-        expected[(14, 9)] = cart!(-0.009152913466095924);
-        expected[(14, 10)] = cart!(0.015625);
-        expected[(14, 11)] = cart!(-0.0468750037252903);
-        expected[(14, 12)] = cart!(-0.05334708094596863);
-        expected[(14, 13)] = cart!(-0.009152913466095924);
-        expected[(14, 14)] = cart!(0.015625);
-        expected[(14, 15)] = cart!(-0.015625);
-
-        expected[(15, 0)] = cart!(0.0625);
-        expected[(15, 1)] = cart!(0.04419417679309845);
-        expected[(15, 2)] = cart!(0.015625);
-        expected[(15, 3)] = cart!(0.015625);
-        expected[(15, 6)] = cart!(0.015625);
-        expected[(15, 7)] = cart!(-0.015625);
-        expected[(15, 8)] = cart!(0.05334708094596863);
-        expected[(15, 9)] = cart!(0.009152913466095924);
-        expected[(15, 10)] = cart!(-0.015625);
-        expected[(15, 11)] = cart!(0.0468750037252903);
-        expected[(15, 12)] = cart!(0.05334708094596863);
-        expected[(15, 13)] = cart!(0.009152913466095924);
-        expected[(15, 14)] = cart!(-0.015625);
-        expected[(15, 15)] = cart!(0.015625);
-
-        assert!(equal_to_matrix_c(&sim.density(), &expected, 0.001));
-        check_probs(&sim, &expected);
+        assert!(equal_to_matrix_c(&sim.state_vector(), &expected, 0.001));
     }
 }
