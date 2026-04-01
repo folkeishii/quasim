@@ -29,7 +29,9 @@ pub struct DebugTerminal<S = DebugSimulator> {
 
 impl<S, Storage, State> DebugTerminal<S>
 where
-    S: DebuggableSimulator<Storage = Storage, State = State> + StoredCircuitSimulator<B = HybridCircuit> + HybridSimulator<Value>,
+    S: DebuggableSimulator<Storage = Storage, State = State>
+        + StoredCircuitSimulator<B = HybridCircuit>
+        + HybridSimulator<Value>,
     Storage: Index<usize, Output = State>,
     State: ToString,
 {
@@ -503,7 +505,11 @@ where
 
     fn handle_state<W: Write>(&mut self, stdout: &mut W, state_args: &StateArgs) -> io::Result<()> {
         let current_state = self.simulator.current_state();
-        let to_show = match StateArgs::from_state(current_state, state_args, self.simulator.circuit().n_qubits()) {
+        let to_show = match StateArgs::from_state(
+            current_state,
+            state_args,
+            self.simulator.circuit().n_qubits(),
+        ) {
             Ok(v) => v,
             Err(e) => {
                 errorln!(stdout; e)?;

@@ -233,7 +233,7 @@ impl StateArgs {
     pub fn from_state<I, It>(
         current_state: &I,
         state_args: &StateArgs,
-        n_qubits: usize
+        n_qubits: usize,
     ) -> Result<Vec<IndexedState>, StateError>
     where
         I: Index<usize, Output = It>,
@@ -243,7 +243,7 @@ impl StateArgs {
         match &state_args {
             StateArgs::All => {}
             StateArgs::Range(r) => {
-                if *r.start() >= mx{
+                if *r.start() >= mx {
                     return Err(StateError::IllegalState(*r.start(), mx));
                 } else if *r.end() >= mx {
                     return Err(StateError::IllegalState(*r.end(), mx));
@@ -270,14 +270,13 @@ impl StateArgs {
                     state: current_state[i].to_string(),
                 })
                 .collect(),
-            StateArgs::Range(r) => {
-                r
+            StateArgs::Range(r) => r
                 .clone()
                 .map(|r| IndexedState {
                     index: r,
                     state: current_state[r].to_string(),
                 })
-                .collect()},
+                .collect(),
             StateArgs::Multiple(ms) => ms
                 .into_iter()
                 .map(|m| IndexedState {

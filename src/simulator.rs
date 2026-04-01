@@ -151,6 +151,11 @@ mod tests {
         sim1.next();
         sim1.next();
         sim2.cont();
-        assert!(equal_state_c(sim1.current_state(), sim2.current_state(), 3, 0.001))
+        assert!(equal_state_c(
+            sim1.current_state(),
+            sim2.current_state(),
+            3,
+            0.001
+        ))
     }
 }

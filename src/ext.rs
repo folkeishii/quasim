@@ -61,8 +61,7 @@ pub fn equal_state_c<'a>(
     rhs: &'a impl Index<usize, Output = Complex<f64>>,
     n_qubits: usize,
     margin: f64,
-) -> bool
-{
+) -> bool {
     for state in 0..(1 << n_qubits) {
         if !equal_to_c(lhs[state], rhs[state], margin) {
             return false;
@@ -399,8 +398,8 @@ impl<T: Ord> OrdByKey<T> for T {
 #[cfg(test)]
 mod tests {
     use crate::ext::{
-        convert_matrix, convert_vector, equal_state_c, expand_matrix_from_gate,
-        get_gate_matrix, swap_matrix,
+        convert_matrix, convert_vector, equal_state_c, expand_matrix_from_gate, get_gate_matrix,
+        swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
@@ -456,18 +455,8 @@ mod tests {
             cart!(3.0), //|110>
             cart!(7.0), //|111>
         ];
-        assert!(equal_state_c(
-            &vec_lsb,
-            &convert_vector(&vec_msb),
-            3,
-            0.001
-        ));
-        assert!(equal_state_c(
-            &vec_msb,
-            &convert_vector(&vec_lsb),
-            3,
-            0.001
-        ));
+        assert!(equal_state_c(&vec_lsb, &convert_vector(&vec_msb), 3, 0.001));
+        assert!(equal_state_c(&vec_msb, &convert_vector(&vec_lsb), 3, 0.001));
         let textbook_ch = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
