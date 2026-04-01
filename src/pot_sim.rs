@@ -137,15 +137,15 @@ impl<C: StateCollection> GenericSim<C> {
 }
 
 impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
-    fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn next(&mut self) -> bool{
         let Some(inst) = self.circuit.instruction(&self.pc) else {
             // End of (sub) circuit: Try to return
             if self.pc.ret() {
-                return Some(&self.null_state);
+                return true;
             }
 
             // Could not return: End of circuit
-            return None;
+            return false;
         };
 
         match inst {
@@ -164,7 +164,7 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
             self.null_state[i] = self.state.state(i.into());
         }
 
-        Some(&self.null_state)
+        true
     }
 
     fn double_ended(&self) -> bool {

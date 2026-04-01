@@ -135,13 +135,13 @@ pub fn collapse(state: &[Complex<f64>]) -> usize {
     dist.sample(&mut rng)
 }
 
-/// # measure
-/// Returns a probable state vector after measurement.
-pub fn measure(
+/// # measure_and_observe_sv
+/// Returns a probable measurement and state vector after measurement.
+pub fn measure_and_observe_sv(
     target: usize,
     state: &DVector<Complex<f64>>,
     n_qubits: usize,
-) -> DVector<Complex<f64>> {
+) -> (usize, DVector<Complex<f64>>) {
     // Choose a collapsed state
     let prob_target_eq_zero = state
         .iter()
@@ -152,15 +152,17 @@ pub fn measure(
 
     let mut rng = rand::rng();
     let random_value = rng.random_range(0.0..1.0);
-    let mut result = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
+    let mut result = 1;
+    let mut result_density = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
     if random_value < prob_target_eq_zero {
         // 0 was chosen as collapsed state.
-        result = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
+        result = 0;
+        result_density = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
     }
 
     // Calculate projection operator, M
     let mut projection_operator_prod = identity_tensor_factors(n_qubits);
-    projection_operator_prod[target] = result;
+    projection_operator_prod[target] = result_density;
     let projection_operator = eval_tensor_product(projection_operator_prod);
 
     /*
@@ -175,7 +177,7 @@ pub fn measure(
     let proj_times_ket_state = projection_operator * state; // M|s>
     let normalization = (bra_state * proj_times_ket_state.clone())[(0, 0)].sqrt(); // √ <s|M|s>
 
-    proj_times_ket_state / normalization
+    (result, proj_times_ket_state / normalization)
 }
 
 /// # expand_matrix_from_gate
