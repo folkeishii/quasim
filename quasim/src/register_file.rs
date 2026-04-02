@@ -6,8 +6,6 @@ use std::{
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum RegisterError {
-    #[error("tried to create register with invalid size {0}")]
-    InitSize(usize),
     #[error("tried to write to out of bounds bit {0}")]
     WriteBitError(usize),
     #[error("tried to write invalid value {0}, expected 0 or 1")]
