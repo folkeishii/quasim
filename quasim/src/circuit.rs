@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    f64::consts::PI,
-};
+use std::{collections::HashMap, f64::consts::PI};
 pub mod breakpoint;
 pub mod pc;
 
@@ -10,7 +7,7 @@ use crate::{
         breakpoint::{Breakpoint, BreakpointList, IEBreakpoint},
         pc::CircuitPc,
     },
-    expr_dsl::Expr,
+    expr_dsl::{BitExpr, BoolExpr},
     gate::{Gate, GateType, QBits},
     instruction::{Instruction, PureInstruction},
 };
@@ -29,7 +26,7 @@ pub struct Circuit<B: CircuitBehaviour = PureCircuit> {
     labels: HashMap<String, usize>,
     unresolved_labels: Vec<(String, usize)>,
     breakpoints: BreakpointList,
-    registers: HashSet<String>,
+    registers: HashMap<String, usize>,
     sub_circuits: HashMap<String, Circuit>,
 }
 
@@ -39,7 +36,7 @@ impl Circuit {
         Self {
             instructions: Vec::<PureInstruction>::default(),
             n_qubits: n_qubits,
-            registers: HashSet::new(),
+            registers: HashMap::new(),
             labels: HashMap::new(),
             unresolved_labels: Vec::new(),
             breakpoints: Default::default(),
@@ -178,7 +175,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self.n_qubits
     }
 
-    pub fn registers(&self) -> &HashSet<String> {
+    pub fn registers(&self) -> &HashMap<String, usize> {
         &self.registers
     }
 
@@ -541,9 +538,9 @@ impl<B: CircuitBehaviour> Circuit<B>
 where
     Self: Into<Circuit<HybridCircuit>>,
 {
-    pub fn new_reg<S: Into<String>>(self, name: S) -> Circuit<HybridCircuit> {
+    pub fn new_reg<S: Into<String>>(self, name: S, size: usize) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
-        ret_self.registers.insert(name.into());
+        ret_self.registers.insert(name.into(), size);
         ret_self
     }
 
@@ -604,7 +601,11 @@ where
         ret_self
     }
 
-    pub fn jump_if<S: Into<String>>(self, expr: Expr, label: S) -> Circuit<HybridCircuit> {
+    pub fn jump_if<T: Into<BoolExpr>, S: Into<String>>(
+        self,
+        expr: T,
+        label: S,
+    ) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
 
         let circuit_pc = match ret_self.try_to_resolve_label(label.into()) {
@@ -614,37 +615,44 @@ where
 
         ret_self
             .instructions
-            .push(Instruction::JumpIf(expr, circuit_pc));
+            .push(Instruction::JumpIf(expr.into(), circuit_pc));
         ret_self
     }
 
     /// Conditionally apply whichever instruction that comes after
-    pub fn apply_if(self, expr: Expr) -> Circuit<HybridCircuit> {
+    pub fn apply_if<T: Into<BoolExpr>>(self, expr: T) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
-        ret_self
-            .instructions
-            .push(Instruction::JumpIf(!expr, ret_self.instructions.len() + 2));
+        ret_self.instructions.push(Instruction::JumpIf(
+            !expr.into(),
+            ret_self.instructions.len() + 2,
+        ));
         ret_self
     }
 
     pub fn reset(self, target: usize) -> Circuit<HybridCircuit> {
-        self.new_reg("_reset")
+        self.new_reg("_reset", 1)
             .measure_bit(target, ("_reset", 0))
-            .apply_if(Expr::Reg("_reset".to_owned()).eq(1))
+            .apply_if(BitExpr::Reg("_reset".to_owned()).eq(1))
             .x(target)
     }
 
     // takes register nr directly for now
-    pub fn assign<S: Into<String>>(self, reg: S, expr: Expr) -> Circuit<HybridCircuit> {
+    pub fn assign<S: Into<String>, T: Into<BitExpr>>(
+        self,
+        reg: S,
+        expr: T,
+    ) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
         let reg = reg.into();
-        if !ret_self.registers.contains(&reg) {
+        if !ret_self.registers.contains_key(&reg) {
             panic!(
                 "Tried to assign to nonexistent register with name '{}'.",
                 &reg
             )
         }
-        ret_self.instructions.push(Instruction::Assign(expr, reg));
+        ret_self
+            .instructions
+            .push(Instruction::Assign(expr.into(), reg));
         ret_self
     }
 
@@ -907,7 +915,7 @@ mod tests {
             .call("sub1", 2);
 
         let circuit = Circuit::new(6)
-            .new_reg("tt")
+            .new_reg("tt", 6)
             .h(0)
             .call_new("sub2", sub2, 0)
             .measure("tt")
@@ -915,7 +923,7 @@ mod tests {
             .h(2);
 
         let correct = Circuit::new(6)
-            .new_reg("tt")
+            .new_reg("tt", 6)
             // main
             .h(0) // 0
             // sub2 @ 0

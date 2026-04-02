@@ -3,7 +3,6 @@ use std::env;
 use quasim::circuit::{Circuit, HybridCircuit};
 use quasim::debug_simulator::DebugSimulator;
 use quasim::debug_terminal::DebugTerminal;
-use quasim::expr_dsl::Value;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
@@ -13,18 +12,7 @@ fn check_quantum(func: &[usize]) -> bool {
 
     let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
 
-    match sim.register("res") {
-        Value::Int(x) => {
-            let res = x == fun_res as i32;
-            res
-        }
-        Value::Float(_) => {
-            panic!("Unexpected float register")
-        }
-        Value::Bool(_) => {
-            panic!("Unexpected bool register")
-        }
-    }
+    sim.register("res").read() == fun_res
 }
 
 fn circuit(func: &[usize]) -> Circuit<HybridCircuit> {
@@ -32,7 +20,7 @@ fn circuit(func: &[usize]) -> Circuit<HybridCircuit> {
 
     let n = 1 << bits;
     let mut circuit = Circuit::new(bits)
-        .new_reg("res")
+        .new_reg("res", bits)
         .new_sub_circuit("u_f", create_oracle(func))
         .new_sub_circuit("g", create_diffusion(func));
 
