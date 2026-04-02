@@ -4,13 +4,13 @@ use std::{
 };
 pub mod breakpoint;
 pub mod pc;
-pub mod phase_oracle;
+pub mod oracle;
 
 use crate::{
     circuit::{
         breakpoint::{Breakpoint, BreakpointList, IEBreakpoint},
         pc::CircuitPc,
-        phase_oracle::{append_phase_oracle, fn_to_truth_table, truth_table_to_anf_coefs},
+        oracle::{append_oracle, fn_to_truth_table, truth_table_to_anf_coefs},
     },
     expr_dsl::Expr,
     gate::{Gate, GateType},
@@ -305,8 +305,8 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    /// Appends a circuit implementing a quantum phase oracle for a given classical function.
-    pub fn phase_oracle(
+    /// Appends a circuit implementing a quantum oracle for a given classical function.
+    pub fn oracle(
         self,
         input_qubits: &[usize],
         target: usize,
@@ -314,7 +314,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     ) -> Self {
         let truth_table = fn_to_truth_table(&classic_fn, input_qubits.len());
         let anf_coefs = truth_table_to_anf_coefs(truth_table);
-        append_phase_oracle(self, input_qubits, target, anf_coefs)
+        append_oracle(self, input_qubits, target, anf_coefs)
     }
 
     // Breakpoint

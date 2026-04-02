@@ -23,9 +23,7 @@ fn circuit_in_start_state(n: usize, mut starting_qubits_mask: usize) -> Circuit 
 fn run_one_quantum_oracle(input: usize, f: impl Fn(usize) -> bool) -> usize {
     let input_qubits: Vec<usize> = (0..N).collect();
     let circuit = circuit_in_start_state(N + 1, input)
-        .h(N)
-        .phase_oracle(&input_qubits, N, f)
-        .h(N);
+        .oracle(&input_qubits, N, f);
     let sim = match SVSimulator::build(circuit) {
         Ok(sim) => sim,
         Err(e) => panic!("Error building simulator: {}", e),
@@ -44,7 +42,7 @@ fn oracle_proof(f: &impl Fn(usize) -> bool) {
         assert_eq!(
             flipped,
             f(i),
-            "f({}) -> {}, but phase oracle did{} invert.",
+            "f({}) -> {}, but oracle did{} invert.",
             i,
             f(i),
             if !flipped { " not" } else { "" }
