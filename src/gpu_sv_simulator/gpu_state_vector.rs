@@ -26,7 +26,6 @@ pub struct GpuStateVector<R: Runtime> {
     control_data_handle: Handle,
 
     probs_handle: Handle,
-    total_prob_handle: Handle,
     reduced_probs: Vec<ReduceLevel>,
 }
 
@@ -38,7 +37,7 @@ struct ReduceLevel {
 
 impl<R: Runtime> GpuStateVector<R> {
     pub fn new(n_qubits: usize, batched_circuit: &BatchedCircuit) -> Self {
-        let state_vector_len = 1 << n_qubits;
+        let state_vector_len: usize = 1 << n_qubits;
         let data_len = batched_circuit.data().len();
 
         let client = R::client(&Default::default());
@@ -52,9 +51,10 @@ impl<R: Runtime> GpuStateVector<R> {
         let control_data_handle = client.create_from_slice(u32::as_bytes(control_data));
 
         // Reduction init
-        let n_reduce_passes = n_qubits / GPU_REDUCE_FACTOR_EXP;
+        // Last reduction level will always be a single sized handle with the complete sum
+        let n_reduce_passes = n_qubits.div_ceil(GPU_REDUCE_FACTOR_EXP);
         let mut reduce_levels = Vec::new();
-        let mut reduce_pass_size = state_vector_len / GPU_REDUCE_FACTOR;
+        let mut reduce_pass_size = state_vector_len.div_ceil(GPU_REDUCE_FACTOR);
         for _ in 0..n_reduce_passes {
             let handle = client.empty(reduce_pass_size * size_of::<f32>());
             reduce_levels.push(ReduceLevel {
@@ -62,7 +62,7 @@ impl<R: Runtime> GpuStateVector<R> {
                 len: reduce_pass_size,
             });
 
-            reduce_pass_size /= GPU_REDUCE_FACTOR;
+            reduce_pass_size = reduce_pass_size.div_ceil(GPU_REDUCE_FACTOR);
         }
 
         // State vector init
@@ -76,7 +76,6 @@ impl<R: Runtime> GpuStateVector<R> {
         init_probs[0] = 1.0; // Sets first state prob = 1.0
         let init_probs = Bytes::from_elems(init_probs);
         let probs_handle = client.create_from_slice(&init_probs);
-        let total_prob_handle = client.empty(size_of::<f32>());
 
         Self {
             client,
@@ -88,7 +87,6 @@ impl<R: Runtime> GpuStateVector<R> {
             target_data_handle,
             control_data_handle,
             probs_handle,
-            total_prob_handle,
             reduced_probs: reduce_levels,
         }
     }
@@ -138,12 +136,10 @@ impl<R: Runtime> GpuStateVector<R> {
     pub fn sample(&self) -> usize {
         self.launch_calculate_probs();
         self.build_prob_reduction_hierarchy();
-        self.launch_top_level_sum();
 
         let threshold = rand::rng().random_range(0.0..1.0f32);
         let sample_index_handle = self.client.create_from_slice(u32::as_bytes(&[0]));
         let sample_threshold_handle = self.client.create_from_slice(f32::as_bytes(&[threshold]));
-        self.launch_scale_threshold(&sample_threshold_handle);
 
         for (prob_handle, prob_len) in self
             .reduced_probs
@@ -234,8 +230,7 @@ impl<R: Runtime> GpuStateVector<R> {
     fn normalize_after_measurement(&mut self, measurement: u32, measurement_mask: u32) {
         self.launch_probs_observe(measurement, measurement_mask);
         self.build_prob_reduction_hierarchy();
-        self.launch_top_level_sum();
-        self.launch_state_vector_division();
+        self.launch_state_vector_normalize();
     }
 
     // Kernel launch wrappers
@@ -279,7 +274,7 @@ impl<R: Runtime> GpuStateVector<R> {
     }
 
     fn launch_reduce_pass(&self, in_len: usize, in_handle: &Handle, out_handle: &Handle) {
-        let cube_dim = CubeDim::new_1d(min(in_len, GPU_REDUCE_FACTOR) as u32);
+        let cube_dim = CubeDim::new_1d(GPU_REDUCE_FACTOR as u32);
         let cube_count = cubecl::calculate_cube_count_elemwise(&self.client, in_len, cube_dim);
 
         let out_len = in_len.div_ceil(GPU_REDUCE_FACTOR);
@@ -296,41 +291,27 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    fn launch_top_level_sum(&self) {
-        let (handle, len) = self.top_prob_level();
-        self.launch_reduce_pass(len, handle, &self.total_prob_handle);
-    }
-
-    fn launch_state_vector_division(&self) {
+    fn launch_state_vector_normalize(&self) {
         let num_elems = self.state_vector_len * 2;
         let (cube_dim, cube_count) = self.cube_opts(num_elems);
 
+        let final_sum_level = self.reduced_probs.last().unwrap();
+
+        // the last level should only contain one float, the total sum
+        assert_eq!(final_sum_level.len, 1);
+
         unsafe {
-            let _ = gpu_kernels::vector_division::launch(
+            let _ = gpu_kernels::state_vector_normalize::launch(
                 &self.client,
                 cube_count,
                 cube_dim,
                 ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, num_elems, 1),
-                ArrayArg::from_raw_parts::<f32>(&self.total_prob_handle, 1, 1),
+                ArrayArg::from_raw_parts::<f32>(&final_sum_level.handle, 1, 1),
             );
         }
     }
 
-    fn launch_scale_threshold(&self, threshold_handle: &Handle) {
-        let cube_dim = CubeDim::new_1d(1);
-        let cube_count = CubeCount::Static(1, 1, 1);
-
-        unsafe {
-            let _ = gpu_kernels::scale_threshold::launch(
-                &self.client,
-                cube_count,
-                cube_dim,
-                ArrayArg::from_raw_parts::<f32>(threshold_handle, 1, 1),
-                ArrayArg::from_raw_parts::<f32>(&self.total_prob_handle, 1, 1),
-            );
-        }
-    }
-
+    /// Expects probs to already be normalized
     fn launch_sample_cdf_block(
         &self,
         prob_handle: &Handle,
@@ -372,9 +353,9 @@ mod tests {
 
         let init = Bytes::from_elems(vec![
             1.0f32, 0.0, // |00>
-            1.0, 0.0,    // |01>
-            0.0, 0.0,    // |10>
-            0.0, 0.0,    // |11>
+            1.0, 0.0, // |01>
+            0.0, 0.0, // |10>
+            0.0, 0.0, // |11>
         ]);
         state.state_vector_cache = init.clone();
         state.state_vector_handle = state.client.create(init);
@@ -411,9 +392,9 @@ mod tests {
 
         let init = Bytes::from_elems(vec![
             0.0f32, 0.0, // |00>
-            0.0, 0.0,    // |01>
-            1.0, 0.0,    // |10>
-            0.0, 0.0,    // |11>
+            0.0, 0.0, // |01>
+            1.0, 0.0, // |10>
+            0.0, 0.0, // |11>
         ]);
         state.state_vector_cache = init.clone();
         state.state_vector_handle = state.client.create(init);

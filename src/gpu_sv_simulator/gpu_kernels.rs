@@ -110,13 +110,6 @@ pub fn probs_observe(probs: &mut Array<f32>, measurement: u32, target_mask: u32)
 }
 
 #[cube(launch)]
-pub fn scale_threshold(threshold: &mut Array<f32>, total_prob: &Array<f32>) {
-    if UNIT_POS == 0 {
-        threshold[0] *= total_prob[0];
-    }
-}
-
-#[cube(launch)]
 pub fn sample_cdf_block(
     probs: &Array<f32>,
     sample_index: &mut Array<u32>,
@@ -157,9 +150,9 @@ pub fn sample_cdf_block(
 }
 
 #[cube(launch)]
-pub fn vector_division(array: &mut Array<f32>, divisor: &Array<f32>) {
+pub fn state_vector_normalize(array: &mut Array<f32>, norm: &Array<f32>) {
     if ABSOLUTE_POS < array.len() {
-        array[ABSOLUTE_POS] /= divisor[0].sqrt();
+        array[ABSOLUTE_POS] /= norm[0].sqrt();
     }
 }
 

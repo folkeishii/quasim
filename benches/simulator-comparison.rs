@@ -96,7 +96,9 @@ fn circuit_size_measurement<S>(n_qubits: usize)
 where
     S: RunnableSimulator + BuildSimulator<HybridCircuit>,
 {
-    let circuit = Circuit::new(n_qubits).new_reg("r0").measure_bit(0, ("r0", 0));
+    let circuit = Circuit::new(n_qubits)
+        .new_reg("r0")
+        .measure_bit(0, ("r0", 0));
 
     let sim = S::build(circuit).expect("Couldnt build circuit...");
     sim.run();

@@ -407,7 +407,6 @@ mod tests {
 
     use crate::expr_dsl::Value;
     use crate::ext::equal_to_matrix_c;
-    use crate::gate::QBits;
     use crate::simulator::{DebuggableSimulator, HybridSimulator};
     use crate::sv_simulator::SVSimulatorDebugger;
     use crate::{cart, common_test};
