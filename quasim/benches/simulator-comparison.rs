@@ -1,7 +1,7 @@
 use quasim::{
     circuit::{Circuit, HybridCircuit},
     debug_simulator::DebugSimulator,
-    dm_simulator::DynSimulator,
+    dyn_simulator::DynSimulator,
     simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
     sv_simulator::SVSimulatorDebugger,
 };
