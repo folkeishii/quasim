@@ -44,6 +44,7 @@ impl Circuit {
         }
     }
 
+    /// Creates a new circuit implementing the qft algorithm
     pub fn new_qft(n_qubits: usize) -> Self {
         let s = Self {
             instructions: Vec::<PureInstruction>::default(),
