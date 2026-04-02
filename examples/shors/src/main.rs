@@ -2,15 +2,23 @@ use quasim::circuit::{Circuit, HybridCircuit};
 use quasim::expr_dsl::Value;
 use quasim::expr_dsl::expr_helpers::r;
 use std::f64::consts::PI;
+use std::ops::AddAssign;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 use gcd::Gcd;
 use rand::RngExt;
 use num_integer::{Integer};
 
-// Computes the modular inverse of a mod m
-pub fn mod_inv<T: Integer + Clone>(a: T, m: T) -> T {
-    a.extended_gcd(&m).x
+// Computes the modular inverse of a mod n
+pub fn mod_inv(a: isize, n: isize) -> isize {
+    let egcd = a.extended_gcd(&n);
+
+    let mut inv = egcd.x % n;
+    if inv < 0 {
+        inv += n;
+    }
+
+    inv
 }
 
 // Adds a to the second n bits of the register
@@ -41,7 +49,7 @@ fn create_adder(n: usize, a: usize) -> Circuit {
 }
 
 // Adds a to the second n bits of the register mod n
-fn create_mod_adder (n: usize, a: usize) -> Circuit {
+fn create_mod_adder(n: usize, a: usize) -> Circuit {
 
     // n-bits to represent the number being added to
     let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
@@ -81,7 +89,7 @@ fn create_mod_adder (n: usize, a: usize) -> Circuit {
 
 // Multiplies a and the first n_bits (x), stores the value in the second n_bits
 // Disallows values a = n
-fn create_cmult (n: usize, a: usize) -> Circuit {
+fn create_cmult(n: usize, a: usize) -> Circuit {
     let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
     // QFT the second n_bits and its overflow bit
@@ -101,11 +109,9 @@ fn create_cmult (n: usize, a: usize) -> Circuit {
     circuit
 }
 
-/*
-fn create_swap(a: usize, n: usize) -> Circuit {
-    let n_bits = (n as f64).log2().ceil() as usize;
-    let c_array = (0..n_bits - 1).collect::<Vec<usize>>();
-
+fn create_swap(n: usize) -> Circuit {
+    let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
+    
     let mut circuit = Circuit::new(2*n_bits);
 
     for i in 0..n_bits {
@@ -115,13 +121,14 @@ fn create_swap(a: usize, n: usize) -> Circuit {
     circuit
 }
 
-fn create_u_a (a: usize, n: usize) -> Circuit {
-    let n_bits = (n as f64).log2().ceil() as usize;
+
+fn create_u_a (n: usize, a: usize) -> Circuit {
+    let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
     let mut circuit = Circuit::new(2*n_bits+2)
         .new_sub_circuit("cmult", create_cmult(n, a))
-        .new_sub_circuit("inv_cmult", create_cmult(n, 1/a).inverse())
-        .new_sub_circuit("swap", create_swap(a, n));
+        .new_sub_circuit("swap", create_swap(n))
+        .new_sub_circuit("inv_cmult", create_cmult(n, mod_inv(a as isize, n as isize) as usize).inverse());
 
     circuit = circuit.call("cmult", 0);
     circuit = circuit.call("swap", 0);
@@ -130,15 +137,14 @@ fn create_u_a (a: usize, n: usize) -> Circuit {
     circuit
 }
 
-fn create_circuit(n: usize, a: usize) -> Circuit<HybridCircuit> {
-    let n_bits: usize = (n as f64).log2().ceil() as usize;
+fn create_quantum(n: usize, a: usize) -> Circuit<HybridCircuit> {
+    let n_bits: usize = ((n as f64)+1.0).log2().ceil() as usize;
     let mut final_bit_array: Vec<usize> = vec![Default::default();2*n_bits];
 
-    let mut circuit = Circuit::new(2*n_bits+3)
-        .new_reg("res");
+    let mut circuit = Circuit::new(2*n_bits+3).new_reg("res");
 
     circuit = circuit.h(0);
-    circuit = circuit.call_new("u_a0", create_u_a(a, n), 1).ctrl(0);
+    circuit = circuit.ccall_new("u_a0", create_u_a(a, n), 1,&[0]);
     circuit = circuit.h(0);
     circuit = circuit.measure_bit(0, ("res",0));
 
@@ -148,8 +154,8 @@ fn create_circuit(n: usize, a: usize) -> Circuit<HybridCircuit> {
         circuit = circuit.apply_if(r("res").eq(1)).x(0);
 
         circuit = circuit.h(0);
-        circuit = circuit.call_new(format!("u_a{}", i+1), create_u_a(a.pow(2.pow(i+1)), n), 1).ctrl(0);
-
+        circuit = circuit.ccall_new(format!("u_a{}", i+1), create_u_a(n,a.pow(1 << (i+1))), 1, &[0]);
+        
         // R gates based on previous bits
         // TODO: Change to register based checking
         for j in 1..i+2 {
@@ -165,7 +171,7 @@ fn create_circuit(n: usize, a: usize) -> Circuit<HybridCircuit> {
 
     circuit
 }
-
+/* 
 fn quantum(n: usize, a: usize) -> usize {
     let mut sim = SVSimulatorDebugger::build(create_circuit(n, a)).unwrap();
     sim.cont();
@@ -286,7 +292,7 @@ fn main() {
 mod tests{
     use quasim::{circuit::Circuit, expr_dsl::Value, simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, RunnableSimulator}, sv_simulator::{SVSimulator, SVSimulatorDebugger}};
 
-    use crate::{create_adder, create_cmult, create_mod_adder, mod_inv};
+    use crate::{create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv};
 
     #[test]
     fn test_adder(){
@@ -339,14 +345,14 @@ mod tests{
     #[test]
     fn test_cmult(){
         let n = 13;
-        let x = [0,1,0];
+        let x = [0,1,1];
 
 
         let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
         let c_array = (n_bits..=2*n_bits).collect::<Vec<usize>>();
 
-        for a in 1..n{
+        for a in 2..n{
 
             let mut c = Circuit::new(2*n_bits+2).new_reg("res");
 
@@ -368,8 +374,7 @@ mod tests{
 
             match sim.register("res") {
                 Value::Int(res) => {
-                    println!("res: {}",res);
-                    //assert_eq!(res as usize,(a*x_tot)%n);
+                    assert_eq!(res as usize,(a*x_tot)%n);
                 }
                 Value::Float(_) => {
                     panic!("Unexpected float register")
@@ -382,26 +387,76 @@ mod tests{
     }
 
     #[test]
+    fn test_swap(){
+        let n = 13;
+        let x = [1,1,1];
+
+        let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
+
+        let mut c = Circuit::new(2*n_bits).new_reg("top").new_reg("bott");
+
+        for i in 0..x.len(){
+            if x[i] == 1{
+                c = c.x(i);
+            }
+        }
+
+        c = c.call_new("swap", create_swap(n), 0);
+
+        c = c.measure_bits(&(0..n_bits).collect::<Vec<usize>>(), "top");
+        c = c.measure_bits(&(n_bits..2*n_bits).collect::<Vec<usize>>(), "bott");
+
+        let mut sim = SVSimulatorDebugger::build(c).unwrap();
+
+        sim.cont();
+
+        match sim.register("top") {
+            Value::Int(top) => {
+                assert_eq!(top as usize, 0);
+            }
+            Value::Float(_) => {
+                panic!("Unexpected float register")
+            }
+            Value::Bool(_) => {
+                panic!("Unexpected bool register")
+            }
+        }
+
+        match sim.register("bott") {
+            Value::Int(bott) => {
+                assert_eq!(bott as usize, x.iter().enumerate().map(|(i, &b)| b << i).sum());
+            }
+            Value::Float(_) => {
+                panic!("Unexpected float register")
+            }
+            Value::Bool(_) => {
+                panic!("Unexpected bool register")
+            }
+        }
+    }
+
+    #[test]
     fn test_cmult_inv(){
         let n = 13;
-        let x = [0,1,0];
+        let y = [0,1,0];
 
 
         let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
-        let c_array = (n_bits..=2*n_bits).collect::<Vec<usize>>();
+        let c_array = (n_bits..2*n_bits).collect::<Vec<usize>>();
 
-        for a in 1..n{
+        for a in 2..n{
+            let a_inv = mod_inv(a as isize, n as isize) as usize;
 
             let mut c = Circuit::new(2*n_bits+2).new_reg("res");
 
-            for i in 0..x.len(){
-                if x[i] == 1{
+            for i in 0..y.len(){
+                if y[i] == 1{
                     c = c.x(i);
                 }
             }
             
-            c = c.call_new("cmult", create_cmult(n, a), 0);
+            c = c.call_new("cmult_inv", create_cmult(n, a_inv).inverse(), 0);
 
             c = c.measure_bits(&c_array, "res");
             
@@ -409,12 +464,12 @@ mod tests{
 
             sim.cont();
 
-            let x_tot: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
+            let y_tot: usize = y.iter().enumerate().map(|(i, &b)| b << i).sum();
 
             match sim.register("res") {
                 Value::Int(res) => {
-                    println!("res: {}",res);
-                    //assert_eq!(res as usize,(a*x_tot)%n);
+                    let x = (a_inv * y_tot) % n;
+                    assert_eq!(res as usize, (n - x) % n);
                 }
                 Value::Float(_) => {
                     panic!("Unexpected float register")
@@ -424,5 +479,70 @@ mod tests{
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_u_a(){
+        let n = 13;
+        let x = [1,1,0];
+
+        let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
+
+        for a in 2..n{
+
+            let mut c = Circuit::new(2*n_bits+2).new_reg("top").new_reg("bott");
+
+            for i in 0..x.len(){
+                if x[i] == 1{
+                    c = c.x(i);
+                }
+            }
+            
+            c = c.call_new("u_a", create_u_a(n, a), 0);
+
+            c = c.measure_bits(&(0..n_bits).collect::<Vec<usize>>(), "top");
+            c = c.measure_bits(&(n_bits..2*n_bits).collect::<Vec<usize>>(), "bott");
+            
+            let mut sim = SVSimulatorDebugger::build(c).unwrap();
+
+            sim.cont();
+
+
+            let x_t: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
+
+            match sim.register("top") {
+                Value::Int(top) => {
+                    assert_eq!(top as usize, (x_t*a)%n);
+                }
+                Value::Float(_) => {
+                    panic!("Unexpected float register")
+                }
+                Value::Bool(_) => {
+                    panic!("Unexpected bool register")
+                }
+            }
+
+            match sim.register("bott") {
+                Value::Int(bott) => {
+                    assert_eq!(bott as usize, 0);
+                }
+                Value::Float(_) => {
+                    panic!("Unexpected float register")
+                }
+                Value::Bool(_) => {
+                    panic!("Unexpected bool register")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_quantum(){
+
+        let n = 6;
+        let x = [1,1,0];
+        let a = 3;
+
+        let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
     }
 }
