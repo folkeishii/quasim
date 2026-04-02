@@ -44,6 +44,21 @@ impl Circuit {
         }
     }
 
+    /// Creates a new circuit implementing the qft algorithm
+    pub fn new_qft(n_qubits: usize) -> Self {
+        let s = Self {
+            instructions: Vec::<PureInstruction>::default(),
+            n_qubits: n_qubits,
+            registers: HashMap::new(),
+            labels: HashMap::new(),
+            unresolved_labels: Vec::new(),
+            breakpoints: Default::default(),
+            sub_circuits: Default::default(),
+        };
+
+        s.qft(&(0..n_qubits).collect::<Vec<_>>())
+    }
+
     pub fn from_qasm_file(file_name: &str) -> Result<Self, QASMParseError> {
         let file_string = read_to_string(file_name)?;
         let parsed_source = SourceFile::parse(&file_string);
@@ -352,31 +367,33 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    /// Creates a circuit implementing the quantum Fourier transform,
-    /// with qubits in order of least significance.
-    pub fn qft(n_qubits: usize) -> Circuit {
+    /// Appends a circuit implementing the quantum Fourier transform.
+    /// Targets are normally specified in order of least significance,
+    /// for example [0,1,2,3,4].
+    pub fn qft(mut self, targets: &[usize]) -> Self {
         /* This implementation is taken from Mike & Ike chapter 5.1.
          * Note that, due to our chosen convention, the circuit will
          * be the same as figure 5.1 but "upside down".
          * */
-        let mut qft = Circuit::new(n_qubits);
 
-        for i in (0..n_qubits).rev() {
-            qft = qft.h(i);
+        let n = targets.len();
+
+        for i in (0..n).rev() {
+            self = self.h(targets[i]);
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
                 let theta = PI / (1 << (k - 1)) as f64;
-                qft = qft.crz(theta, &[control as usize], i);
+                self = self.crz(theta, &[targets[control as usize]], targets[i]);
                 control -= 1;
             }
         }
 
         // Reverse order of qubits. (not shown in figure 5.1)
-        for i in 0..(n_qubits >> 1) {
-            qft = qft.swap(i, n_qubits - 1 - i);
+        for i in 0..(n >> 1) {
+            self = self.swap(targets[i], targets[n - 1 - i]);
         }
-        qft
+        self
     }
 
     // Breakpoint
@@ -823,7 +840,7 @@ impl<'a> Iterator for FlatCircuit<'a, HybridCircuit> {
 mod tests {
     use crate::{
         cart,
-        circuit::{Circuit, PureCircuit},
+        circuit::Circuit,
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{BuildSimulator, RunnableSimulator},
@@ -867,7 +884,7 @@ mod tests {
     fn qft_test() {
         let sim = SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
             "QFT",
-            Circuit::<PureCircuit>::qft(4),
+            Circuit::new_qft(4),
             0,
         ))
         .unwrap();
