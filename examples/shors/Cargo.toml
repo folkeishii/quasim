@@ -7,3 +7,4 @@ edition = "2024"
 quasim = { path = "../.." }
 gcd = "2.3.0"
 rand = "0.10.0"
+num-integer = "0.1.46"
