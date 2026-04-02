@@ -1,10 +1,10 @@
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
-    expr_dsl::Value,
-    ext::{expand_matrix_from_gate, measure},
+    expr_dsl::{BitExpr, BoolExpr},
+    ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv},
     instruction::Instruction,
-    register_file::RegisterFile,
+    register_file::{RegisterError, RegisterFile},
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 use nalgebra::{Complex, DVector};
@@ -14,7 +14,7 @@ pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
-    registers: RegisterFile<Value>,
+    registers: RegisterFile,
 }
 
 impl TryFrom<Circuit<PureCircuit>> for DebugSimulator {
@@ -31,19 +31,6 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         let circuit = value;
         let k = circuit.n_qubits();
-
-        // Check for mid-cicuit measurement
-        let mut encountered = false;
-        for inst in circuit.instructions() {
-            let is_measurement = matches!(inst, Instruction::MeasureBit(_, _))
-                || matches!(inst, Instruction::MeasureAll(_));
-            if is_measurement {
-                encountered = true;
-            } else if encountered {
-                // There was a gate between measurements
-                return Err(DebugSimulatorError::MidCircuitMeasurement);
-            }
-        }
 
         // Initial state assumed to be |000..>
         let mut init_state = vec![cart!(0.0); 1 << k];
@@ -62,22 +49,22 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
     }
 }
 
-impl HybridSimulator<Value> for DebugSimulator {
-    fn registers(&self) -> &RegisterFile<Value> {
+impl HybridSimulator for DebugSimulator {
+    fn registers(&self) -> &RegisterFile {
         &self.registers
     }
 }
 
 impl DebuggableSimulator for DebugSimulator {
-    fn next(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
             if self.pc_mut().ret() {
-                return Some(&self.current_state);
+                return true;
             }
 
             // Could not return: End of circuit
-            return None;
+            return false;
         };
 
         match inst {
@@ -86,17 +73,14 @@ impl DebuggableSimulator for DebugSimulator {
                 self.current_state = mat * self.current_state.clone();
                 self.pc_mut().increment();
             }
-            Instruction::MeasureBit(qbit, _) => {
-                self.current_state = measure(qbit, &self.current_state, self.circuit.n_qubits());
-                self.pc_mut().increment();
-            }
-            Instruction::MeasureAll(_) => todo!(),
-            Instruction::Jump(_) => todo!(),
-            Instruction::JumpIf(_, _) => todo!(),
-            Instruction::Assign(_, _) => todo!(),
+            Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(qbit, &reg, bit_pos),
+            Instruction::MeasureAll(reg) => self.measure_all(&reg),
+            Instruction::Jump(pc) => self.jump(pc),
+            Instruction::JumpIf(expr, pc) => self.jump_if(&expr, pc),
+            Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
             Instruction::Call(name, lsq, ctrl) => self.pc_mut().jump_and_link(name, lsq, ctrl),
         }
-        Some(&self.current_state)
+        true
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
@@ -107,28 +91,27 @@ impl DebuggableSimulator for DebugSimulator {
         &self.current_state
     }
 
-    fn prev(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn prev(&mut self) -> bool {
         if !self.pc_mut().decrement() {
             // Beginnning of (sub) circuit: Try to return
             if self.pc_mut().ret_backwards() {
-                return Some(&self.current_state);
+                return true;
             }
 
             // Could not return: Beginning of circuit
-            return None;
+            return false;
         }
 
         // Will happen if doing prev into a sub circuit
         // i.e. we are at the end of a sub circuit
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // Pc already decremented: do nothing
-            return Some(&self.current_state);
+            return true;
         };
 
         match inst {
             Instruction::Gate(gate) => {
-                let mut mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
-                mat.try_inverse_mut();
+                let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits()).adjoint(); // All matricies are unitary --> inverse <=> adjoint
                 self.current_state = mat * self.current_state.clone();
             }
             Instruction::MeasureBit(_, _) => todo!(),
@@ -145,7 +128,7 @@ impl DebuggableSimulator for DebugSimulator {
                 self.pc_mut().jump(inst_count); // Place pc at end of sub circuit
             }
         }
-        Some(&self.current_state)
+        true
     }
 
     fn double_ended(&self) -> bool {
@@ -154,6 +137,49 @@ impl DebuggableSimulator for DebugSimulator {
 }
 
 impl DebugSimulator {
+    fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
+        let (measurement, new_state) =
+            measure_and_observe_sv(target, &self.current_state, self.n_qubits());
+
+        self.registers[reg]
+            .write_bit(bit_pos, measurement)
+            .expect("invalid register write");
+
+        self.current_state = new_state;
+
+        self.pc_mut().increment();
+    }
+
+    fn measure_all(&mut self, reg: &str) {
+        let measurement = collapse(self.current_state.as_slice());
+
+        self.registers[reg].write(measurement);
+
+        // Collapse whole state vector
+        self.current_state.fill(cart!(0.0));
+        self.current_state[measurement] = cart!(1.0);
+
+        self.pc_mut().increment();
+    }
+
+    fn jump(&mut self, label_pc: usize) {
+        self.pc_mut().jump(label_pc);
+    }
+
+    fn jump_if(&mut self, expr: &BoolExpr, label_pc: usize) {
+        if expr.eval(&self.registers) {
+            self.jump(label_pc)
+        } else {
+            self.pc_mut().increment()
+        }
+    }
+
+    fn assign(&mut self, expr: &BitExpr, reg: &str) {
+        let value = expr.eval(&self.registers);
+        self.registers[reg].write(value);
+        self.pc_mut().increment();
+    }
+
     fn pc(&self) -> &CircuitPc {
         &self.pc
     }
@@ -178,6 +204,8 @@ impl StoredCircuitSimulator for DebugSimulator {
 pub enum DebugSimulatorError {
     #[error("Measurement mid-circuit")]
     MidCircuitMeasurement,
+    #[error("{0}")]
+    RegisterError(#[from] RegisterError),
 }
 
 #[cfg(test)]
@@ -185,7 +213,7 @@ mod tests {
     use crate::common_test;
     use crate::ext::{
         collapse, equal_to_matrix_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
-        measure,
+        measure_and_observe_sv,
     };
     use crate::{
         cart,
@@ -233,7 +261,7 @@ mod tests {
             cart!(0.0), // |110>
             cart!(0.5), // |111>
         ];
-        res = measure(0, &res, 3);
+        (_, res) = measure_and_observe_sv(0, &res, 3);
         assert!(
             equal_to_matrix_c(&res, &plus_plus_measure0, 0.001)
                 || equal_to_matrix_c(&res, &plus_plus_measure1, 0.001)
@@ -278,14 +306,14 @@ mod tests {
             cart!(0.0),           // |110>
             cart!(FRAC_1_SQRT_2), // |111>
         ];
-        res = measure(1, &res, 3);
+        (_, res) = measure_and_observe_sv(1, &res, 3);
         assert!(
             equal_to_matrix_c(&res, &plus_measure0_measure0, 0.001)
                 || equal_to_matrix_c(&res, &plus_measure0_measure1, 0.001)
                 || equal_to_matrix_c(&res, &plus_measure1_measure0, 0.001)
                 || equal_to_matrix_c(&res, &plus_measure1_measure1, 0.001)
         );
-        res = measure(2, &res, 3);
+        (_, res) = measure_and_observe_sv(2, &res, 3);
         // Now collapsed to any 3-bit-string.
         assert!(state_is_collapsed(res));
     }
@@ -342,14 +370,14 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
         ];
-        res = measure(0, &res, 3);
+        (_, res) = measure_and_observe_sv(0, &res, 3);
 
         assert!(
             equal_to_matrix_c(&res, &colapse_00, 0.001)
                 || equal_to_matrix_c(&res, &colapse_11, 0.001)
         );
 
-        res = measure(1, &res, 3);
+        (_, res) = measure_and_observe_sv(1, &res, 3);
         assert!(
             equal_to_matrix_c(&res, &colapse_00, 0.001)
                 || equal_to_matrix_c(&res, &colapse_11, 0.001)
@@ -563,31 +591,46 @@ mod tests {
         ];
         let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
         assert!(equal_to_matrix_c(&psi0, &sim.current_state(), 0.001));
-        sim.next().expect("Apply Hadamard.");
+        sim.next();
         assert!(equal_to_matrix_c(&psi1, &sim.current_state(), 0.001));
-        sim.next().expect("Apply first CNOT.");
+        sim.next();
         assert!(equal_to_matrix_c(&psi2, &sim.current_state(), 0.001));
-        sim.next().expect("Apply second CNOT.");
+        sim.next();
         assert!(equal_to_matrix_c(&psi3, &sim.current_state(), 0.001));
 
         let res = sim.next();
         match res {
-            Some(_) => panic!("Does not err correctly when stepping forwards."),
-            None => println!("Errs correctly when stepping forwards"),
+            true => panic!("Does not err correctly when stepping forwards."),
+            false => println!("Errs correctly when stepping forwards"),
         }
 
-        sim.prev().expect("Revert second CNOT");
+        sim.prev();
         assert!(equal_to_matrix_c(&psi2, &sim.current_state(), 0.001));
-        sim.prev().expect("Revert first CNOT");
+        sim.prev();
         assert!(equal_to_matrix_c(&psi1, &sim.current_state(), 0.001));
-        sim.prev().expect("Revert Hadamard");
+        sim.prev();
         assert!(equal_to_matrix_c(&psi0, &sim.current_state(), 0.001));
 
         let res = sim.prev();
         match res {
-            Some(_) => panic!("Does not err correctly when stepping forwards."),
-            None => println!("Errs correctly when stepping backwards"),
+            true => panic!("Does not err correctly when stepping forwards."),
+            false => println!("Errs correctly when stepping backwards"),
         }
+    }
+
+    #[test]
+    fn hybrid_test() {
+        common_test::hybrid_test::<DebugSimulator>();
+    }
+
+    #[test]
+    fn register_test() {
+        common_test::register_test::<DebugSimulator>();
+    }
+
+    #[test]
+    fn test_measure_overwrites_with_zero() {
+        common_test::test_measure_overwrites_with_zero::<DebugSimulator>();
     }
 
     #[test]

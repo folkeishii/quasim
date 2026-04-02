@@ -5,8 +5,9 @@ use nalgebra::{Complex, DVector, dvector};
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit},
+    expr_dsl::expr_helpers::r,
     ext::equal_to_matrix_c,
-    simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
+    simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 
 pub fn double_sub<
@@ -42,7 +43,7 @@ pub fn double_sub<
     let mut sim = D::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
-    while sim.next().is_some() {
+    while sim.next() {
         forward_steps += 1;
     }
 
@@ -71,7 +72,7 @@ pub fn double_sub<
 
     if sim.double_ended() {
         let mut backward_steps = 0;
-        while sim.prev().is_some() {
+        while sim.prev() {
             backward_steps += 1;
         }
         assert_eq!(forward_steps, backward_steps);
@@ -124,7 +125,7 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
     let mut sim = D::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
-    while sim.next().is_some() {
+    while sim.next() {
         forward_steps += 1;
     }
 
@@ -136,7 +137,7 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
 
     if sim.double_ended() {
         let mut backward_steps = 0;
-        while sim.prev().is_some() {
+        while sim.prev() {
             backward_steps += 1;
         }
         assert_eq!(forward_steps, backward_steps);
@@ -145,6 +146,74 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
         correct[0] = cart!(1);
         assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
     }
+}
+
+pub fn hybrid_test<
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+>() {
+    let circuit = Circuit::new(4)
+        .new_reg("r0", 1)
+        .new_reg("r1", 1)
+        .new_reg("r2", 1)
+        .new_reg("r3", 1)
+        // Init random state
+        .h(0)
+        .h(1)
+        .h(2)
+        .h(3)
+        .measure_bit(0, ("r0", 0))
+        .measure_bit(1, ("r1", 0))
+        .measure_bit(2, ("r2", 0))
+        .measure_bit(3, ("r3", 0))
+        .apply_if(r("r0").eq(1))
+        .x(0)
+        .apply_if(r("r1").eq(1))
+        .x(1)
+        .apply_if(r("r2").eq(1))
+        .x(2)
+        .apply_if(r("r3").eq(1))
+        .x(3);
+
+    let mut sim = D::build(circuit).unwrap();
+    while sim.next() {}
+
+    let mut expected = DVector::<Complex<f64>>::zeros(16);
+    expected[0] = cart!(1.0);
+
+    assert!(equal_to_matrix_c(&sim.current_state(), &expected, 0.001));
+}
+
+pub fn register_test<
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator + HybridSimulator,
+>() {
+    let circuit = Circuit::new(2)
+        .new_reg("r0", 1)
+        .x(1)
+        .measure_bit(1, ("r0", 0));
+
+    let mut sim = D::build(circuit).unwrap();
+    while sim.next() {}
+
+    assert_eq!(sim.registers()["r0"].read(), 1);
+}
+
+pub fn test_measure_overwrites_with_zero<T>()
+where
+    T: BuildSimulator<HybridCircuit>
+        + DebuggableSimulator
+        + StoredCircuitSimulator
+        + HybridSimulator,
+{
+    let circuit = Circuit::new(2)
+        .new_reg("tmp", 1)
+        .x(0)
+        .measure_bit(0, ("tmp", 0))
+        .measure_bit(1, ("tmp", 0));
+
+    let mut sim = T::build(circuit).unwrap();
+    sim.cont();
+
+    assert_eq!(sim.register("tmp").read(), 0);
 }
 
 pub fn deep_ctrl_sub<
@@ -161,7 +230,7 @@ pub fn deep_ctrl_sub<
     let mut sim = D::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
-    while sim.next().is_some() {
+    while sim.next() {
         forward_steps += 1;
     }
 
@@ -178,7 +247,7 @@ pub fn deep_ctrl_sub<
 
     if sim.double_ended() {
         let mut backward_steps = 0;
-        while sim.prev().is_some() {
+        while sim.prev() {
             backward_steps += 1;
         }
         assert_eq!(forward_steps, backward_steps);

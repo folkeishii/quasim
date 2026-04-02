@@ -1,7 +1,4 @@
-use std::{
-    collections::{HashMap, HashSet},
-    f64::consts::PI,
-};
+use std::{collections::HashMap, f64::consts::PI};
 pub mod breakpoint;
 pub mod pc;
 
@@ -10,7 +7,7 @@ use crate::{
         breakpoint::{Breakpoint, BreakpointList, IEBreakpoint},
         pc::CircuitPc,
     },
-    expr_dsl::Expr,
+    expr_dsl::{BitExpr, BoolExpr},
     gate::{Gate, GateType, QBits},
     instruction::{Instruction, PureInstruction},
 };
@@ -29,7 +26,7 @@ pub struct Circuit<B: CircuitBehaviour = PureCircuit> {
     labels: HashMap<String, usize>,
     unresolved_labels: Vec<(String, usize)>,
     breakpoints: BreakpointList,
-    registers: HashSet<String>,
+    registers: HashMap<String, usize>,
     sub_circuits: HashMap<String, Circuit>,
 }
 
@@ -39,7 +36,7 @@ impl Circuit {
         Self {
             instructions: Vec::<PureInstruction>::default(),
             n_qubits: n_qubits,
-            registers: HashSet::new(),
+            registers: HashMap::new(),
             labels: HashMap::new(),
             unresolved_labels: Vec::new(),
             breakpoints: Default::default(),
@@ -121,6 +118,15 @@ impl Circuit {
             self
         }
     }
+
+    /// ## Returns
+    /// Returns an iterator that iterates over all instructions and hides the call instructions
+    pub fn as_flat(&self) -> FlatCircuit<'_, PureCircuit> {
+        FlatCircuit {
+            circuit: self,
+            pc: CircuitPc::new(0),
+        }
+    }
 }
 
 // Hybrid specific
@@ -145,6 +151,15 @@ impl Circuit<HybridCircuit> {
             }
         }
     }
+
+    /// ## Returns
+    /// Returns an iterator that iterates over all instructions and hides the call instructions
+    pub fn as_flat(&self) -> FlatCircuit<'_, HybridCircuit> {
+        FlatCircuit {
+            circuit: self,
+            pc: CircuitPc::new(0),
+        }
+    }
 }
 
 impl<B: CircuitBehaviour> Circuit<B> {
@@ -160,7 +175,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self.n_qubits
     }
 
-    pub fn registers(&self) -> &HashSet<String> {
+    pub fn registers(&self) -> &HashMap<String, usize> {
         &self.registers
     }
 
@@ -337,33 +352,31 @@ impl<B: CircuitBehaviour> Circuit<B> {
         self
     }
 
-    /// Appends a circuit implementing the quantum Fourier transform.
-    /// Targets are normally specified in order of least significance,
-    /// for example [0,1,2,3,4].
-    pub fn qft(mut self, targets: &[usize]) -> Self {
+    /// Creates a circuit implementing the quantum Fourier transform,
+    /// with qubits in order of least significance.
+    pub fn qft(n_qubits: usize) -> Circuit {
         /* This implementation is taken from Mike & Ike chapter 5.1.
          * Note that, due to our chosen convention, the circuit will
          * be the same as figure 5.1 but "upside down".
          * */
+        let mut qft = Circuit::new(n_qubits);
 
-        let n = targets.len();
-
-        for i in (0..n).rev() {
-            self = self.h(targets[i]);
+        for i in (0..n_qubits).rev() {
+            qft = qft.h(i);
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
                 let theta = PI / (1 << (k - 1)) as f64;
-                self = self.crz(theta, &[targets[control as usize]], targets[i]);
+                qft = qft.crz(theta, &[control as usize], i);
                 control -= 1;
             }
         }
 
         // Reverse order of qubits. (not shown in figure 5.1)
-        for i in 0..(n >> 1) {
-            self = self.swap(targets[i], targets[n - 1 - i]);
+        for i in 0..(n_qubits >> 1) {
+            qft = qft.swap(i, n_qubits - 1 - i);
         }
-        self
+        qft
     }
 
     // Breakpoint
@@ -525,9 +538,9 @@ impl<B: CircuitBehaviour> Circuit<B>
 where
     Self: Into<Circuit<HybridCircuit>>,
 {
-    pub fn new_reg<S: Into<String>>(self, name: S) -> Circuit<HybridCircuit> {
+    pub fn new_reg<S: Into<String>>(self, name: S, size: usize) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
-        ret_self.registers.insert(name.into());
+        ret_self.registers.insert(name.into(), size);
         ret_self
     }
 
@@ -588,7 +601,11 @@ where
         ret_self
     }
 
-    pub fn jump_if<S: Into<String>>(self, expr: Expr, label: S) -> Circuit<HybridCircuit> {
+    pub fn jump_if<T: Into<BoolExpr>, S: Into<String>>(
+        self,
+        expr: T,
+        label: S,
+    ) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
 
         let circuit_pc = match ret_self.try_to_resolve_label(label.into()) {
@@ -598,37 +615,44 @@ where
 
         ret_self
             .instructions
-            .push(Instruction::JumpIf(expr, circuit_pc));
+            .push(Instruction::JumpIf(expr.into(), circuit_pc));
         ret_self
     }
 
     /// Conditionally apply whichever instruction that comes after
-    pub fn apply_if(self, expr: Expr) -> Circuit<HybridCircuit> {
+    pub fn apply_if<T: Into<BoolExpr>>(self, expr: T) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
-        ret_self
-            .instructions
-            .push(Instruction::JumpIf(!expr, ret_self.instructions.len() + 2));
+        ret_self.instructions.push(Instruction::JumpIf(
+            !expr.into(),
+            ret_self.instructions.len() + 2,
+        ));
         ret_self
     }
 
     pub fn reset(self, target: usize) -> Circuit<HybridCircuit> {
-        self.new_reg("_reset")
+        self.new_reg("_reset", 1)
             .measure_bit(target, ("_reset", 0))
-            .apply_if(Expr::Reg("_reset".to_owned()).eq(1))
+            .apply_if(BitExpr::Reg("_reset".to_owned()).eq(1))
             .x(target)
     }
 
     // takes register nr directly for now
-    pub fn assign<S: Into<String>>(self, reg: S, expr: Expr) -> Circuit<HybridCircuit> {
+    pub fn assign<S: Into<String>, T: Into<BitExpr>>(
+        self,
+        reg: S,
+        expr: T,
+    ) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
         let reg = reg.into();
-        if !ret_self.registers.contains(&reg) {
+        if !ret_self.registers.contains_key(&reg) {
             panic!(
                 "Tried to assign to nonexistent register with name '{}'.",
                 &reg
             )
         }
-        ret_self.instructions.push(Instruction::Assign(expr, reg));
+        ret_self
+            .instructions
+            .push(Instruction::Assign(expr.into(), reg));
         ret_self
     }
 
@@ -732,11 +756,74 @@ pub trait CircuitBehaviour {
     fn from_pure(instruction: PureInstruction) -> Self::InstructionTy;
 }
 
+pub struct FlatCircuit<'a, B: CircuitBehaviour> {
+    circuit: &'a Circuit<B>,
+    pc: CircuitPc,
+}
+
+impl<'a> Iterator for FlatCircuit<'a, PureCircuit> {
+    type Item = PureInstruction;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let inst = self.circuit.instruction(&self.pc);
+        match inst {
+            Some(PureInstruction::Call(name, lsq, ctrl)) => {
+                self.pc.jump_and_link(name, lsq, ctrl);
+                // Take next instruction inside sub circuit
+                self.next()
+            }
+            Some(inst) => {
+                self.pc.increment();
+                Some(inst)
+            }
+            None => {
+                // Try to return
+                if self.pc.ret() {
+                    // Could return: Return next
+                    self.next()
+                } else {
+                    // Could not return: end of circuit
+                    None
+                }
+            }
+        }
+    }
+}
+
+impl<'a> Iterator for FlatCircuit<'a, HybridCircuit> {
+    type Item = Instruction;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let inst = self.circuit.instruction(&self.pc);
+        match inst {
+            Some(Instruction::Call(name, lsq, ctrl)) => {
+                self.pc.jump_and_link(name, lsq, ctrl);
+                // Take next instruction inside sub circuit
+                self.next()
+            }
+            Some(inst) => {
+                self.pc.increment();
+                Some(inst)
+            }
+            None => {
+                // Try to return
+                if self.pc.ret() {
+                    // Could return: Return next
+                    self.next()
+                } else {
+                    // Could not return: end of circuit
+                    None
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
         cart,
-        circuit::Circuit,
+        circuit::{Circuit, PureCircuit},
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{BuildSimulator, RunnableSimulator},
@@ -778,8 +865,12 @@ mod tests {
     }
     #[test]
     fn qft_test() {
-        let sim =
-            SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).qft(&[0, 1, 2, 3])).unwrap();
+        let sim = SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
+            "QFT",
+            Circuit::<PureCircuit>::qft(4),
+            0,
+        ))
+        .unwrap();
 
         let expected_vec = dvector![
             cart!(0.0, 0.35355),  // |0000>
@@ -812,5 +903,61 @@ mod tests {
 
         assert!(!circuit.has_unresolved_labels());
         assert_eq!(circuit.instructions()[0], Instruction::Jump(2));
+    }
+
+    #[test]
+    fn flatten() {
+        let sub1 = Circuit::new(2).h(0).h(1);
+        let sub2 = Circuit::new(4)
+            .h(0)
+            .call_new("sub1", sub1, 0)
+            .h(2)
+            .call("sub1", 2);
+
+        let circuit = Circuit::new(6)
+            .new_reg("tt", 6)
+            .h(0)
+            .call_new("sub2", sub2, 0)
+            .measure("tt")
+            .call("sub2", 2)
+            .h(2);
+
+        let correct = Circuit::new(6)
+            .new_reg("tt", 6)
+            // main
+            .h(0) // 0
+            // sub2 @ 0
+            .h(0) // 1
+            // sub1 @ 0
+            .h(0) // 2
+            .h(1) // 3
+            // end
+            .h(2) // 4
+            // sub1 @ 2
+            .h(2) // 5
+            .h(3) // 6
+            // end
+            // end
+            .measure("tt") // 7
+            // sub2 @ 2
+            .h(2) // 8
+            // sub1 @ 2
+            .h(2) // 9
+            .h(3) // 10
+            // end
+            .h(4) // 11
+            // sub1 @ 4
+            .h(4) // 12
+            .h(5) // 13
+            // end
+            // end
+            .h(2)
+            .instructions;
+
+        let mut as_flat1 = circuit.as_flat();
+        for i in 0..correct.len() {
+            assert_eq!(as_flat1.next(), Some(correct[i].clone()))
+        }
+        assert!(as_flat1.next().is_none());
     }
 }

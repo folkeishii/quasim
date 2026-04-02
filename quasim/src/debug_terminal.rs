@@ -10,7 +10,6 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::debug_simulator::DebugSimulator;
-use crate::expr_dsl::Value;
 use crate::simulator::HybridSimulator;
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
@@ -29,7 +28,7 @@ pub struct DebugTerminal<S = DebugSimulator> {
 
 impl<S> DebugTerminal<S>
 where
-    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit> + HybridSimulator<Value>,
+    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit> + HybridSimulator,
 {
     pub fn new<B: CircuitBehaviour>(
         circuit: Circuit<B>,
@@ -259,7 +258,7 @@ where
         match continue_args {
             ContinueArgs::UntilBreak => {
                 loop {
-                    if self.simulator.next().is_none() {
+                    if !self.simulator.next() {
                         println!(
                             stdout;
                             "End of Circuit reached"
@@ -284,7 +283,7 @@ where
             ContinueArgs::SkipBreaks(n) => {
                 let mut breakpoints_skipped = 0;
                 loop {
-                    if self.simulator.next().is_none() {
+                    if !self.simulator.next() {
                         println!(
                             stdout;
                             "End of Circuit reached, skipped {} breakpoints",
@@ -312,7 +311,7 @@ where
                 }
             }
             ContinueArgs::IgnoreBreak => loop {
-                if self.simulator.next().is_none() {
+                if !self.simulator.next() {
                     println!(stdout; &"End of Circuit reached, continued until end")?;
                     return Ok(());
                 }
@@ -326,7 +325,7 @@ where
         };
 
         for i in 0..step_count {
-            if self.simulator.next().is_none() {
+            if !self.simulator.next() {
                 errorln!(
                     stdout;
                     "End of Circuit reached, stepped forward {} time(s)", i
@@ -345,7 +344,7 @@ where
         };
 
         for i in 0..step_count {
-            if self.simulator.next_over().is_none() {
+            if !self.simulator.next_over() {
                 errorln!(
                     stdout;
                     "End of Circuit reached, stepped forward {} time(s)", i
@@ -365,7 +364,7 @@ where
         };
 
         for _ in 0..step_count {
-            if self.simulator.prev().is_none() {
+            if !self.simulator.prev() {
                 errorln!(stdout; "Already at the beginning")?;
                 break;
             }

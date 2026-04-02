@@ -1,5 +1,5 @@
 use crate::{
-    expr_dsl::Expr,
+    expr_dsl::{BitExpr, BoolExpr},
     gate::{Gate, QBits},
 };
 
@@ -11,8 +11,8 @@ pub enum Instruction {
     /// `MeasureAll(Creg)`
     MeasureAll(String),
     Jump(usize),
-    JumpIf(Expr, usize),
-    Assign(Expr, String),
+    JumpIf(BoolExpr, usize),
+    Assign(BitExpr, String),
     /// `Call(name, lsq, ctrl)`
     Call(String, usize, QBits),
 }
