@@ -2,7 +2,7 @@ use cubecl::Runtime;
 use nalgebra::{Complex, DVector};
 
 use crate::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
-use crate::circuit::HybridCircuit;
+use crate::circuit::{CircuitBehaviour, HybridCircuit};
 use crate::gate::QBits;
 use crate::gpu_sv_simulator::gpu_state_vector::GpuStateVector;
 use crate::simulator::RunnableSimulator;
@@ -133,12 +133,16 @@ pub struct GpuStateVectorSimulator<R: Runtime> {
     _runtime: std::marker::PhantomData<R>,
 }
 
-impl<R: Runtime> TryFrom<Circuit<HybridCircuit>> for GpuStateVectorSimulator<R> {
+impl<B, R: Runtime> TryFrom<Circuit<B>> for GpuStateVectorSimulator<R>
+where
+    B: CircuitBehaviour,
+    Circuit<B>: Into<Circuit<HybridCircuit>>,
+{
     type Error = GPUSVError;
 
-    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
         Ok(Self {
-            circuit: value,
+            circuit: value.into(),
             _runtime: std::marker::PhantomData,
         })
     }
@@ -179,7 +183,7 @@ mod tests {
         let n_qubits = 4;
         let circuit = Circuit::<PureCircuit>::qft(n_qubits);
 
-        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone().into()).unwrap();
+        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
         let cpu = SVSimulator::build(circuit).unwrap();
 
         println!("{}", &gpu.final_state());
@@ -194,7 +198,7 @@ mod tests {
     #[test]
     fn sampling_basis_state_walks_back_to_state_vector() {
         let circuit = Circuit::<PureCircuit>::new(15).x(0).x(7).x(14);
-        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.into()).unwrap();
+        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit).unwrap();
 
         assert_eq!(gpu.run(), (1 << 14) | (1 << 7) | 1);
     }
