@@ -5,7 +5,7 @@ use nalgebra::{Complex, DVector, dvector};
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit},
-    expr_dsl::{Value, expr_helpers::r},
+    expr_dsl::expr_helpers::r,
     ext::equal_to_matrix_c,
     simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
@@ -152,10 +152,10 @@ pub fn hybrid_test<
     D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
 >() {
     let circuit = Circuit::new(4)
-        .new_reg("r0")
-        .new_reg("r1")
-        .new_reg("r2")
-        .new_reg("r3")
+        .new_reg("r0", 1)
+        .new_reg("r1", 1)
+        .new_reg("r2", 1)
+        .new_reg("r3", 1)
         // Init random state
         .h(0)
         .h(1)
@@ -184,18 +184,38 @@ pub fn hybrid_test<
 }
 
 pub fn register_test<
-    D: BuildSimulator<HybridCircuit>
-        + DebuggableSimulator
-        + StoredCircuitSimulator
-        + HybridSimulator<Value>,
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator + HybridSimulator,
 >() {
-    let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, ("r0", 0));
+    let circuit = Circuit::new(2)
+        .new_reg("r0", 1)
+        .x(1)
+        .measure_bit(1, ("r0", 0));
 
     let mut sim = D::build(circuit).unwrap();
     while sim.next() {}
 
-    assert_eq!(sim.registers()["r0"], Value::Int(1));
+    assert_eq!(sim.registers()["r0"].read(), 1);
 }
+
+pub fn test_measure_overwrites_with_zero<T>()
+where
+    T: BuildSimulator<HybridCircuit>
+        + DebuggableSimulator
+        + StoredCircuitSimulator
+        + HybridSimulator,
+{
+    let circuit = Circuit::new(2)
+        .new_reg("tmp", 1)
+        .x(0)
+        .measure_bit(0, ("tmp", 0))
+        .measure_bit(1, ("tmp", 0));
+
+    let mut sim = T::build(circuit).unwrap();
+    sim.cont();
+
+    assert_eq!(sim.register("tmp").read(), 0);
+}
+
 pub fn deep_ctrl_sub<
     D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
 >() {
