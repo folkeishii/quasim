@@ -1,11 +1,11 @@
 use std::{collections::HashMap, f64::consts::PI};
 pub mod breakpoint;
 pub mod pc;
+pub mod oracle;
 
 use crate::{
     circuit::{
-        breakpoint::{Breakpoint, BreakpointList, IEBreakpoint},
-        pc::CircuitPc,
+        breakpoint::{Breakpoint, BreakpointList, IEBreakpoint}, oracle::{append_oracle, fn_to_truth_table, truth_table_to_anf_coefs}, pc::CircuitPc
     },
     expr_dsl::{BitExpr, BoolExpr},
     gate::{Gate, GateType, QBits},
@@ -394,6 +394,18 @@ impl<B: CircuitBehaviour> Circuit<B> {
             self = self.swap(targets[i], targets[n - 1 - i]);
         }
         self
+    }
+
+    /// Appends a circuit implementing a quantum oracle for a given classical function.
+    pub fn oracle(
+        self,
+        input_qubits: &[usize],
+        target: usize,
+        classic_fn: impl Fn(usize) -> bool,
+    ) -> Self {
+        let truth_table = fn_to_truth_table(&classic_fn, input_qubits.len());
+        let anf_coefs = truth_table_to_anf_coefs(truth_table);
+        append_oracle(self, input_qubits, target, anf_coefs)
     }
 
     // Breakpoint
