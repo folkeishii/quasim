@@ -3,14 +3,14 @@ use std::{
     f64::consts::PI,
 };
 pub mod breakpoint;
-pub mod pc;
 pub mod oracle;
+pub mod pc;
 
 use crate::{
     circuit::{
         breakpoint::{Breakpoint, BreakpointList, IEBreakpoint},
-        pc::CircuitPc,
         oracle::{append_oracle, fn_to_truth_table, truth_table_to_anf_coefs},
+        pc::CircuitPc,
     },
     expr_dsl::Expr,
     gate::{Gate, GateType},

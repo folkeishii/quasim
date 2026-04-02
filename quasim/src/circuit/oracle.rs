@@ -66,7 +66,7 @@ fn controls_from_bit_mask(possible_controls: &[usize], mut bit_mask: usize) -> V
     return bit_vec;
 }
 
-/// Appends a phase oracle to the given circuit based on the provided ANF coefficients.
+/// Appends an oracle to the given circuit based on the provided ANF coefficients.
 pub fn append_oracle<B: CircuitBehaviour>(
     mut circuit: Circuit<B>,
     input_qubits: &[usize],
