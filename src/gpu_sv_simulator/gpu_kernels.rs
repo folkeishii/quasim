@@ -134,14 +134,18 @@ pub fn sample_cdf_block(
         let mut prefix = 0.0;
         let mut previous_prefix = 0.0;
         let mut chosen = 0u32;
+        let mut found: bool = false;
 
         for i in 0..block_size {
-            prefix += shared[i];
-            if target < prefix {
-                chosen = i as u32;
-                break;
+            if !found {
+                prefix += shared[i];
+                if target < prefix {
+                    chosen = i as u32;
+                    found = true;
+                } else {
+                    previous_prefix = prefix;
+                }
             }
-            previous_prefix = prefix;
         }
 
         sample_index[0] = sample_index[0] * block_size as u32 + chosen;

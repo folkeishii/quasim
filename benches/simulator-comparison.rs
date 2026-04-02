@@ -1,6 +1,10 @@
-use cubecl::{wgpu::WgpuRuntime};
+use cubecl::wgpu::WgpuRuntime;
 use quasim::{
-    circuit::{Circuit, HybridCircuit, PureCircuit}, debug_simulator::DebugSimulator, gpu_sv_simulator::GpuStateVectorSimulator, simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator}, sv_simulator::{SVSimulator, SVSimulatorDebugger}
+    circuit::{Circuit, HybridCircuit, PureCircuit},
+    debug_simulator::DebugSimulator,
+    gpu_sv_simulator::GpuStateVectorSimulator,
+    simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
+    sv_simulator::{SVSimulator, SVSimulatorDebugger},
 };
 
 extern crate quasim;
