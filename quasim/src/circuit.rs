@@ -840,7 +840,7 @@ impl<'a> Iterator for FlatCircuit<'a, HybridCircuit> {
 mod tests {
     use crate::{
         cart,
-        circuit::{Circuit},
+        circuit::Circuit,
         ext::{equal_to_matrix_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{BuildSimulator, RunnableSimulator},
