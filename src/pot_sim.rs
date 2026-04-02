@@ -1,6 +1,6 @@
-use std::{collections::BTreeMap, ops::Mul, usize};
+use std::{collections::BTreeMap, usize};
 
-use nalgebra::{Complex, DVector, Matrix2, SMatrix, dvector};
+use nalgebra::{Complex, DVector, Matrix2};
 
 use crate::{
     cart,
@@ -10,7 +10,7 @@ use crate::{
     gate::{Gate, GateType, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::DebuggableSimulator,
+    simulator::{DebuggableSimulator, StoredCircuitSimulator},
 };
 
 pub struct GenericSim<C: StateCollection> {
@@ -180,6 +180,18 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
     }
 }
 
+impl<C: StateCollection> StoredCircuitSimulator for GenericSim<C> {
+    type B = HybridCircuit;
+
+    fn circuit(&self) -> &Circuit<Self::B> {
+        &self.circuit
+    }
+
+    fn circuit_mut(&mut self) -> &mut Circuit<Self::B> {
+        &mut self.circuit
+    }
+}
+
 impl<B, C> TryFrom<Circuit<B>> for GenericSim<C>
 where
     B: CircuitBehaviour,
@@ -239,7 +251,6 @@ impl StateCollection for DVector<Complex<f64>> {
     }
 
     fn state(&self, qbits: QBits) -> Complex<f64> {
-        println!("{:?}", qbits);
         self[*qbits]
     }
 
@@ -403,5 +414,20 @@ mod tests {
     #[test]
     fn apply_gates() {
         common_test::apply_gates::<GenericSim<DVector<Complex<f64>>>>();
+    }
+
+    #[test]
+    fn double_sub() {
+        common_test::double_sub::<GenericSim<DVector<Complex<f64>>>>();
+    }
+
+    #[test]
+    fn deep_sub() {
+        common_test::deep_sub::<GenericSim<DVector<Complex<f64>>>>();
+    }
+
+    #[test]
+    fn deep_ctrl_sub() {
+        common_test::deep_ctrl_sub::<GenericSim<DVector<Complex<f64>>>>();
     }
 }
