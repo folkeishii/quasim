@@ -106,8 +106,8 @@ where
 
 #[divan::bench(
     types = [SVSimulator, GpuStateVectorSimulator<WgpuRuntime>],
-    args = [100, 200, 400, 800],
-    sample_count = 3,
+    args = [40, 80, 160, 320],
+    sample_count = 20,
 )]
 fn circuit_num_measurements<S>(n_measure: usize)
 where

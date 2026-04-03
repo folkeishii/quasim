@@ -180,7 +180,7 @@ impl<R: Runtime> GpuStateVector<R> {
                 ScalarArg::new(measurement_mask),
             );
         }
-        self.normalize_after_measurement(measurement as u32, measurement_mask);
+        self.normalize();
 
         measurement
     }
@@ -227,8 +227,8 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    fn normalize_after_measurement(&mut self, measurement: u32, measurement_mask: u32) {
-        self.launch_probs_observe(measurement, measurement_mask);
+    fn normalize(&self) {
+        self.launch_calculate_probs();
         self.build_prob_reduction_hierarchy();
         self.launch_state_vector_normalize();
     }
@@ -253,22 +253,6 @@ impl<R: Runtime> GpuStateVector<R> {
                 cube_dim,
                 ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, num_elems * 2, 1),
                 ArrayArg::from_raw_parts::<f32>(&self.probs_handle, num_elems, 1),
-            );
-        }
-    }
-
-    fn launch_probs_observe(&self, measurement: u32, target_mask: u32) {
-        let num_elems = self.state_vector_len;
-        let (cube_dim, cube_count) = self.cube_opts(num_elems);
-
-        unsafe {
-            let _ = gpu_kernels::probs_observe::launch(
-                &self.client,
-                cube_count,
-                cube_dim,
-                ArrayArg::from_raw_parts::<f32>(&self.probs_handle, num_elems, 1),
-                ScalarArg::new(measurement),
-                ScalarArg::new(target_mask),
             );
         }
     }

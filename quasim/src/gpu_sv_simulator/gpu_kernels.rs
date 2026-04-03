@@ -102,14 +102,6 @@ pub fn calculate_probs(state_vector: &Array<f32>, probs: &mut Array<f32>) {
 }
 
 #[cube(launch)]
-pub fn probs_observe(probs: &mut Array<f32>, measurement: u32, target_mask: u32) {
-    let basis = ABSOLUTE_POS;
-    if basis < probs.len() && ((basis as u32) & target_mask) != measurement {
-        probs[basis] = 0.0;
-    }
-}
-
-#[cube(launch)]
 pub fn sample_cdf_block(
     probs: &Array<f32>,
     sample_index: &mut Array<u32>,
@@ -154,9 +146,9 @@ pub fn sample_cdf_block(
 }
 
 #[cube(launch)]
-pub fn state_vector_normalize(array: &mut Array<f32>, norm: &Array<f32>) {
+pub fn state_vector_normalize(array: &mut Array<f32>, norm_sqr: &Array<f32>) {
     if ABSOLUTE_POS < array.len() {
-        array[ABSOLUTE_POS] /= norm[0].sqrt();
+        array[ABSOLUTE_POS] /= norm_sqr[0].sqrt();
     }
 }
 
