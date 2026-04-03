@@ -46,10 +46,7 @@ where
         }
     }
 
-    pub fn run(&mut self) -> io::Result<()>
-    where
-        S: BuildSimulator<HybridCircuit>,
-    {
+    pub fn run(&mut self) -> io::Result<()> {
         let mut stdout = io::stdout();
         let stdin = io::stdin();
         let mut input_buffer = String::default();
@@ -623,13 +620,8 @@ where
         Ok(())
     }
 
-    fn handle_reset<W: Write>(&mut self, stdout: &mut W) -> io::Result<()>
-    where
-        S: BuildSimulator<S::B> + StoredCircuitSimulator,
-        Circuit<S::B>: Clone,
-    {
-        let circuit: Circuit<S::B> = (*self.simulator.circuit()).clone();
-        self.simulator = S::build(circuit.clone()).expect("Failed to reset simulator");
+    fn handle_reset<W: Write>(&mut self, stdout: &mut W) -> io::Result<()> {
+        self.simulator.reset();
         println!(stdout; "Simulator reset to initial state")?;
         Ok(())
     }

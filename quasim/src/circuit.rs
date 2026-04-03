@@ -19,7 +19,7 @@ use std::fs::read_to_string;
 
 pub use qasm_parse::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Circuit<B: CircuitBehaviour = PureCircuit> {
     instructions: Vec<B::InstructionTy>,
     n_qubits: usize,
@@ -28,6 +28,26 @@ pub struct Circuit<B: CircuitBehaviour = PureCircuit> {
     breakpoints: BreakpointList,
     registers: HashMap<String, usize>,
     sub_circuits: HashMap<String, Circuit>,
+}
+
+/// Clone is implemented manually, since the default generic of `<B: CircuitBehaviour = PureCircuit>`
+/// would only derive clone implementation for PureCircuit, and not for HybridCircuit.
+/// TODO: Maybe there is a more idiomatic way to do this?
+impl<B: CircuitBehaviour> Clone for Circuit<B>
+where
+    B::InstructionTy: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            instructions: self.instructions.clone(),
+            n_qubits: self.n_qubits,
+            labels: self.labels.clone(),
+            unresolved_labels: self.unresolved_labels.clone(),
+            breakpoints: self.breakpoints.clone(),
+            registers: self.registers.clone(),
+            sub_circuits: self.sub_circuits.clone(),
+        }
+    }
 }
 
 // Pure specific
@@ -769,7 +789,7 @@ impl CircuitBehaviour for PureCircuit {
 }
 
 pub trait CircuitBehaviour {
-    type InstructionTy;
+    type InstructionTy: Clone;
     fn from_pure(instruction: PureInstruction) -> Self::InstructionTy;
 }
 

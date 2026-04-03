@@ -37,10 +37,23 @@ pub trait RunnableSimulator {
     fn final_state(&self) -> DVector<Complex<f64>>;
 }
 
+pub trait ResettableSimulator {
+    fn reset(&mut self);
+}
+
+impl<S: StoredCircuitSimulator + BuildSimulator<S::B>> ResettableSimulator for S {
+    fn reset(&mut self) {
+        *self = Self::build(self.circuit().clone()).expect("Failed to reset simulator");
+    }
+}
+
 /// # DebuggableSimulator
 /// Any simulator that can step through a circuit
 /// one gate at a time should implement this trait
-pub trait DebuggableSimulator {
+pub trait DebuggableSimulator
+where
+    Self: ResettableSimulator,
+{
     fn next(&mut self) -> bool;
     /// Unlike `next`, `next_over` will execute all instructions
     /// inside a sub circuit
