@@ -73,6 +73,11 @@ pub fn append_oracle<B: CircuitBehaviour>(
     target: usize,
     anf_coefs: Vec<bool>,
 ) -> Circuit<B> {
+    assert_eq!(
+        anf_coefs.len(),
+        1 << input_qubits.len(),
+        "ANF coefficients length must be 2^n for n input qubits"
+    );
     for (i, coef) in anf_coefs.iter().enumerate() {
         if !coef {
             continue; // Skip if the coefficient is not part of the expression
