@@ -61,6 +61,19 @@ impl Circuit {
         s.qft(&(0..n_qubits).collect::<Vec<_>>())
     }
 
+    /// Creates a new circuit implementing a quantum oracle for a given classical function.
+    /// `input_qubits` are specified in order of least significance, for example [0,1,2,3,4].
+    pub fn new_oracle(
+        n_qubits: usize,
+        input_qubits: &[usize],
+        target: usize,
+        classic_fn: impl Fn(usize) -> bool,
+    ) -> Self {
+        let s = Self::new(n_qubits);
+
+        s.oracle(input_qubits, target, classic_fn)
+    }
+
     pub fn from_qasm_file(file_name: &str) -> Result<Self, QASMParseError> {
         let file_string = read_to_string(file_name)?;
         let parsed_source = SourceFile::parse(&file_string);
@@ -399,6 +412,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     }
 
     /// Appends a circuit implementing a quantum oracle for a given classical function.
+    /// `input_qubits` are specified in order of least significance, for example [0,1,2,3,4].
     pub fn oracle(
         self,
         input_qubits: &[usize],
