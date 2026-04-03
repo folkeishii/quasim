@@ -7,11 +7,7 @@ use crate::expr_dsl::{BitExpr, BoolExpr};
 use crate::gate::QBits;
 use crate::gpu_sv_simulator::gpu_state_vector::GpuStateVector;
 use crate::simulator::RunnableSimulator;
-use crate::{
-    circuit::Circuit,
-    instruction::Instruction,
-    register_file::RegisterFile,
-};
+use crate::{circuit::Circuit, instruction::Instruction, register_file::RegisterFile};
 
 mod gpu_kernels;
 mod gpu_state_vector;
@@ -73,7 +69,9 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
             .measure_bits(QBits::from_bitstring(1 << target));
         let measured_bit = (measurement >> target) & 1;
 
-        self.registers[reg].write_bit(bit_pos, measured_bit).expect("invalid register write");
+        self.registers[reg]
+            .write_bit(bit_pos, measured_bit)
+            .expect("invalid register write");
 
         self.pc += 1;
     }

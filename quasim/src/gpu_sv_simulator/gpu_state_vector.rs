@@ -235,13 +235,6 @@ impl<R: Runtime> GpuStateVector<R> {
 
     // Kernel launch wrappers
 
-    fn top_prob_level(&self) -> (&Handle, usize) {
-        self.reduced_probs
-            .last()
-            .map(|level| (&level.handle, level.len))
-            .unwrap_or((&self.probs_handle, self.state_vector_len))
-    }
-
     fn launch_calculate_probs(&self) {
         let num_elems = self.state_vector_len;
         let (cube_dim, cube_count) = self.cube_opts(num_elems);
