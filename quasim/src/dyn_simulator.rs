@@ -8,7 +8,7 @@ use crate::{
     register_file::RegisterFile,
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
-use nalgebra::{Complex, DMatrix, DVector, dvector};
+use nalgebra::{Complex, DVector, dvector};
 
 /// A system of potentially entangled qubits.
 #[derive(Debug, Clone)]
@@ -213,12 +213,6 @@ impl DynSimulator {
         // Update system acted on.
         self.systems[gate_systems[0]] = sys;
     }
-    /// The density matrix of the whole system.
-    fn density_matrix(&self) -> DMatrix<Complex<f64>> {
-        let v = self.state_vector();
-        let v_adj = v.adjoint();
-        v * v_adj // |s><s|
-    }
 
     /// The state vector of the whole system.
     /// Only works for pure states
@@ -405,20 +399,12 @@ impl StoredCircuitSimulator for DynSimulator {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum DynSimulatorError {
-    #[error("Measurement mid-circuit")]
-    MidCircuitMeasurement,
-}
+pub enum DynSimulatorError {}
 
 #[cfg(test)]
 mod tests {
     use crate::common_test;
-    use crate::ext::{equal_to_matrix_c, reduced_state};
-    use crate::{
-        cart, circuit::Circuit, dyn_simulator::DynSimulator, expr_dsl::expr_helpers::r,
-        simulator::DebuggableSimulator,
-    };
-    use nalgebra::{dmatrix, dvector};
+    use crate::dyn_simulator::DynSimulator;
 
     #[test]
     fn hybrid_test() {
@@ -445,113 +431,24 @@ mod tests {
         common_test::deep_ctrl_sub::<DynSimulator>();
     }
 
+    #[test]
+    fn interleaved() {
+        common_test::interleaved::<DynSimulator>();
+    }
+
+    #[test]
+    fn mid_measure_all() {
+        common_test::mid_measure_all::<DynSimulator>();
+    }
+
+    #[test]
+    fn mid_measure_bit() {
+        common_test::mid_measure_bit::<DynSimulator>();
+    }
+
     fn print_systems(sim: &DynSimulator) {
         for sys in sim.systems.clone() {
             println!("{}", sys);
         }
-    }
-
-    #[test]
-    fn measure_all_test() {
-        let mut sim = DynSimulator::init(
-            Circuit::new(5)
-                .new_reg("a", 4)
-                .new_reg("~a", 4)
-                .h(0)
-                .h(1)
-                .h(2)
-                .h(3)
-                .measure("a")
-                .x(0)
-                .x(1)
-                .x(2)
-                .x(3)
-                .measure("~a")
-                .apply_if((r("a") + r("~a")).eq(0b1111))
-                .x(4),
-        );
-        while sim.next() {}
-        let q4 = reduced_state(&sim.density_matrix(), &[4], 5);
-        assert!(equal_to_matrix_c(
-            &q4,
-            &dmatrix![cart!(0.0), cart!(0.0);
-                      cart!(0.0), cart!(1.0)],
-            0.001
-        ));
-    }
-
-    #[test]
-    fn measure_bit_test() {
-        let mut sim = DynSimulator::init(
-            Circuit::new(5)
-                .new_reg("a", 4)
-                .new_reg("~a", 4)
-                .h(0)
-                .h(1)
-                .h(2)
-                .h(3)
-                .measure_bit(0, ("a", 0))
-                .measure_bit(1, ("a", 1))
-                .measure_bit(2, ("a", 2))
-                .measure_bit(3, ("a", 3))
-                .x(0)
-                .x(1)
-                .x(2)
-                .x(3)
-                .measure_bit(0, ("~a", 0))
-                .measure_bit(1, ("~a", 1))
-                .measure_bit(2, ("~a", 2))
-                .measure_bit(3, ("~a", 3))
-                .apply_if((r("a") + r("~a")).eq(0b1111))
-                .x(4),
-        );
-        while sim.next() {}
-        let q4 = reduced_state(&sim.density_matrix(), &[4], 5);
-        assert!(equal_to_matrix_c(
-            &q4,
-            &dmatrix![cart!(0.0), cart!(0.0);
-                      cart!(0.0), cart!(1.0)],
-            0.001
-        ));
-    }
-
-    #[test]
-    fn interleaved_ch_test() {
-        let mut sim = DynSimulator::init(
-            Circuit::new(4)
-                .h(0)
-                .ch(&[0], 2)
-                .swap(0, 2)
-                .h(1)
-                .ch(&[1], 3)
-                .swap(0, 3)
-                .ch(&[2], 1)
-                .swap(2, 3)
-                .ch(&[0], 3)
-                .swap(0, 1)
-                .into(),
-        );
-        while sim.next() {}
-
-        let expected = dvector![
-            cart!(0.5000000293365844),
-            cart!(0.35355340368276855),
-            cart!(0.12500000042912138),
-            cart!(0.12500000042912138),
-            cart!(0.0),
-            cart!(0.0),
-            cart!(0.12500000042912138),
-            cart!(-0.12500000042912138),
-            cart!(0.4267766656533139),
-            cart!(0.07322330885223931),
-            cart!(-0.12500000042912138),
-            cart!(0.37500001339455813),
-            cart!(0.4267766656533139),
-            cart!(0.07322330885223931),
-            cart!(-0.12500000042912138),
-            cart!(0.12500000042912138),
-        ];
-
-        assert!(equal_to_matrix_c(&sim.state_vector(), &expected, 0.001));
     }
 }

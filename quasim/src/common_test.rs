@@ -1,12 +1,12 @@
 use std::f64::consts::FRAC_1_SQRT_2;
 
-use nalgebra::{Complex, DVector, dvector};
+use nalgebra::{Complex, DVector, dmatrix, dvector};
 
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit},
     expr_dsl::expr_helpers::r,
-    ext::equal_to_matrix_c,
+    ext::{density, equal_to_matrix_c, reduced_state},
     simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 
@@ -256,4 +256,114 @@ pub fn deep_ctrl_sub<
         correct[0] = cart!(1);
         assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
     }
+}
+
+pub fn mid_measure_all<
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+>() {
+    let mut sim = D::build(
+        Circuit::new(5)
+            .new_reg("a", 4)
+            .new_reg("~a", 4)
+            .h(0)
+            .h(1)
+            .h(2)
+            .h(3)
+            .measure("a")
+            .x(0)
+            .x(1)
+            .x(2)
+            .x(3)
+            .measure("~a")
+            .apply_if((r("a") + r("~a")).eq(0b1111))
+            .x(4),
+    )
+    .unwrap();
+    while sim.next() {}
+    let q4 = reduced_state(&density(&sim.current_state().as_slice()), &[4], 5);
+    assert!(equal_to_matrix_c(
+        &q4,
+        &dmatrix![cart!(0.0), cart!(0.0);
+                      cart!(0.0), cart!(1.0)],
+        0.001
+    ));
+}
+
+pub fn mid_measure_bit<
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+>() {
+    let mut sim = D::build(
+        Circuit::new(5)
+            .new_reg("a", 4)
+            .new_reg("~a", 4)
+            .h(0)
+            .h(1)
+            .h(2)
+            .h(3)
+            .measure_bit(0, ("a", 0))
+            .measure_bit(1, ("a", 1))
+            .measure_bit(2, ("a", 2))
+            .measure_bit(3, ("a", 3))
+            .x(0)
+            .x(1)
+            .x(2)
+            .x(3)
+            .measure_bit(0, ("~a", 0))
+            .measure_bit(1, ("~a", 1))
+            .measure_bit(2, ("~a", 2))
+            .measure_bit(3, ("~a", 3))
+            .apply_if((r("a") + r("~a")).eq(0b1111))
+            .x(4),
+    )
+    .unwrap();
+    while sim.next() {}
+    let q4 = reduced_state(&density(sim.current_state().as_slice()), &[4], 5);
+    assert!(equal_to_matrix_c(
+        &q4,
+        &dmatrix![cart!(0.0), cart!(0.0);
+                      cart!(0.0), cart!(1.0)],
+        0.001
+    ));
+}
+
+pub fn interleaved<
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+>() {
+    let mut sim = D::build(
+        Circuit::new(4)
+            .h(0)
+            .ch(&[0], 2)
+            .swap(0, 2)
+            .h(1)
+            .ch(&[1], 3)
+            .swap(0, 3)
+            .ch(&[2], 1)
+            .swap(2, 3)
+            .ch(&[0], 3)
+            .swap(0, 1)
+            .into(),
+    )
+    .unwrap();
+    while sim.next() {}
+
+    let expected = dvector![
+        cart!(0.5000000293365844),
+        cart!(0.35355340368276855),
+        cart!(0.12500000042912138),
+        cart!(0.12500000042912138),
+        cart!(0.0),
+        cart!(0.0),
+        cart!(0.12500000042912138),
+        cart!(-0.12500000042912138),
+        cart!(0.4267766656533139),
+        cart!(0.07322330885223931),
+        cart!(-0.12500000042912138),
+        cart!(0.37500001339455813),
+        cart!(0.4267766656533139),
+        cart!(0.07322330885223931),
+        cart!(-0.12500000042912138),
+        cart!(0.12500000042912138),
+    ];
+
+    assert!(equal_to_matrix_c(&sim.current_state(), &expected, 0.001));
 }

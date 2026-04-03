@@ -122,6 +122,12 @@ pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
     return DMatrix::from_row_slice(dim, dim, data);
 }
 
+pub fn density(state: &[Complex<f64>]) -> DMatrix<Complex<f64>> {
+    let s = DVector::<Complex<f64>>::from_column_slice(state);
+    let s_adj = s.adjoint();
+    s * s_adj
+}
+
 /// Collapse a state vector into a value
 ///
 /// The sum of the squares of each item should equal to one
