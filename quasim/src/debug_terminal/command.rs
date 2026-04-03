@@ -117,6 +117,12 @@ pub enum Command {
     /// show        # Display value of all registers
     /// show [r]    # Display value of register r
     Show(ShowArgs),
+
+    /// Discard state and reset simulator to initial state
+    ///
+    /// Usage:
+    /// reset   # Reset the simulator to initial state
+    Reset,
 }
 impl Command {
     pub fn parse_tokens(tokens: TokenIterator<'_>) -> ParseResult<Self> {
@@ -142,6 +148,13 @@ impl Command {
                     return Err(ParseError::UnexpectedArgument(token.into()));
                 } else {
                     Command::Quit
+                }
+            }
+            CommandIdent::Reset => {
+                if let Some(token) = tokens.next() {
+                    return Err(ParseError::UnexpectedArgument(token.into()));
+                } else {
+                    Command::Reset
                 }
             }
         })
@@ -185,6 +198,8 @@ pub enum CommandIdent {
     Circuit,
     /// show
     Show,
+    /// reset
+    Reset,
 }
 impl CommandIdent {
     pub fn parse_command(tokens: &mut TokenIterator<'_>) -> ParseResult<Self> {
@@ -211,6 +226,7 @@ impl CommandIdent {
             CommandIdent::Collapse => "collapse".into(),
             CommandIdent::Circuit => "circuit".into(),
             CommandIdent::Show => "show".into(),
+            CommandIdent::Reset => "reset".into(),
         }
     }
 }
@@ -234,6 +250,7 @@ impl TryFrom<Token<'_>> for CommandIdent {
             "collapse" | "cl" => Ok(Self::Collapse),
             "circuit" => Ok(Self::Circuit),
             "show" => Ok(Self::Show),
+            "reset" | "r" => Ok(Self::Reset),
             _ => Err(ParseError::ExpectedCommand(value.into())),
         }
     }

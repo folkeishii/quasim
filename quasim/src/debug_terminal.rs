@@ -46,7 +46,10 @@ where
         }
     }
 
-    pub fn run(&mut self) -> io::Result<()> {
+    pub fn run(&mut self) -> io::Result<()>
+    where
+        S: BuildSimulator<HybridCircuit>,
+    {
         let mut stdout = io::stdout();
         let stdin = io::stdin();
         let mut input_buffer = String::default();
@@ -99,6 +102,7 @@ where
                     self.handle_circuit(&mut stdout, &circuit_args)?
                 }
                 Command::Show(show_args) => self.handle_show(&mut stdout, &show_args)?,
+                Command::Reset => self.handle_reset(&mut stdout)?,
             }
         }
         Ok(())
@@ -216,6 +220,7 @@ where
                         'help continue' - Show a detailed description of the continue command with examples."
                     }
                     CommandIdent::Quit => "Exit the debugger.",
+                    CommandIdent::Reset => "Discard state and reset simulator to initial state.",
                 };
                 let command_help = Self::multiline_whitespace_trim(command_help.to_string());
                 println!(stdout; "{} - {}", command, command_help)?;
@@ -238,7 +243,8 @@ where
                     circuit - Show information about the circuit diagram.
                     show - Show the contents of classical registers.
                     help (h) - Show this help message. Optionally specify a command to get more specific help.
-                    quit (q) - Exit the debugger.";
+                    quit (q) - Exit the debugger.
+                    reset (r) - Discard state and reset simulator to initial state.";
 
                 let all_help = Self::multiline_whitespace_trim(all_help.to_string());
                 println!(
@@ -614,6 +620,17 @@ where
             }
         }
 
+        Ok(())
+    }
+
+    fn handle_reset<W: Write>(&mut self, stdout: &mut W) -> io::Result<()>
+    where
+        S: BuildSimulator<S::B> + StoredCircuitSimulator,
+        Circuit<S::B>: Clone,
+    {
+        let circuit: Circuit<S::B> = (*self.simulator.circuit()).clone();
+        self.simulator = S::build(circuit.clone()).expect("Failed to reset simulator");
+        println!(stdout; "Simulator reset to initial state")?;
         Ok(())
     }
 }
