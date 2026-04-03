@@ -3,12 +3,12 @@ use nalgebra::{Complex, DVector};
 
 use crate::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
 use crate::circuit::{CircuitBehaviour, HybridCircuit};
+use crate::expr_dsl::{BitExpr, BoolExpr};
 use crate::gate::QBits;
 use crate::gpu_sv_simulator::gpu_state_vector::GpuStateVector;
 use crate::simulator::RunnableSimulator;
 use crate::{
     circuit::Circuit,
-    expr_dsl::{Expr, Value},
     instruction::Instruction,
     register_file::RegisterFile,
 };
@@ -25,7 +25,7 @@ pub struct GpuStateVectorExecutor<R: Runtime> {
     gpu_state_vector: GpuStateVector<R>,
     batched_circuit: BatchedCircuit,
     pc: usize,
-    registers: RegisterFile<Value>,
+    registers: RegisterFile,
 }
 
 impl<R: Runtime> GpuStateVectorExecutor<R> {
@@ -71,15 +71,9 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
         let measurement = self
             .gpu_state_vector
             .measure_bits(QBits::from_bitstring(1 << target));
-        let shifted_measurement = ((measurement >> target) & 1) << bit_pos;
-        let register_bit_mask = 1 << bit_pos;
+        let measured_bit = (measurement >> target) & 1;
 
-        if let Value::Int(val) = self.registers[reg] {
-            let val_cleared = (val as usize) & !register_bit_mask;
-            self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
-        } else {
-            self.registers[reg] = Value::Int(shifted_measurement as i32)
-        }
+        self.registers[reg].write_bit(bit_pos, measured_bit).expect("invalid register write");
 
         self.pc += 1;
     }
@@ -87,7 +81,7 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
     fn measure_all(&mut self, reg: &str) {
         let measurement = self.gpu_state_vector.measure();
 
-        self.registers[reg] = Value::Int(measurement as i32);
+        self.registers[reg].write(measurement);
 
         self.pc += 1;
     }
@@ -96,23 +90,18 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
         self.pc = label_pc;
     }
 
-    fn jump_if(&mut self, expr: &Expr, label_pc: usize) {
-        match expr.eval(&self.registers) {
-            Ok(Value::Bool(true)) => self.jump(label_pc),
-            Ok(Value::Bool(false)) => self.pc += 1,
-            Err(err) => panic!("{}", err),
-            _ => panic!(
-                "Expression was expected to evaluate to boolean type but got something else."
-            ),
+    fn jump_if(&mut self, expr: &BoolExpr, label_pc: usize) {
+        if expr.eval(&self.registers) {
+            self.jump(label_pc)
+        } else {
+            self.pc += 1
         }
     }
 
-    fn assign(&mut self, expr: &Expr, reg: &str) {
-        match expr.eval(&self.registers) {
-            Ok(value) => self.registers[reg] = value,
-            Err(err) => panic!("{}", err),
-        }
-        self.pc += 1
+    fn assign(&mut self, expr: &BitExpr, reg: &str) {
+        let value = expr.eval(&self.registers);
+        self.registers[reg].write(value);
+        self.pc += 1;
     }
 
     fn apply_instruction(&mut self, inst: &Instruction) {
@@ -150,9 +139,9 @@ where
 
 impl<R: Runtime> RunnableSimulator for GpuStateVectorSimulator<R> {
     fn run(&self) -> usize {
-        let mut exec = GpuStateVectorExecutor::<R>::new(self.circuit.clone());
-        exec.step_all();
-        exec.get_collapsed_state()
+        GpuStateVectorExecutor::<R>::new(self.circuit.clone())
+            .step_all()
+            .get_collapsed_state()
     }
 
     fn final_state(&self) -> DVector<Complex<f32>> {

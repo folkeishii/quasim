@@ -13,6 +13,7 @@ thiserror = "2.0.18"
 oq3_syntax = "0.7.0"
 log.workspace = true
 serde = { version = "1.0.228", features = ["derive"] }
+cubecl = { version = "0.10.0-pre.2", features = ["wgpu", "cuda"] }
 
 [[bench]]
 name = "gate-dsl"

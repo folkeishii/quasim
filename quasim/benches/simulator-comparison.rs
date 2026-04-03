@@ -60,7 +60,7 @@ fn circuit_size_sample<S>(n_qubits: usize)
 where
     S: RunnableSimulator + BuildSimulator<HybridCircuit>,
 {
-    let circuit = Circuit::<PureCircuit>::qft(n_qubits);
+    let circuit = Circuit::<PureCircuit>::new_qft(n_qubits);
 
     let sim = S::build(circuit.into()).expect("Couldnt build circuit...");
     sim.run();
@@ -97,7 +97,7 @@ where
     S: RunnableSimulator + BuildSimulator<HybridCircuit>,
 {
     let circuit = Circuit::new(n_qubits)
-        .new_reg("r0")
+        .new_reg("r0", 1)
         .measure_bit(0, ("r0", 0));
 
     let sim = S::build(circuit).expect("Couldnt build circuit...");
@@ -113,7 +113,7 @@ fn circuit_num_measurements<S>(n_measure: usize)
 where
     S: RunnableSimulator + BuildSimulator<HybridCircuit>,
 {
-    let mut circuit = Circuit::new(18).new_reg("r0");
+    let mut circuit = Circuit::new(18).new_reg("r0", 1);
 
     for _ in 0..n_measure {
         circuit = circuit.measure_bit(0, ("r0", 0));
