@@ -1,6 +1,6 @@
 use crate::circuit::CircuitBehaviour;
 use crate::circuit::pc::CircuitPc;
-use crate::register_file::RegisterFile;
+use crate::register_file::{Register, RegisterFile};
 use crate::{circuit::Circuit, instruction::Instruction};
 use nalgebra::{Complex, DVector};
 
@@ -41,38 +41,34 @@ pub trait RunnableSimulator {
 /// Any simulator that can step through a circuit
 /// one gate at a time should implement this trait
 pub trait DebuggableSimulator {
-    fn next(&mut self) -> Option<&DVector<Complex<f32>>>;
+    fn next(&mut self) -> bool;
     /// Unlike `next`, `next_over` will execute all instructions
     /// inside a sub circuit
-    fn next_over(&mut self) -> Option<&DVector<Complex<f32>>> {
+    fn next_over(&mut self) -> bool {
         let (before, _) = self.current_instruction();
         let before_depth = before.depth();
 
         // Allways do at least one next
-        let mut ret_some = self.next().is_some();
+        let mut ret = self.next();
 
         let (after, _) = self.current_instruction();
         let mut after_depth = after.depth();
 
         while before_depth < after_depth {
             // Inside sub circuit
-            ret_some = self.next().is_some();
+            ret = self.next();
 
             let (after, _) = self.current_instruction();
             after_depth = after.depth();
         }
 
-        if ret_some {
-            Some(self.current_state())
-        } else {
-            None
-        }
+        ret
     }
     /// Not guaranteed to be implemented for every simulator
     ///
     /// `prev` should be implemented if `fn double_ended(&self)`
     /// returns true
-    fn prev(&mut self) -> Option<&DVector<Complex<f32>>> {
+    fn prev(&mut self) -> bool {
         todo!()
     }
     fn double_ended(&self) -> bool;
@@ -87,7 +83,7 @@ pub trait DebuggableSimulator {
     where
         Self: StoredCircuitSimulator,
     {
-        while !self.next().is_none() {
+        while self.next() {
             let (pc, _) = self.current_instruction();
             if self.circuit().enabled_breakpoint_at(pc) {
                 break;
@@ -119,10 +115,10 @@ pub trait StoredCircuitSimulator {
 /// # HybridSimulator
 /// Any simulator that implements classical operations
 /// and stores registers should implement this trait
-pub trait HybridSimulator<T: Copy> {
-    fn registers(&self) -> &RegisterFile<T>;
+pub trait HybridSimulator {
+    fn registers(&self) -> &RegisterFile;
 
-    fn register(&self, register: &str) -> T {
+    fn register(&self, register: &str) -> Register {
         self.registers()[register]
     }
 }
@@ -143,8 +139,9 @@ mod tests {
         let mut sim1 = DebugSimulator::build(circ).unwrap();
         let mut sim2 = sim1.clone();
 
-        sim1.next().unwrap();
-        sim1.next().unwrap();
-        assert!(equal_to_matrix_c(sim1.next().unwrap(), sim2.cont(), 0.001))
+        sim1.next();
+        sim1.next();
+        sim1.next();
+        assert!(equal_to_matrix_c(sim1.current_state(), sim2.cont(), 0.001))
     }
 }

@@ -181,7 +181,7 @@ mod tests {
     #[test]
     fn qft_matches_cpu_state_vector() {
         let n_qubits = 4;
-        let circuit = Circuit::<PureCircuit>::qft(n_qubits);
+        let circuit = Circuit::<PureCircuit>::new_qft(n_qubits);
 
         let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
         let cpu = SVSimulator::build(circuit).unwrap();

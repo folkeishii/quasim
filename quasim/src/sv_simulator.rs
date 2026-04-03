@@ -2,13 +2,14 @@ use nalgebra::{Complex, DVector, Matrix2};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::circuit::{CircuitBehaviour, HybridCircuit};
+use crate::expr_dsl::{BitExpr, BoolExpr};
 use crate::ext::get_u_matrix2;
 use crate::gate::GateType;
-use crate::simulator::HybridSimulator;
+use crate::register_file::RegisterError;
+use crate::simulator::{BuildSimulator, HybridSimulator};
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
-    expr_dsl::{Expr, Value},
     gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
@@ -20,24 +21,10 @@ pub struct SVExecutor {
     state_vector: DVector<Complex<f32>>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
-    registers: RegisterFile<Value>,
+    registers: RegisterFile,
 }
 
 impl SVExecutor {
-    fn new(circuit: Circuit<HybridCircuit>) -> Self {
-        let size = 1 << circuit.n_qubits();
-        let mut init_state_vector: DVector<Complex<f32>> = DVector::from_element(size, cart![0.0]);
-        init_state_vector[0] = cart![1.0];
-
-        let registers = RegisterFile::from(circuit.registers());
-        Self {
-            state_vector: init_state_vector,
-            circuit: circuit,
-            pc: Default::default(),
-            registers: registers,
-        }
-    }
-
     /// Step forward one instruction in the circuit
     pub fn step(&mut self) -> Option<&DVector<Complex<f32>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
@@ -197,22 +184,17 @@ impl SVExecutor {
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
-        let measurement = self.get_collapsed_state();
         let mask = 1 << target;
-        let measured_bit = measurement & mask;
-        let shifted_measurement = ((measurement >> target) & 1) << bit_pos;
-        let register_bit_mask = 1 << bit_pos;
+        let measurement = self.get_collapsed_state() & mask;
+        let measured_bit = (measurement >> target) & 1;
 
-        if let Value::Int(val) = self.registers[reg] {
-            let val_cleared = (val as usize) & !register_bit_mask;
-            self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
-        } else {
-            self.registers[reg] = Value::Int(shifted_measurement as i32)
-        }
+        self.registers[reg]
+            .write_bit(bit_pos, measured_bit)
+            .expect("invalid register write");
 
         // Go through state vector and remove amplitude for all states that do not align with measurement
         for (i, amp) in self.state_vector.iter_mut().enumerate() {
-            if (i & mask) != measured_bit {
+            if (i & mask) != measurement {
                 *amp = Complex::ZERO;
             }
         }
@@ -232,7 +214,7 @@ impl SVExecutor {
     fn measure_all(&mut self, reg: &str) {
         let measurement = self.get_collapsed_state();
 
-        self.registers[reg] = Value::Int(measurement as i32);
+        self.registers[reg].write(measurement);
 
         // Collapse whole state vector
         self.state_vector.fill(cart!(0.0));
@@ -245,22 +227,17 @@ impl SVExecutor {
         self.pc_mut().jump(label_pc);
     }
 
-    fn jump_if(&mut self, expr: &Expr, label_pc: usize) {
-        match expr.eval(&self.registers) {
-            Ok(Value::Bool(true)) => self.jump(label_pc),
-            Ok(Value::Bool(false)) => self.pc_mut().increment(),
-            Err(err) => panic!("{}", err),
-            _ => panic!(
-                "Expression was expected to evaluate to boolean type but got something else."
-            ),
+    fn jump_if(&mut self, expr: &BoolExpr, label_pc: usize) {
+        if expr.eval(&self.registers) {
+            self.jump(label_pc)
+        } else {
+            self.pc_mut().increment()
         }
     }
 
-    fn assign(&mut self, expr: &Expr, reg: &str) {
-        match expr.eval(&self.registers) {
-            Ok(value) => self.registers[reg] = value,
-            Err(err) => panic!("{}", err),
-        }
+    fn assign(&mut self, expr: &BitExpr, reg: &str) {
+        let value = expr.eval(&self.registers);
+        self.registers[reg].write(value);
         self.pc_mut().increment();
     }
 
@@ -284,6 +261,29 @@ impl SVExecutor {
 
     fn pc_mut(&mut self) -> &mut CircuitPc {
         &mut self.pc
+    }
+}
+
+impl<B> TryFrom<Circuit<B>> for SVExecutor
+where
+    B: CircuitBehaviour,
+    Circuit<B>: Into<Circuit<HybridCircuit>>,
+{
+    type Error = SVError;
+
+    fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
+        let size = 1 << value.n_qubits();
+        let mut init_state_vector: DVector<Complex<f32>> = DVector::from_element(size, cart![0.0]);
+        init_state_vector[0] = cart![1.0];
+
+        let registers = RegisterFile::from(value.registers());
+
+        Ok(Self {
+            state_vector: init_state_vector,
+            circuit: value.into(),
+            pc: Default::default(),
+            registers: registers,
+        })
     }
 }
 
@@ -321,13 +321,15 @@ where
 
 impl RunnableSimulator for SVSimulator {
     fn run(&self) -> usize {
-        SVExecutor::new(self.circuit.clone())
+        SVExecutor::build(self.circuit.clone())
+            .unwrap()
             .step_all()
             .get_collapsed_state()
     }
 
     fn final_state(&self) -> DVector<Complex<f32>> {
-        SVExecutor::new(self.circuit.clone())
+        SVExecutor::build(self.circuit.clone())
+            .unwrap()
             .step_all()
             .state_vector()
             .clone()
@@ -341,23 +343,26 @@ pub struct SVSimulatorDebugger {
     executor: SVExecutor,
 }
 
-impl<T> TryFrom<Circuit<T>> for SVSimulatorDebugger
+impl<B> TryFrom<Circuit<B>> for SVSimulatorDebugger
 where
-    T: CircuitBehaviour,
-    Circuit<T>: Into<Circuit<HybridCircuit>>,
+    B: CircuitBehaviour,
+    Circuit<B>: Into<Circuit<HybridCircuit>>,
 {
     type Error = SVError;
 
-    fn try_from(value: Circuit<T>) -> Result<Self, Self::Error> {
+    fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
         Ok(Self {
-            executor: SVExecutor::new(value.into()),
+            executor: SVExecutor::build(value)?,
         })
     }
 }
 
 impl DebuggableSimulator for SVSimulatorDebugger {
-    fn next(&mut self) -> Option<&DVector<Complex<f32>>> {
-        self.executor.step()
+    fn next(&mut self) -> bool {
+        match self.executor.step() {
+            Some(_) => true,
+            None => false,
+        }
     }
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
@@ -369,8 +374,8 @@ impl DebuggableSimulator for SVSimulatorDebugger {
         &self.executor.state_vector
     }
 
-    fn prev(&mut self) -> Option<&DVector<Complex<f32>>> {
-        None
+    fn prev(&mut self) -> bool {
+        false
     }
 
     fn double_ended(&self) -> bool {
@@ -390,14 +395,17 @@ impl StoredCircuitSimulator for SVSimulatorDebugger {
     }
 }
 
-impl HybridSimulator<Value> for SVSimulatorDebugger {
-    fn registers(&self) -> &RegisterFile<Value> {
+impl HybridSimulator for SVSimulatorDebugger {
+    fn registers(&self) -> &RegisterFile {
         &self.executor.registers
     }
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum SVError {}
+pub enum SVError {
+    #[error("{0}")]
+    RegisterError(#[from] RegisterError),
+}
 
 #[cfg(test)]
 mod tests {
@@ -405,9 +413,8 @@ mod tests {
 
     use nalgebra::dvector;
 
-    use crate::expr_dsl::Value;
     use crate::ext::equal_to_matrix_c;
-    use crate::simulator::{DebuggableSimulator, HybridSimulator};
+    use crate::simulator::DebuggableSimulator;
     use crate::sv_simulator::SVSimulatorDebugger;
     use crate::{cart, common_test};
     use crate::{
@@ -420,10 +427,10 @@ mod tests {
     #[test]
     fn test() {
         let circuit = Circuit::new(4)
-            .new_reg("r0")
-            .new_reg("r1")
-            .new_reg("r2")
-            .new_reg("r3")
+            .new_reg("r0", 1)
+            .new_reg("r1", 1)
+            .new_reg("r2", 1)
+            .new_reg("r3", 1)
             // Init random state
             .h(0)
             .h(1)
@@ -473,28 +480,28 @@ mod tests {
     fn test_sub() {
         let sub = Circuit::new(1).h(0).breakpoint();
         let circuit = Circuit::new(4)
-            .new_reg("tmp")
+            .new_reg("tmp", 1)
             .new_sub_circuit("U", sub)
             // Hybrid check
-            .assign("tmp", 0.into())
+            .assign("tmp", 0)
             .call("U", 0)
             .measure_bit(0, ("tmp", 0))
             .apply_if(r("tmp").gt(0))
             .x(0)
             // Hybrid check
-            .assign("tmp", 0.into())
+            .assign("tmp", 0)
             .call("U", 1)
             .measure_bit(1, ("tmp", 0))
             .apply_if(r("tmp").gt(0))
             .x(1)
             // Hybrid check
-            .assign("tmp", 0.into())
+            .assign("tmp", 0)
             .call("U", 2)
             .measure_bit(2, ("tmp", 0))
             .apply_if(r("tmp").gt(0))
             .x(2)
             // Hybrid check
-            .assign("tmp", 0.into())
+            .assign("tmp", 0)
             .call("U", 3)
             .measure_bit(3, ("tmp", 0))
             .apply_if(r("tmp").gt(0))
@@ -615,27 +622,18 @@ mod tests {
     }
 
     #[test]
-    fn test_register() {
-        let circuit = Circuit::new(2).new_reg("r0").x(1).measure_bit(1, ("r0", 0));
-
-        let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-        sim.executor.step_all();
-
-        assert_eq!(sim.register("r0"), Value::Int(1));
+    fn hybrid_test() {
+        common_test::hybrid_test::<SVSimulatorDebugger>();
     }
 
     #[test]
-    fn test_measure_bit_overwrites_existing_zero() {
-        let circuit = Circuit::new(2)
-            .new_reg("tmp")
-            .x(0)
-            .measure_bit(0, ("tmp", 0))
-            .measure_bit(1, ("tmp", 0));
+    fn register_test() {
+        common_test::register_test::<SVSimulatorDebugger>();
+    }
 
-        let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-        sim.executor.step_all();
-
-        assert_eq!(sim.register("tmp"), Value::Int(0));
+    #[test]
+    fn test_measure_overwrites_with_zero() {
+        common_test::test_measure_overwrites_with_zero::<SVSimulatorDebugger>();
     }
 
     #[test]
