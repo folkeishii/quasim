@@ -6,14 +6,13 @@ use crate::{
     instruction::Instruction,
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BatchedCircuit {
     batcher: GateBatcher,
     instruction_lookup: BTreeMap<usize, BatchedCircuitOp>,
-    data: GateBatchData,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum BatchedCircuitOp {
     BatchCommands(Vec<BatchCommand>),
     Instruction(Instruction),
@@ -30,7 +29,6 @@ impl BatchedCircuit {
         let mut batched_circuit = Self {
             batcher: GateBatcher::new(max_target_qubits),
             instruction_lookup: BTreeMap::new(),
-            data: GateBatchData::new(),
         };
 
         let circuit = circuit.into();
@@ -58,7 +56,7 @@ impl BatchedCircuit {
     }
 
     pub fn data(&self) -> &GateBatchData {
-        &self.data
+        &self.batcher.data()
     }
 
     pub fn operation(&self, index: usize) -> Option<&BatchedCircuitOp> {
@@ -69,18 +67,16 @@ impl BatchedCircuit {
     }
 
     fn flush_batches(&mut self, to_inst_index: usize) {
-        let batch_data = self.batcher.flush_batches();
+        let batch_commands = self.batcher.flush_batches();
 
-        if batch_data.commands().is_empty() {
+        if batch_commands.is_empty() {
             return;
         }
 
         self.instruction_lookup.insert(
             to_inst_index,
-            BatchedCircuitOp::BatchCommands(batch_data.commands().to_vec()),
+            BatchedCircuitOp::BatchCommands(batch_commands),
         );
-
-        self.data.append(batch_data);
     }
 }
 

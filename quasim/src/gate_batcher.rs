@@ -73,7 +73,6 @@ pub struct GateBatchData {
     target_data: Vec<u32>,
     control_data: Vec<u32>,
     len: usize,
-    commands: Vec<BatchCommand>,
 }
 
 impl GateBatchData {
@@ -83,7 +82,6 @@ impl GateBatchData {
             target_data: Vec::new(),
             control_data: Vec::new(),
             len: 0,
-            commands: Vec::new(),
         }
     }
 
@@ -93,7 +91,6 @@ impl GateBatchData {
             target_data: Vec::with_capacity(nodes),
             control_data: Vec::with_capacity(nodes),
             len: 0,
-            commands: Vec::with_capacity(nodes),
         }
     }
 
@@ -102,7 +99,6 @@ impl GateBatchData {
         self.target_data.append(&mut other.target_data);
         self.control_data.append(&mut other.control_data);
         self.len += other.len;
-        self.commands.append(&mut other.commands);
     }
 
     pub fn gate_data(&self) -> &[Complex<f32>] {
@@ -117,10 +113,6 @@ impl GateBatchData {
         &self.control_data
     }
 
-    pub fn commands(&self) -> &[BatchCommand] {
-        &self.commands
-    }
-
     pub fn len(&self) -> usize {
         self.len
     }
@@ -128,12 +120,6 @@ impl GateBatchData {
     fn insert_from(&mut self, gate_batch: &GateBatch, gate_nodes: &[GateNode]) {
         let mut node_ids = gate_batch.nodes.clone();
         node_ids.sort_unstable();
-
-        self.commands.push(BatchCommand {
-            start_index: self.len as u32,
-            size: node_ids.len() as u32,
-            targets: gate_batch.target_union,
-        });
 
         for node_id in node_ids {
             let gate_node = &gate_nodes[node_id];
@@ -161,6 +147,8 @@ pub struct GateBatcher {
     nodes: Vec<GateNode>,
 
     max_target_qubits: usize,
+
+    data: GateBatchData,
 }
 
 impl GateBatcher {
@@ -170,6 +158,7 @@ impl GateBatcher {
             batches: Vec::new(),
             nodes: Vec::new(),
             max_target_qubits,
+            data: GateBatchData::new(),
         }
     }
 
@@ -182,8 +171,8 @@ impl GateBatcher {
 
     /// Clears frontier. Subsequent gate additions will be added to new batches.
     ///
-    /// Returns all flushed batches as a `GateBatchData`
-    pub fn flush_batches(&mut self) -> GateBatchData {
+    /// Returns commands for all flushed batches as a `Vec<BatchCommand>`
+    pub fn flush_batches(&mut self) -> Vec<BatchCommand> {
         let _ = mem::take(&mut self.frontier);
         let batches = mem::take(&mut self.batches);
         let nodes = mem::take(&mut self.nodes);
@@ -200,14 +189,6 @@ impl GateBatcher {
             })
             .collect();
 
-        // Create batch data from all nodes
-        let total_nodes = batch_ids
-            .iter()
-            .map(|&batch_id| batches[batch_id].nodes.len())
-            .sum();
-
-        let mut batch_data = GateBatchData::with_capacity(total_nodes);
-
         batch_ids.sort_by_key(|&batch_id| {
             batches[batch_id]
                 .nodes
@@ -217,11 +198,26 @@ impl GateBatcher {
                 .unwrap_or(usize::MAX)
         });
 
+        let mut batch_commands = Vec::<BatchCommand>::new();
+
         for batch_id in batch_ids {
-            batch_data.insert_from(&batches[batch_id], &nodes);
+            let batch = &batches[batch_id];
+
+            batch_commands.push(BatchCommand {
+                start_index: self.data.len() as u32,
+                size: batch.nodes.len() as u32,
+                targets: batch.target_union,
+            });
+
+            self.data.insert_from(batch, &nodes);
+
         }
 
-        batch_data
+        batch_commands
+    }
+
+    pub fn data(&self) -> &GateBatchData {
+        &self.data
     }
 
     fn add_swap(&mut self, gate: &Gate) {

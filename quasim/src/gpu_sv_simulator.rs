@@ -158,11 +158,7 @@ mod tests {
     use cubecl::wgpu::WgpuRuntime;
 
     use crate::{
-        circuit::{Circuit, PureCircuit},
-        ext::equal_to_matrix_c,
-        gpu_sv_simulator::GpuStateVectorSimulator,
-        simulator::{BuildSimulator, RunnableSimulator},
-        sv_simulator::SVSimulator,
+        circuit::{Circuit, PureCircuit}, expr_dsl::expr_helpers::rb, ext::equal_to_matrix_c, gpu_sv_simulator::GpuStateVectorSimulator, simulator::{BuildSimulator, RunnableSimulator}, sv_simulator::SVSimulator
     };
 
     #[test]
@@ -188,5 +184,34 @@ mod tests {
         let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit).unwrap();
 
         assert_eq!(gpu.run(), (1 << 14) | (1 << 7) | 1);
+    }
+
+    #[test]
+    fn test_hybrid() {
+        let circuit = Circuit::new(20)
+            .new_reg("rbits", 4)
+            // Init random state
+            .h(0)
+            .h(1)
+            .h(2)
+            .h(3)
+            .measure_bit(0, ("rbits", 0))
+            .measure_bit(1, ("rbits", 1))
+            .measure_bit(2, ("rbits", 2))
+            .measure_bit(3, ("rbits", 3))
+            .apply_if(rb("rbits", 0).eq(1))
+            .x(0)
+            .apply_if(rb("rbits", 1).eq(1))
+            .x(1)
+            .apply_if(rb("rbits", 2).eq(1))
+            .x(2)
+            .apply_if(rb("rbits", 3).eq(1))
+            .x(3);
+
+        let sim = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit).unwrap();
+
+        for i in 0..100 {
+            assert_eq!(sim.run(), 0, "in iter {i}");
+        }
     }
 }
