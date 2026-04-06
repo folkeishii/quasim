@@ -76,7 +76,7 @@ pub trait DebuggableSimulator {
     /// `prev` should be implemented if `fn double_ended(&self)`
     /// returns true
     fn prev(&mut self) -> bool {
-        todo!()
+        false
     }
     fn double_ended(&self) -> bool;
     /// Returns current pc and instruction
