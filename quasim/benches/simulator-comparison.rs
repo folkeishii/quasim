@@ -1,18 +1,25 @@
+use divan::AllocProfiler;
+use nalgebra::{Complex, DVector};
 use quasim::{
     circuit::{Circuit, HybridCircuit},
     debug_simulator::DebugSimulator,
+    gate::QBits,
+    pot_sim::{GenericSim, StateMaybe},
     simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
     sv_simulator::SVSimulatorDebugger,
 };
+use std::collections::BTreeMap;
 
 extern crate quasim;
+#[global_allocator]
+static ALLOCATOR: AllocProfiler = AllocProfiler::system();
 
 fn main() {
     divan::main();
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, DebugSimulator],
+    types = [SVSimulatorDebugger, DebugSimulator, GenericSim<DVector<Complex<f64>>>, GenericSim<StateMaybe<BTreeMap<QBits, Complex<f64>>>>],
     args = [2,3,4,5,6,7,8,9,10,11],
     sample_count = 10,
 )]
@@ -31,7 +38,7 @@ where
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, DebugSimulator],
+    types = [SVSimulatorDebugger, DebugSimulator, GenericSim<DVector<Complex<f64>>>, GenericSim<StateMaybe<BTreeMap<QBits, Complex<f64>>>>],
     args = [1000,2000,4000,8000,16000,32000],
     sample_count = 10,
 )]

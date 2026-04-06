@@ -408,7 +408,7 @@ impl<T: Ord> OrdByKey<T> for T {
 /// Items are offsets of targets
 pub struct TargetIter {
     rem: QBits,
-    removed: usize
+    removed: usize,
 }
 impl From<QBits> for TargetIter {
     fn from(value: QBits) -> Self {
@@ -423,7 +423,7 @@ impl Iterator for TargetIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         if *self.rem == 0 {
-            return None
+            return None;
         }
 
         while *self.rem & 1 == 0 {
@@ -459,7 +459,7 @@ impl From<usize> for BitMaskIter {
         Self {
             bitmask: value,
             next: 0,
-            exhausted: false
+            exhausted: false,
         }
     }
 }
@@ -468,7 +468,7 @@ impl Iterator for BitMaskIter {
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.exhausted {
-            return None
+            return None;
         }
 
         let mut ret = 0;
@@ -480,14 +480,14 @@ impl Iterator for BitMaskIter {
                     ret |= mask_i;
                     mask_i <<= 1;
                     next_i <<= 1;
-                },
+                }
                 (true, false) => {
                     mask_i <<= 1;
                     next_i <<= 1;
-                },
+                }
                 (false, _) => {
                     mask_i <<= 1;
-                },
+                }
             }
         }
 
@@ -499,11 +499,11 @@ impl Iterator for BitMaskIter {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::ext::{
-        BitMaskIter, convert_matrix, convert_vector, equal_to_matrix_c, expand_matrix_from_gate, get_gate_matrix, swap_matrix
+        BitMaskIter, convert_matrix, convert_vector, equal_to_matrix_c, expand_matrix_from_gate,
+        get_gate_matrix, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};

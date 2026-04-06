@@ -5,3 +5,6 @@ target/
 *.swp
 
 .vscode/
+
+# General
+.tmp
