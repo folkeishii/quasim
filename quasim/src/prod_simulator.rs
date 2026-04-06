@@ -73,7 +73,7 @@ fn system_product(systems: &[EntSys]) -> EntSys {
 }
 
 #[derive(Debug, Clone)]
-pub struct DynSimulator {
+pub struct ProdSimulator {
     systems: Vec<EntSys>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
@@ -81,7 +81,7 @@ pub struct DynSimulator {
     state_cache: DVector<Complex<f64>>,
 }
 
-impl DynSimulator {
+impl ProdSimulator {
     fn init(circuit: Circuit<HybridCircuit>) -> Self {
         // Initial state assumed to be |000..>
         // No entanglement -> one system for each qubit.
@@ -100,7 +100,7 @@ impl DynSimulator {
         let mut init_state = DVector::<Complex<f64>>::zeros(1 << circuit.n_qubits());
         init_state[0] = cart!(1.0);
 
-        DynSimulator {
+        ProdSimulator {
             systems: init_sys,
             circuit: circuit,
             pc: Default::default(),
@@ -328,16 +328,16 @@ impl DynSimulator {
     }
 }
 
-impl TryFrom<Circuit<PureCircuit>> for DynSimulator {
-    type Error = DynSimulatorError;
+impl TryFrom<Circuit<PureCircuit>> for ProdSimulator {
+    type Error = ProdSimulatorError;
 
     fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
         Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
     }
 }
 
-impl TryFrom<Circuit<HybridCircuit>> for DynSimulator {
-    type Error = DynSimulatorError;
+impl TryFrom<Circuit<HybridCircuit>> for ProdSimulator {
+    type Error = ProdSimulatorError;
 
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         let circuit = value;
@@ -348,13 +348,13 @@ impl TryFrom<Circuit<HybridCircuit>> for DynSimulator {
     }
 }
 
-impl HybridSimulator for DynSimulator {
+impl HybridSimulator for ProdSimulator {
     fn registers(&self) -> &RegisterFile {
         &self.registers
     }
 }
 
-impl DebuggableSimulator for DynSimulator {
+impl DebuggableSimulator for ProdSimulator {
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             return false;
@@ -387,7 +387,7 @@ impl DebuggableSimulator for DynSimulator {
         false
     }
 }
-impl StoredCircuitSimulator for DynSimulator {
+impl StoredCircuitSimulator for ProdSimulator {
     type B = HybridCircuit;
     fn circuit(&self) -> &Circuit<HybridCircuit> {
         &self.circuit
@@ -399,54 +399,54 @@ impl StoredCircuitSimulator for DynSimulator {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum DynSimulatorError {}
+pub enum ProdSimulatorError {}
 
 #[cfg(test)]
 mod tests {
     use crate::common_test;
-    use crate::dyn_simulator::DynSimulator;
+    use crate::prod_simulator::ProdSimulator;
 
     #[test]
     fn hybrid_test() {
-        common_test::hybrid_test::<DynSimulator>();
+        common_test::hybrid_test::<ProdSimulator>();
     }
 
     #[test]
     fn register_test() {
-        common_test::register_test::<DynSimulator>();
+        common_test::register_test::<ProdSimulator>();
     }
 
     #[test]
     fn double_sub() {
-        common_test::double_sub::<DynSimulator>();
+        common_test::double_sub::<ProdSimulator>();
     }
 
     #[test]
     fn deep_sub() {
-        common_test::deep_sub::<DynSimulator>();
+        common_test::deep_sub::<ProdSimulator>();
     }
 
     #[test]
     fn deep_ctrl_sub() {
-        common_test::deep_ctrl_sub::<DynSimulator>();
+        common_test::deep_ctrl_sub::<ProdSimulator>();
     }
 
     #[test]
     fn interleaved() {
-        common_test::interleaved::<DynSimulator>();
+        common_test::interleaved::<ProdSimulator>();
     }
 
     #[test]
     fn mid_measure_all() {
-        common_test::mid_measure_all::<DynSimulator>();
+        common_test::mid_measure_all::<ProdSimulator>();
     }
 
     #[test]
     fn mid_measure_bit() {
-        common_test::mid_measure_bit::<DynSimulator>();
+        common_test::mid_measure_bit::<ProdSimulator>();
     }
 
-    fn print_systems(sim: &DynSimulator) {
+    fn print_systems(sim: &ProdSimulator) {
         for sys in sim.systems.clone() {
             println!("{}", sys);
         }
