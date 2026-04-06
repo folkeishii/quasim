@@ -34,7 +34,7 @@ where
 /// final state without changing internal state
 /// should implement this trait
 pub trait RunnableSimulator {
-    type Storage: Index<usize, Output = Self::State>;
+    type Storage;
     type State;
 
     fn run(&self) -> usize;
