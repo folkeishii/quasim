@@ -93,8 +93,8 @@ impl<C: StateCollection> GenericSim<C> {
         self.register_file[reg].write(val);
 
         self.state.retain_norm(|state, _| {
-            let s_mask = *state & q_masked;
-            s_mask ^ q_masked == 0
+            let s_masked = *state & q_mask;
+            s_masked ^ q_masked == 0
         });
     }
 
@@ -285,18 +285,18 @@ impl StateCollection for DVector<Complex<f64>> {
     }
 }
 
-pub struct StateMaybe<const ZM: usize, C: IncompleteStateCollection> {
+pub struct StateMaybe<C: IncompleteStateCollection, const ZM: usize = 1000000> {
     collection: C,
 }
 
-impl<const ZM: usize, C> StateMaybe<ZM, C>
+impl<const ZM: usize, C> StateMaybe<C, ZM>
 where
     C: IncompleteStateCollection,
 {
     const ZERO_MARGIN: f64 = 1.0 / ZM as f64;
 }
 
-impl<const ZM: usize, C> StateCollection for StateMaybe<ZM, C>
+impl<const ZM: usize, C> StateCollection for StateMaybe<C, ZM>
 where
     C: IncompleteStateCollection,
 {
@@ -343,7 +343,9 @@ pub trait IncompleteStateCollection {
 
 impl IncompleteStateCollection for BTreeMap<QBits, Complex<f64>> {
     fn new() -> Self {
-        Self::new()
+        let mut s = Self::new();
+        s.insert(0.into(), cart!(1));
+        s
     }
 
     fn state(&self, qbits: QBits) -> Option<Complex<f64>> {
@@ -405,43 +407,69 @@ pub enum GenericSimError {}
 
 #[cfg(test)]
 mod tests {
+    use super::{GenericSim, StateMaybe};
+    use crate::{common_test, gate::QBits};
     use nalgebra::{Complex, DVector};
+    use std::collections::BTreeMap;
 
-    use crate::{common_test, pot_sim::GenericSim};
-
-    #[test]
-    fn apply_gates() {
-        common_test::apply_gates::<GenericSim<DVector<Complex<f64>>>>();
+    macro_rules! expand_gen {
+        (dvector) => {
+            DVector<Complex<f64>>
+        };
+        (btree) => {
+            StateMaybe<BTreeMap<QBits, Complex<f64>>>
+        }
+    }
+    macro_rules! def_test {
+        ($tst:ident; $($id:ident, $ty:ident);+ $(;)?) => {
+            $(
+                #[test]
+                fn $id() {
+                    common_test::$tst::<GenericSim<expand_gen!($ty)>>();
+                }
+            )+
+        };
     }
 
-    #[test]
-    fn double_sub() {
-        common_test::double_sub::<GenericSim<DVector<Complex<f64>>>>();
-    }
+    def_test!(
+        apply_gates;
+        apply_gates_dvector, dvector;
+        apply_gates_btree, btree;
+    );
 
-    #[test]
-    fn deep_sub() {
-        common_test::deep_sub::<GenericSim<DVector<Complex<f64>>>>();
-    }
+    def_test!(
+        double_sub;
+        double_sub_dvector, dvector;
+        double_sub_btree, btree;
+    );
 
-    #[test]
-    fn deep_ctrl_sub() {
-        common_test::deep_ctrl_sub::<GenericSim<DVector<Complex<f64>>>>();
-    }
+    def_test!(
+        deep_sub;
+        deep_sub_dvector, dvector;
+        deep_sub_btree, btree;
+    );
 
+    def_test!(
+        deep_ctrl_sub;
+        deep_ctrl_sub_dvector, dvector;
+        deep_ctrl_sub_btree, btree;
+    );
 
-    #[test]
-    fn hybrid_test() {
-        common_test::hybrid_test::<GenericSim<DVector<Complex<f64>>>>();
-    }
+    def_test!(
+        hybrid_test;
+        hybrid_test_dvector, dvector;
+        hybrid_test_btree, btree;
+    );
 
-    #[test]
-    fn register_test() {
-        common_test::register_test::<GenericSim<DVector<Complex<f64>>>>();
-    }
+    def_test!(
+        register_test;
+        register_test_dvector, dvector;
+        register_test_btree, btree;
+    );
 
-    #[test]
-    fn test_measure_overwrites_with_zero() {
-        common_test::test_measure_overwrites_with_zero::<GenericSim<DVector<Complex<f64>>>>();
-    }
+    def_test!(
+        test_measure_overwrites_with_zero;
+        test_measure_overwrites_with_zero_dvector, dvector;
+        test_measure_overwrites_with_zero_btree, btree;
+    );
 }
