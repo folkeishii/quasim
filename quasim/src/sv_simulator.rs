@@ -424,7 +424,7 @@ mod tests {
     use nalgebra::dvector;
 
     use crate::ext::equal_state_c;
-    use crate::simulator::{DebuggableSimulator};
+    use crate::simulator::DebuggableSimulator;
     use crate::sv_simulator::SVSimulatorDebugger;
     use crate::{cart, common_test};
     use crate::{
