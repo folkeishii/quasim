@@ -1,5 +1,3 @@
-use std::ops::Index;
-
 use crate::circuit::CircuitBehaviour;
 use crate::circuit::pc::CircuitPc;
 use crate::register_file::RegisterFile;
