@@ -1,5 +1,4 @@
 use quasim::circuit::Circuit;
-use quasim::expr_dsl::Value;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
@@ -26,7 +25,7 @@ fn find_secret_string_classical(f: impl Fn(u8) -> u8) -> u8 {
 }
 
 fn find_secret_string_quantum(secret: u8) -> u8 {
-    let mut circuit = Circuit::new(N + 1).new_reg("res");
+    let mut circuit = Circuit::new(N + 1).new_reg("res", N);
     circuit = circuit.x(N);
 
     for i in 0..=N {
@@ -47,18 +46,9 @@ fn find_secret_string_quantum(secret: u8) -> u8 {
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.cont();
 
-    match sim.register("res") {
-        Value::Int(i) => {
-            // Output is reversed
-            (i as u8).reverse_bits() >> (8 - N)
-        }
-        Value::Float(_) => {
-            panic!("Unexpected float register")
-        }
-        Value::Bool(_) => {
-            panic!("Unexpected bool register")
-        }
-    }
+    let res = sim.register("res").read();
+    // Output is reversed
+    (res as u8).reverse_bits() >> (8 - N)
 }
 
 fn main() {

@@ -1,10 +1,10 @@
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
-    expr_dsl::{Expr, Value},
+    expr_dsl::{BitExpr, BoolExpr},
     ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv},
     instruction::Instruction,
-    register_file::RegisterFile,
+    register_file::{RegisterError, RegisterFile},
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 use nalgebra::{Complex, DVector};
@@ -14,7 +14,7 @@ pub struct DebugSimulator {
     current_state: DVector<Complex<f64>>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
-    registers: RegisterFile<Value>,
+    registers: RegisterFile,
 }
 
 impl TryFrom<Circuit<PureCircuit>> for DebugSimulator {
@@ -49,8 +49,8 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
     }
 }
 
-impl HybridSimulator<Value> for DebugSimulator {
-    fn registers(&self) -> &RegisterFile<Value> {
+impl HybridSimulator for DebugSimulator {
+    fn registers(&self) -> &RegisterFile {
         &self.registers
     }
 }
@@ -141,14 +141,9 @@ impl DebugSimulator {
         let (measurement, new_state) =
             measure_and_observe_sv(target, &self.current_state, self.n_qubits());
 
-        let shifted_measurement = measurement << bit_pos;
-
-        if let Value::Int(val) = self.registers[reg] {
-            let val_cleared = (val as usize) & !shifted_measurement;
-            self.registers[reg] = Value::Int((val_cleared | shifted_measurement) as i32)
-        } else {
-            self.registers[reg] = Value::Int(shifted_measurement as i32)
-        }
+        self.registers[reg]
+            .write_bit(bit_pos, measurement)
+            .expect("invalid register write");
 
         self.current_state = new_state;
 
@@ -158,7 +153,7 @@ impl DebugSimulator {
     fn measure_all(&mut self, reg: &str) {
         let measurement = collapse(self.current_state.as_slice());
 
-        self.registers[reg] = Value::Int(measurement as i32);
+        self.registers[reg].write(measurement);
 
         // Collapse whole state vector
         self.current_state.fill(cart!(0.0));
@@ -171,22 +166,17 @@ impl DebugSimulator {
         self.pc_mut().jump(label_pc);
     }
 
-    fn jump_if(&mut self, expr: &Expr, label_pc: usize) {
-        match expr.eval(&self.registers) {
-            Ok(Value::Bool(true)) => self.jump(label_pc),
-            Ok(Value::Bool(false)) => self.pc_mut().increment(),
-            Err(err) => panic!("{}", err),
-            _ => panic!(
-                "Expression was expected to evaluate to boolean type but got something else."
-            ),
+    fn jump_if(&mut self, expr: &BoolExpr, label_pc: usize) {
+        if expr.eval(&self.registers) {
+            self.jump(label_pc)
+        } else {
+            self.pc_mut().increment()
         }
     }
 
-    fn assign(&mut self, expr: &Expr, reg: &str) {
-        match expr.eval(&self.registers) {
-            Ok(value) => self.registers[reg] = value,
-            Err(err) => panic!("{}", err),
-        }
+    fn assign(&mut self, expr: &BitExpr, reg: &str) {
+        let value = expr.eval(&self.registers);
+        self.registers[reg].write(value);
         self.pc_mut().increment();
     }
 
@@ -214,6 +204,8 @@ impl StoredCircuitSimulator for DebugSimulator {
 pub enum DebugSimulatorError {
     #[error("Measurement mid-circuit")]
     MidCircuitMeasurement,
+    #[error("{0}")]
+    RegisterError(#[from] RegisterError),
 }
 
 #[cfg(test)]
@@ -639,6 +631,11 @@ mod tests {
     #[test]
     fn register_test() {
         common_test::register_test::<DebugSimulator>();
+    }
+
+    #[test]
+    fn test_measure_overwrites_with_zero() {
+        common_test::test_measure_overwrites_with_zero::<DebugSimulator>();
     }
 
     #[test]

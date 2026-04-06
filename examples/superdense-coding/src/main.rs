@@ -1,6 +1,5 @@
 use quasim::circuit::Circuit;
 use quasim::expr_dsl::expr_helpers::r;
-use quasim::expr_dsl::{Expr, Value};
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
@@ -14,17 +13,17 @@ fn send_int(i: u8) -> u8 {
 
     #[rustfmt::skip]
     let circuit = Circuit::new(2)
-        .new_reg("a0")
-        .new_reg("a1")
-        .new_reg("b")
+        .new_reg("a0", 1)
+        .new_reg("a1", 1)
+        .new_reg("b", 2)
 
         // Bell state is produced, alice gets q0 and bob q1
         .h(0)
         .cx(&[0], 1)
 
         // Alice has two bits, c and d
-        .assign("a0".to_string(), Expr::Val(Value::Int(c as i32)))
-        .assign("a1".to_string(), Expr::Val(Value::Int(d as i32)))
+        .assign("a0", c as usize)
+        .assign("a1", d as usize)
 
         .apply_if(r("a1").eq(1)).z(0)
         .apply_if(r("a0").eq(1)).x(0)
@@ -39,15 +38,7 @@ fn send_int(i: u8) -> u8 {
     let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
     sim.cont();
 
-    return match sim.register("b") {
-        Value::Int(s) => s as u8,
-        Value::Float(_) => {
-            panic!("Unexpected float register")
-        }
-        Value::Bool(_) => {
-            panic!("Unexpected bool register")
-        }
-    };
+    sim.register("b").read() as u8
 }
 
 fn main() {

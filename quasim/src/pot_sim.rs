@@ -5,19 +5,19 @@ use nalgebra::{Complex, DVector, Matrix2};
 use crate::{
     cart,
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, pc::CircuitPc},
-    expr_dsl::{Expr, Value},
+    expr_dsl::{BitExpr, BoolExpr},
     ext::{BitMaskIter, TargetIter},
     gate::{Gate, GateType, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
-    simulator::{DebuggableSimulator, StoredCircuitSimulator},
+    simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 
 pub struct GenericSim<C: StateCollection> {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     state: C,
-    register_file: RegisterFile<Value>,
+    register_file: RegisterFile,
     /// dvector_state, remove for system change
     null_state: DVector<Complex<f64>>,
 }
@@ -85,14 +85,12 @@ impl<C: StateCollection> GenericSim<C> {
         let q_mask = 1 << target;
         let c_mask = 1 << c_target;
         let q_masked = collapsed & q_mask;
-        let c_masked = ((collapsed >> target) & 1) << c_target;
+        let c_masked = (q_masked >> target) << c_target;
 
-        if let Value::Int(val) = &mut self.register_file[reg] {
-            *val = *val & !c_mask;
-            *val = *val | (c_masked as i32);
-        } else {
-            self.register_file[reg] = Value::Int(c_masked as i32);
-        }
+        let mut val = self.register_file[reg].read();
+        val &= !c_mask;
+        val |= c_masked;
+        self.register_file[reg].write(val);
 
         self.state.retain_norm(|state, _| {
             let s_mask = *state & q_masked;
@@ -103,7 +101,7 @@ impl<C: StateCollection> GenericSim<C> {
     fn handle_measure_all(&mut self, reg: &str) {
         self.pc.increment();
         let collapsed = self.collapse_peek();
-        self.register_file[reg] = Value::Int(collapsed as i32);
+        self.register_file[reg].write(collapsed);
         self.state.retain(|_, _| false);
         self.state.insert(collapsed.into(), cart!(1));
     }
@@ -112,23 +110,17 @@ impl<C: StateCollection> GenericSim<C> {
         self.pc.jump(pc);
     }
 
-    fn handle_jump_if(&mut self, expr: &Expr, pc: usize) {
+    fn handle_jump_if(&mut self, expr: &BoolExpr, pc: usize) {
         match expr.eval(&self.register_file) {
-            Ok(Value::Bool(true)) => self.handle_jump(pc),
-            Ok(Value::Bool(false)) => self.pc.increment(),
-            Err(err) => panic!("{}", err),
-            _ => panic!(
-                "Expression was expected to evaluate to boolean type but got something else."
-            ),
+            true => self.handle_jump(pc),
+            false => self.pc.increment(),
         }
     }
 
-    fn handle_assign(&mut self, expr: &Expr, reg: &str) {
+    fn handle_assign(&mut self, expr: &BitExpr, reg: &str) {
         self.pc.increment();
-        match expr.eval(&self.register_file) {
-            Ok(value) => self.register_file[reg] = value,
-            Err(err) => panic!("{}", err),
-        }
+        let val = expr.eval(&self.register_file);
+        self.register_file[reg].write(val);
     }
 
     fn handle_call(&mut self, name: String, lsq: usize, ctrl: QBits) {
@@ -137,7 +129,7 @@ impl<C: StateCollection> GenericSim<C> {
 }
 
 impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
-    fn next(&mut self) -> bool{
+    fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(&self.pc) else {
             // End of (sub) circuit: Try to return
             if self.pc.ret() {
@@ -189,6 +181,12 @@ impl<C: StateCollection> StoredCircuitSimulator for GenericSim<C> {
 
     fn circuit_mut(&mut self) -> &mut Circuit<Self::B> {
         &mut self.circuit
+    }
+}
+
+impl<C: StateCollection> HybridSimulator for GenericSim<C> {
+    fn registers(&self) -> &RegisterFile {
+        &self.register_file
     }
 }
 
@@ -429,5 +427,21 @@ mod tests {
     #[test]
     fn deep_ctrl_sub() {
         common_test::deep_ctrl_sub::<GenericSim<DVector<Complex<f64>>>>();
+    }
+
+
+    #[test]
+    fn hybrid_test() {
+        common_test::hybrid_test::<GenericSim<DVector<Complex<f64>>>>();
+    }
+
+    #[test]
+    fn register_test() {
+        common_test::register_test::<GenericSim<DVector<Complex<f64>>>>();
+    }
+
+    #[test]
+    fn test_measure_overwrites_with_zero() {
+        common_test::test_measure_overwrites_with_zero::<GenericSim<DVector<Complex<f64>>>>();
     }
 }
