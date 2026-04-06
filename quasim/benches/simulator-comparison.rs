@@ -13,7 +13,7 @@ fn main() {
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, DynSimulator, DebugSimulator],
+    types = [SVSimulatorDebugger, ProdSimulator, DebugSimulator],
     args = [2,3,4,5,6,7,8,9,10,11,12],
     sample_count = 10,
 )]
@@ -31,7 +31,7 @@ where
     while sim.next() {}
 }
 #[divan::bench(
-    types = [SVSimulatorDebugger, DynSimulator, DebugSimulator],
+    types = [SVSimulatorDebugger, ProdSimulator, DebugSimulator],
     args = [1000,2000,4000,8000,16000,32000],
     sample_count = 10,
 )]
@@ -49,7 +49,7 @@ where
     while sim.next() {}
 }
 #[divan::bench(
-    types = [SVSimulatorDebugger, DynSimulator, DebugSimulator],
+    types = [SVSimulatorDebugger, ProdSimulator, DebugSimulator],
     args = [2,3,4,5,6,7,8],
     sample_count = 10,
 )]
@@ -69,7 +69,7 @@ where
     while sim.next() {}
 }
 #[divan::bench(
-    types = [SVSimulatorDebugger, DynSimulator, DebugSimulator],
+    types = [SVSimulatorDebugger, ProdSimulator, DebugSimulator],
     args = [
         (6,2), (6,3), (6,4), (6,5),
         (7,2), (7,3), (7,4), (7,5), (7,6),
