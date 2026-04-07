@@ -1,0 +1,9 @@
+[package]
+name = "optimizations-test"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
+log.workspace = true
+pretty_env_logger.workspace = true
+quasim = { path = "../../quasim" }
