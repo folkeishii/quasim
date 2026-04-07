@@ -355,6 +355,15 @@ impl HybridSimulator for ProdSimulator {
 }
 
 impl DebuggableSimulator for ProdSimulator {
+    type Storage = DVector<Complex<f64>>;
+    type State = Complex<f64>;
+
+    fn collapse_peek(&self) -> usize {
+        let mut prod = system_product(&self.systems);
+        prod.sort();
+        collapse(&prod.state.as_slice())
+    }
+
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             return false;
