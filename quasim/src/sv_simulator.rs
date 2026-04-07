@@ -26,6 +26,7 @@ pub struct SVExecutor {
 
 impl SVExecutor {
     /// Step forward one instruction in the circuit
+    // O(2^n) where n is number of qubits
     pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
@@ -43,6 +44,7 @@ impl SVExecutor {
     }
 
     /// Run the entire circuit
+    //  O(2^n * m) where n is number of qubits and m is number of gates (ignoring measurements and jumps)
     pub fn step_all(&mut self) -> &Self {
         while let Some(_) = self.step() {}
         self
@@ -151,36 +153,46 @@ impl SVExecutor {
         self.state_vector[flipped_index] = u[(1, 0)] * a + u[(1, 1)] * b;
     }
 
+    /*
+    This function is O(2^n) where n is number of qubits
+    For comparison: Matrix multiplication with a vector is O(N^2) where N is the length
+    of the vector, and N=2^n, so O((2^n)^2) = O(2^(2n)). So this implementation is much
+    faster than naive matrix multiplication for large n, but still exponential in n
+    */
     fn gate(&mut self, gate: &Gate) {
         let controls = gate.get_control_bits();
         let targets = gate.get_target_bits();
-        let n = self.state_vector.len();
+        let state_vector_len = self.state_vector.len();
 
         // No parallelization
         // State vector is length 2^n , n=num qubits
-        for i in 0..n {
+        // O(2^n)
+        for i in 0..state_vector_len {
+            // O(1)
             if !Self::is_block_base(i, targets) {
                 continue;
             }
 
+            // O(1)
             if !Self::controls_active(i, controls) {
                 continue;
             }
 
+            // O(1)
             match gate.get_type() {
-                GateType::X => self.apply_x(i, targets),
-                GateType::Y => self.apply_y(i, targets),
-                GateType::Z => self.apply_z(i, targets),
-                GateType::H => self.apply_h(i, targets),
-                GateType::S => self.apply_s(i, targets),
-                GateType::SWAP => self.apply_swap(i, targets),
+                GateType::X => self.apply_x(i, targets),       // O(1)
+                GateType::Y => self.apply_y(i, targets),       // O(1)
+                GateType::Z => self.apply_z(i, targets),       // O(1)
+                GateType::H => self.apply_h(i, targets),       // O(1)
+                GateType::S => self.apply_s(i, targets),       // O(1)
+                GateType::SWAP => self.apply_swap(i, targets), // O(1)
                 GateType::U(theta, phi, lambda) => {
-                    self.apply_unitary2(i, &get_u_matrix2(theta, phi, lambda), targets)
+                    self.apply_unitary2(i, &get_u_matrix2(theta, phi, lambda), targets) // O(1)
                 }
             }
         }
 
-        self.pc_mut().increment();
+        self.pc_mut().increment(); // O(1)
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {

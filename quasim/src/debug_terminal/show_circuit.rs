@@ -670,14 +670,14 @@ impl Column {
 
     pub fn from_measurements(nqubits: usize, targets: QBits) -> Self {
         let mut targets = targets;
-        let mut column = if targets & 1 == 1.into() {
+        let mut column = if targets & 1usize == 1.into() {
             Column::init_with_gate(String::from("╭─╱─╮"))
         } else {
             Column::init_with_track(String::from("╭─╱─╮"))
         };
         for _ in 1..nqubits {
             targets >>= 1;
-            if targets & 1 == 1.into() {
+            if targets & 1usize == 1.into() {
                 column.close_with_gate();
             } else {
                 column.close_with_track();
