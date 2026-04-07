@@ -1,10 +1,12 @@
 use std::{collections::HashMap, f64::consts::PI};
 pub mod breakpoint;
+pub mod oracle;
 pub mod pc;
 
 use crate::{
     circuit::{
         breakpoint::{Breakpoint, BreakpointList, IEBreakpoint},
+        oracle::{append_oracle, fn_to_truth_table, truth_table_to_anf_coefs},
         pc::CircuitPc,
     },
     expr_dsl::{BitExpr, BoolExpr},
@@ -57,6 +59,19 @@ impl Circuit {
         };
 
         s.qft(&(0..n_qubits).collect::<Vec<_>>())
+    }
+
+    /// Creates a new circuit implementing a quantum oracle for a given classical function.
+    /// `input_qubits` are specified in order of least significance, for example [0,1,2,3,4].
+    pub fn new_oracle(
+        n_qubits: usize,
+        input_qubits: &[usize],
+        target: usize,
+        classic_fn: impl Fn(usize) -> bool,
+    ) -> Self {
+        let s = Self::new(n_qubits);
+
+        s.oracle(input_qubits, target, classic_fn)
     }
 
     pub fn from_qasm_file(file_name: &str) -> Result<Self, QASMParseError> {
@@ -394,6 +409,19 @@ impl<B: CircuitBehaviour> Circuit<B> {
             self = self.swap(targets[i], targets[n - 1 - i]);
         }
         self
+    }
+
+    /// Appends a circuit implementing a quantum oracle for a given classical function.
+    /// `input_qubits` are specified in order of least significance, for example [0,1,2,3,4].
+    pub fn oracle(
+        self,
+        input_qubits: &[usize],
+        target: usize,
+        classic_fn: impl Fn(usize) -> bool,
+    ) -> Self {
+        let truth_table = fn_to_truth_table(&classic_fn, input_qubits.len());
+        let anf_coefs = truth_table_to_anf_coefs(truth_table);
+        append_oracle(self, input_qubits, target, anf_coefs)
     }
 
     // Breakpoint
@@ -841,7 +869,7 @@ mod tests {
     use crate::{
         cart,
         circuit::Circuit,
-        ext::{equal_to_matrix_c, expand_matrix_from_gate},
+        ext::{equal_state_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{BuildSimulator, RunnableSimulator},
         sv_simulator::SVSimulator,
@@ -878,7 +906,7 @@ mod tests {
                 res = expand_matrix_from_gate(gate, 5) * res;
             }
         }
-        assert!(equal_to_matrix_c(&id, &res, 0.001));
+        assert!(equal_state_c(&id, &res, 5, 0.001));
     }
     #[test]
     fn qft_test() {
@@ -907,7 +935,7 @@ mod tests {
             cart!(0.25, -0.25),   // |1110>
             cart!(0.0),           // |1111>
         ];
-        assert!(equal_to_matrix_c(&expected_vec, &sim.final_state(), 0.001));
+        assert!(equal_state_c(&expected_vec, &sim.final_state(), 4, 0.001));
     }
 
     #[test]

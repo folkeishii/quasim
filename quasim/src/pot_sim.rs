@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, usize};
+use std::{collections::BTreeMap, ops::Index, usize};
 
 use nalgebra::{Complex, DVector, Matrix2};
 
@@ -38,7 +38,7 @@ impl<C: StateCollection> GenericSim<C> {
 
     fn handle_gate(&mut self, gate: &Gate) {
         self.pc.increment();
-        let ctrl = gate.get_control_bits();
+        let ctrl = *gate.get_control_bits();
         let mut targets = TargetIter::from(gate.get_target_bits());
         match gate.get_type() {
             ty @ GateType::X
@@ -50,8 +50,8 @@ impl<C: StateCollection> GenericSim<C> {
                 let mat = ty.unchecked_matrix2x2();
                 for target in targets {
                     let dont_care =
-                        !(*ctrl | (1 << target)) & !(usize::MAX << self.circuit.n_qubits());
-                    let combinations = BitMaskIter::from(dont_care).map(Into::into);
+                        !(ctrl | (1 << target)) & !(usize::MAX << self.circuit.n_qubits());
+                    let combinations = BitMaskIter::from(dont_care);
                     for combination in combinations {
                         let base = ctrl | combination;
                         let mut pair = self.state.pair_mut(base, target);
@@ -66,11 +66,11 @@ impl<C: StateCollection> GenericSim<C> {
                 let t2_mask = 1 << t2;
 
                 let dont_care =
-                    !(*ctrl | t1_mask | t2_mask) & !(usize::MAX << self.circuit.n_qubits());
-                let combinations = BitMaskIter::from(dont_care).map(Into::into);
+                    !(ctrl | t1_mask | t2_mask) & !(usize::MAX << self.circuit.n_qubits());
+                let combinations = BitMaskIter::from(dont_care);
                 for combination in combinations {
-                    let qs1 = ctrl | combination | t1_mask.into();
-                    let qs2 = ctrl | combination | t2_mask.into();
+                    let qs1 = ctrl | combination | t1_mask;
+                    let qs2 = ctrl | combination | t2_mask;
                     let s1 = self.state.state(qs1);
                     let s2 = self.state.insert(qs2, s1);
                     self.state.insert(qs1, s2);
@@ -93,7 +93,7 @@ impl<C: StateCollection> GenericSim<C> {
         self.register_file[reg].write(val);
 
         self.state.retain_norm(|state, _| {
-            let s_masked = *state & q_mask;
+            let s_masked = state & q_mask;
             s_masked ^ q_masked == 0
         });
     }
@@ -129,6 +129,9 @@ impl<C: StateCollection> GenericSim<C> {
 }
 
 impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
+    type Storage = C;
+    type State = Complex<f64>;
+
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(&self.pc) else {
             // End of (sub) circuit: Try to return
@@ -167,8 +170,12 @@ impl<C: StateCollection> DebuggableSimulator for GenericSim<C> {
         (&self.pc, self.circuit.instruction(&self.pc))
     }
 
-    fn current_state(&self) -> &DVector<Complex<f64>> {
-        &self.null_state
+    fn current_state(&self) -> &C {
+        &self.state
+    }
+
+    fn collapse_peek(&self) -> usize {
+        todo!()
     }
 }
 
@@ -213,12 +220,12 @@ where
 
 pub trait StateCollection {
     fn new(n_qbits: usize) -> Self;
-    fn state(&self, qbits: QBits) -> Complex<f64>;
-    fn insert(&mut self, qbits: QBits, state: Complex<f64>) -> Complex<f64>;
-    fn non_zero(&self) -> impl Iterator<Item = (QBits, Complex<f64>)>;
+    fn state(&self, qbits: usize) -> Complex<f64>;
+    fn insert(&mut self, qbits: usize, state: Complex<f64>) -> Complex<f64>;
+    fn non_zero(&self) -> impl Iterator<Item = (usize, Complex<f64>)>;
     fn normalize_with(&mut self, divisor: f64);
-    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F);
-    fn retain_norm<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F) {
+    fn retain<F: FnMut(usize, Complex<f64>) -> bool>(&mut self, f: F);
+    fn retain_norm<F: FnMut(usize, Complex<f64>) -> bool>(&mut self, f: F) {
         let mut total_prob = 0.0;
         let mut f = f;
         self.retain(|state, prob| {
@@ -232,11 +239,11 @@ pub trait StateCollection {
 
         self.normalize_with(total_prob);
     }
-    fn pair_mut(&mut self, qbits: QBits, target: usize) -> StatePairMut<'_, Self> {
+    fn pair_mut(&mut self, qbits: usize, target: usize) -> StatePairMut<'_, Self> {
         StatePairMut {
             collection: self,
             qbits,
-            target_mask: (1 << target).into(),
+            target_mask: 1 << target,
         }
     }
 }
@@ -248,20 +255,20 @@ impl StateCollection for DVector<Complex<f64>> {
         d
     }
 
-    fn state(&self, qbits: QBits) -> Complex<f64> {
-        self[*qbits]
+    fn state(&self, qbits: usize) -> Complex<f64> {
+        self[qbits]
     }
 
-    fn insert(&mut self, qbits: QBits, state: Complex<f64>) -> Complex<f64> {
-        let ret = self[*qbits];
-        self[*qbits] = state;
+    fn insert(&mut self, qbits: usize, state: Complex<f64>) -> Complex<f64> {
+        let ret = self[qbits];
+        self[qbits] = state;
         ret
     }
 
-    fn non_zero(&self) -> impl Iterator<Item = (QBits, Complex<f64>)> {
+    fn non_zero(&self) -> impl Iterator<Item = (usize, Complex<f64>)> {
         self.iter().enumerate().filter_map(|(i, val)| {
             if val.norm() > 0.0 {
-                Some((QBits::from(i), *val))
+                Some((i, *val))
             } else {
                 None
             }
@@ -274,7 +281,7 @@ impl StateCollection for DVector<Complex<f64>> {
         }
     }
 
-    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F) {
+    fn retain<F: FnMut(usize, Complex<f64>) -> bool>(&mut self, f: F) {
         let mut f = f;
         for i in 0..self.len() {
             let qbits = i.into();
@@ -306,11 +313,11 @@ where
         }
     }
 
-    fn state(&self, qbits: QBits) -> Complex<f64> {
+    fn state(&self, qbits: usize) -> Complex<f64> {
         self.collection.state(qbits).unwrap_or(cart!(0))
     }
 
-    fn insert(&mut self, qbits: QBits, state: Complex<f64>) -> Complex<f64> {
+    fn insert(&mut self, qbits: usize, state: Complex<f64>) -> Complex<f64> {
         if state.norm() < Self::ZERO_MARGIN {
             self.collection.remove(qbits).unwrap_or(cart!(0))
         } else {
@@ -318,11 +325,11 @@ where
         }
     }
 
-    fn non_zero(&self) -> impl Iterator<Item = (QBits, Complex<f64>)> {
+    fn non_zero(&self) -> impl Iterator<Item = (usize, Complex<f64>)> {
         self.collection.iter()
     }
 
-    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F) {
+    fn retain<F: FnMut(usize, Complex<f64>) -> bool>(&mut self, f: F) {
         self.collection.retain(f);
     }
 
@@ -331,40 +338,53 @@ where
     }
 }
 
-pub trait IncompleteStateCollection {
-    fn new() -> Self;
-    fn state(&self, qbits: QBits) -> Option<Complex<f64>>;
-    fn insert(&mut self, qbits: QBits, state: Complex<f64>) -> Option<Complex<f64>>;
-    fn remove(&mut self, qbits: QBits) -> Option<Complex<f64>>;
-    fn normalize_with(&mut self, divisor: f64);
-    fn iter(&self) -> impl Iterator<Item = (QBits, Complex<f64>)>;
-    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F);
+impl<S: IncompleteStateCollection> Index<usize> for StateMaybe<S> {
+    type Output = Complex<f64>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        self.collection.state_ref(index).unwrap_or(&cart!(0))
+    }
 }
 
-impl IncompleteStateCollection for BTreeMap<QBits, Complex<f64>> {
+pub trait IncompleteStateCollection {
+    fn new() -> Self;
+    fn state(&self, qbits: usize) -> Option<Complex<f64>>;
+    fn state_ref(&self, qbits: usize) -> Option<&Complex<f64>>;
+    fn insert(&mut self, qbits: usize, state: Complex<f64>) -> Option<Complex<f64>>;
+    fn remove(&mut self, qbits: usize) -> Option<Complex<f64>>;
+    fn normalize_with(&mut self, divisor: f64);
+    fn iter(&self) -> impl Iterator<Item = (usize, Complex<f64>)>;
+    fn retain<F: FnMut(usize, Complex<f64>) -> bool>(&mut self, f: F);
+}
+
+impl IncompleteStateCollection for BTreeMap<usize, Complex<f64>> {
     fn new() -> Self {
         let mut s = Self::new();
-        s.insert(0.into(), cart!(1));
+        s.insert(0, cart!(1));
         s
     }
 
-    fn state(&self, qbits: QBits) -> Option<Complex<f64>> {
+    fn state(&self, qbits: usize) -> Option<Complex<f64>> {
         self.get(&qbits).copied()
     }
 
-    fn insert(&mut self, qbits: QBits, state: Complex<f64>) -> Option<Complex<f64>> {
+    fn state_ref(&self, qbits: usize) -> Option<&Complex<f64>> {
+        self.get(&qbits)
+    }
+
+    fn insert(&mut self, qbits: usize, state: Complex<f64>) -> Option<Complex<f64>> {
         self.insert(qbits, state)
     }
 
-    fn remove(&mut self, qbits: QBits) -> Option<Complex<f64>> {
+    fn remove(&mut self, qbits: usize) -> Option<Complex<f64>> {
         self.remove(&qbits)
     }
 
-    fn iter(&self) -> impl Iterator<Item = (QBits, Complex<f64>)> {
+    fn iter(&self) -> impl Iterator<Item = (usize, Complex<f64>)> {
         self.keys().copied().zip(self.values().copied())
     }
 
-    fn retain<F: FnMut(QBits, Complex<f64>) -> bool>(&mut self, f: F) {
+    fn retain<F: FnMut(usize, Complex<f64>) -> bool>(&mut self, f: F) {
         let mut f = f;
         self.retain(|k, v| f(*k, *v));
     }
@@ -379,8 +399,8 @@ impl IncompleteStateCollection for BTreeMap<QBits, Complex<f64>> {
 #[derive(Debug)]
 pub struct StatePairMut<'a, C: StateCollection + ?Sized> {
     collection: &'a mut C,
-    qbits: QBits,
-    target_mask: QBits,
+    qbits: usize,
+    target_mask: usize,
 }
 
 impl<'a, C: StateCollection + ?Sized> StatePairMut<'a, C> {
@@ -408,7 +428,7 @@ pub enum GenericSimError {}
 #[cfg(test)]
 mod tests {
     use super::{GenericSim, StateMaybe};
-    use crate::{common_test, gate::QBits};
+    use crate::common_test;
     use nalgebra::{Complex, DVector};
     use std::collections::BTreeMap;
 
@@ -417,7 +437,7 @@ mod tests {
             DVector<Complex<f64>>
         };
         (btree) => {
-            StateMaybe<BTreeMap<QBits, Complex<f64>>>
+            StateMaybe<BTreeMap<usize, Complex<f64>>>
         }
     }
     macro_rules! def_test {

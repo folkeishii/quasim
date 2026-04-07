@@ -7,7 +7,6 @@ pub mod debug_terminal;
 pub mod expr_dsl;
 pub mod ext;
 pub mod gate;
-pub mod gate_dsl;
 pub mod instruction;
 pub mod pot_sim;
 pub mod register_file;
