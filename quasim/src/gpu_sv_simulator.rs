@@ -217,10 +217,6 @@ mod tests {
 
     #[test]
     fn test_jump_into_batch() {
-        // This currently fails on GpuStateVectorSimulator because labels do not
-        // flush pending batches. The jump lands on the label before `x(2)`, but
-        // the GPU executor skips the whole `[x(1), x(2)]` batch because it
-        // starts at the earlier instruction index for `x(1)`.
         let circuit = Circuit::new(3)
             .x(0)
             .jump("target")

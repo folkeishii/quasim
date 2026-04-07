@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit},
@@ -35,9 +35,14 @@ impl BatchedCircuit {
 
         let mut batch_start_inst_index = 0;
 
-        // Important TODO: flush batches on labels
+        let jump_targets = collect_jump_targets(&circuit);
 
         for (inst_index, inst) in circuit.as_flat().enumerate() {
+            if jump_targets.contains(&inst_index) {
+                batched_circuit.flush_batches(batch_start_inst_index);
+                batch_start_inst_index = inst_index;
+            }
+
             match inst {
                 Instruction::Gate(gate) => {
                     batched_circuit.batcher.add_gate(&gate);
@@ -90,4 +95,18 @@ where
     fn from(value: Circuit<B>) -> Self {
         BatchedCircuit::from_circuit(value, BatchedCircuit::DEFAULT_MAX_TARGET_QUBITS)
     }
+}
+
+fn collect_jump_targets(circuit: &Circuit<HybridCircuit>) -> HashSet<usize> {
+    let mut targets = HashSet::new();
+
+    for inst in circuit.as_flat() {
+        match inst {
+            Instruction::Jump(pc) => targets.insert(pc),
+            Instruction::JumpIf(_, pc) => targets.insert(pc),
+            _ => false
+        };
+    }
+    
+    targets
 }
