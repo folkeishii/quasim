@@ -9,6 +9,7 @@ pub mod ext;
 pub mod gate;
 pub mod instruction;
 pub mod prod_simulator;
+pub mod product_state;
 pub mod register_file;
 pub mod simple_simulator;
 pub mod simulator;
