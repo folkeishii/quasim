@@ -613,15 +613,15 @@ where
     /// measure_bit(1, ("reg", 1))
     /// measure_bit(3, ("reg", 2))
     /// ```
-    pub fn measure_bits<S: Into<String>>(
+    pub fn measure_bits<S: Into<String>, I: IntoIterator<Item = usize>>(
         self,
-        targets: &[usize],
+        targets: I,
         reg: S,
     ) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
         let reg = reg.into();
-        for (i, target) in targets.iter().enumerate() {
-            ret_self = ret_self.measure_bit(*target, (&reg, i))
+        for (i, target) in targets.into_iter().enumerate() {
+            ret_self = ret_self.measure_bit(target, (&reg, i))
         }
         ret_self
     }

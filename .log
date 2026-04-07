@@ -1,0 +1,138 @@
+
+running 1 test
+test tests::test_bernstein_vazirani ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test tests::test_classic ... ignored
+test tests::test_quantum ... ignored
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 2 tests
+test tests::test_classic ... ignored
+test tests::test_quantum ... ignored
+
+test result: ok. 0 passed; 0 failed; 2 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test tests::test_grover ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 4 tests
+test tests::quantum_is_between_10_and_20 ... ignored
+test tests::quantum_is_divisible_by_7 ... ignored
+test tests::quantum_is_even ... ignored
+test tests::quantum_is_prime ... ignored
+
+test result: ok. 0 passed; 0 failed; 4 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 1 test
+test tests::test_phase_kickback ... ignored
+
+test result: ok. 0 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+
+running 63 tests
+test circuit::oracle::anf_conversion_tests::is_constant_one ... ignored
+test circuit::oracle::anf_conversion_tests::is_constant_zero ... ignored
+test circuit::oracle::anf_conversion_tests::is_divisible_by_3 ... ignored
+test circuit::oracle::anf_conversion_tests::is_greater_than_42 ... ignored
+test circuit::oracle::anf_conversion_tests::is_prime ... ignored
+test circuit::tests::flatten ... ignored
+test circuit::tests::inverse_test ... ignored
+test circuit::tests::qft_test ... ignored
+test circuit::tests::unresolved_labels_are_patched_without_duplication ... ignored
+test debug_simulator::tests::apply_gates ... ignored
+test debug_simulator::tests::bell_state_test ... ignored
+test debug_simulator::tests::deep_ctrl_sub ... ignored
+test debug_simulator::tests::deep_sub ... ignored
+test debug_simulator::tests::double_sub ... ignored
+test debug_simulator::tests::hybrid_test ... ignored
+test debug_simulator::tests::measure_entanglement ... ignored
+test debug_simulator::tests::measure_hadamard_all ... ignored
+test debug_simulator::tests::register_test ... ignored
+test debug_simulator::tests::test_cnot_01 ... ignored
+test debug_simulator::tests::test_cnot_02 ... ignored
+test debug_simulator::tests::test_cnot_12 ... ignored
+test debug_simulator::tests::test_cnot_201 ... ignored
+test debug_simulator::tests::test_h_0 ... ignored
+test debug_simulator::tests::test_hadamard_double_cnot_entanglement ... ignored
+test debug_simulator::tests::test_measure_overwrites_with_zero ... ignored
+test debug_simulator::tests::test_textbook_cnot ... ignored
+test debug_simulator::tests::test_textbook_toffoli ... ignored
+test debug_terminal::show_circuit::tests::circuit ... ignored
+test debug_terminal::show_circuit::tests::column ... ignored
+test debug_terminal::show_circuit::tests::controlled_sub_circuit ... ignored
+test debug_terminal::show_circuit::tests::measurement ... ignored
+test debug_terminal::show_circuit::tests::rep_i ... ignored
+test debug_terminal::show_circuit::tests::sub_circuit ... ignored
+test debug_terminal::show_circuit::tests::with_gate ... ignored
+test ext::tests::bitmask_iter ... ignored
+test ext::tests::convention_test ... ignored
+test ext::tests::fredkin_test ... ignored
+test ext::tests::swap_test ... ignored
+test pot_sim::tests::apply_gates_btree ... ignored
+test pot_sim::tests::apply_gates_dvector ... ignored
+test pot_sim::tests::deep_ctrl_sub_btree ... ignored
+test pot_sim::tests::deep_ctrl_sub_dvector ... ignored
+test pot_sim::tests::deep_sub_btree ... ignored
+test pot_sim::tests::deep_sub_dvector ... ignored
+test pot_sim::tests::double_sub_btree ... ignored
+test pot_sim::tests::double_sub_dvector ... ignored
+test pot_sim::tests::hybrid_test_btree ... ignored
+test pot_sim::tests::hybrid_test_dvector ... ignored
+test pot_sim::tests::register_test_btree ... ignored
+test pot_sim::tests::register_test_dvector ... ignored
+test pot_sim::tests::test_measure_overwrites_with_zero_btree ... ignored
+test pot_sim::tests::test_measure_overwrites_with_zero_dvector ... ignored
+test simulator::tests::test_continue_until ... ignored
+test sv_simulator::tests::apply_gates ... ignored
+test sv_simulator::tests::deep_ctrl_sub ... ignored
+test sv_simulator::tests::deep_sub ... ignored
+test sv_simulator::tests::double_sub ... ignored
+test sv_simulator::tests::hybrid_test ... ignored
+test sv_simulator::tests::register_test ... ignored
+test sv_simulator::tests::test ... ignored
+test sv_simulator::tests::test_measure_overwrites_with_zero ... ignored
+test sv_simulator::tests::test_reset_with_shared_scratch_register ... ignored
+test sv_simulator::tests::test_sub ... ignored
+
+test result: ok. 0 passed; 0 failed; 63 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+debug_simulator                       fastest       │ slowest       │ median        │ mean          │ samples │ iters
+╰─ controlled_id_all_control_but_one                │               │               │               │         │
+   ├─ 2                               5.54 µs       │ 5.54 µs       │ 5.54 µs       │ 5.54 µs       │ 1       │ 1
+   ├─ 3                               10.41 µs      │ 10.41 µs      │ 10.41 µs      │ 10.41 µs      │ 1       │ 1
+   ├─ 4                               9.666 µs      │ 9.666 µs      │ 9.666 µs      │ 9.666 µs      │ 1       │ 1
+   ├─ 5                               34.33 µs      │ 34.33 µs      │ 34.33 µs      │ 34.33 µs      │ 1       │ 1
+   ├─ 6                               259.7 µs      │ 259.7 µs      │ 259.7 µs      │ 259.7 µs      │ 1       │ 1
+   ├─ 7                               1.732 ms      │ 1.732 ms      │ 1.732 ms      │ 1.732 ms      │ 1       │ 1
+   ├─ 8                               12.68 ms      │ 12.68 ms      │ 12.68 ms      │ 12.68 ms      │ 1       │ 1
+   ├─ 9                               137.8 ms      │ 137.8 ms      │ 137.8 ms      │ 137.8 ms      │ 1       │ 1
+   ├─ 10                              952.9 ms      │ 952.9 ms      │ 952.9 ms      │ 952.9 ms      │ 1       │ 1
+   ├─ 11                              11.58 s       │ 11.58 s       │ 11.58 s       │ 11.58 s       │ 1       │ 1
+   ├─ 12                              1.862 m       │ 1.862 m       │ 1.862 m       │ 1.862 m       │ 1       │ 1
+   ├─ 13                              

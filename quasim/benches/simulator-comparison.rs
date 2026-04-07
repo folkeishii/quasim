@@ -1,3 +1,4 @@
+use divan::AllocProfiler;
 use quasim::{
     circuit::{Circuit, HybridCircuit},
     debug_simulator::DebugSimulator,
@@ -6,6 +7,9 @@ use quasim::{
 };
 
 extern crate quasim;
+
+#[global_allocator]
+static ALLOCATOR: AllocProfiler = AllocProfiler::system();
 
 fn main() {
     divan::main();

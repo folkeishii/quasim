@@ -1,62 +1,23 @@
-use quasim::circuit::Circuit;
-use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
+use bernstein_vazirani::{find_secret_string_classical, find_secret_string_quantum};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
-const N: usize = 5;
+fn f(n: usize, x: usize, secret: usize) -> usize {
+    let mut sum = 0;
 
-fn f(x: u8, secret: u8) -> u8 {
-    let mut sum = 0u8;
-
-    for i in 0..N {
+    for i in 0..n {
         sum += ((secret >> i) & 1) * ((x >> i) & 1);
     }
 
     sum % 2
 }
 
-fn find_secret_string_classical(f: impl Fn(u8) -> u8) -> u8 {
-    let mut res = 0u8;
-
-    for i in 0..N {
-        res |= (f(1 << i) & 1) << i
-    }
-
-    res
-}
-
-fn find_secret_string_quantum(secret: u8) -> u8 {
-    let mut circuit = Circuit::new(N + 1).new_reg("res", N);
-    circuit = circuit.x(N);
-
-    for i in 0..=N {
-        circuit = circuit.h(i);
-    }
-
-    for i in 0..N {
-        if (secret >> (N - (i + 1)) & 1) == 1 {
-            circuit = circuit.cx(&[i], N);
-        }
-    }
-
-    for i in 0..N {
-        circuit = circuit.h(i);
-    }
-
-    circuit = circuit.measure_bits(&[0, 1, 2, 3, 4], "res");
-    let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.cont();
-
-    let res = sim.register("res").read();
-    // Output is reversed
-    (res as u8).reverse_bits() >> (8 - N)
-}
-
 fn main() {
-    for i in 0..32u8 {
+    const N: usize = 5;
+    for i in 0..(1 << N) {
         println!(
             "{:b} - {:b}",
-            find_secret_string_classical(|c| f(c, i)),
-            find_secret_string_quantum(i)
+            find_secret_string_classical(N, |c| f(N, c, i)),
+            find_secret_string_quantum::<SVSimulatorDebugger>(N, i)
         );
     }
 }
@@ -67,11 +28,13 @@ mod tests {
 
     #[test]
     fn test_bernstein_vazirani() {
-        for i in 0..32u8 {
-            assert_eq!(
-                find_secret_string_classical(|c| f(c, i)),
-                find_secret_string_quantum(i),
-            )
+        for n in 1..5 {
+            for i in 0..(1 << n) {
+                assert_eq!(
+                    find_secret_string_classical(n, |c| f(n, c, i)),
+                    find_secret_string_quantum::<SVSimulatorDebugger>(n, i),
+                )
+            }
         }
     }
 }
