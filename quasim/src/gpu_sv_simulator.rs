@@ -188,7 +188,7 @@ mod tests {
 
     #[test]
     fn test_hybrid() {
-        let circuit = Circuit::new(20)
+        let circuit = Circuit::new(4)
             .new_reg("rbits", 4)
             // Init random state
             .h(0)
@@ -213,5 +213,25 @@ mod tests {
         for i in 0..100 {
             assert_eq!(sim.run(), 0, "in iter {i}");
         }
+    }
+
+    #[test]
+    fn test_jump_into_batch() {
+        // This currently fails on GpuStateVectorSimulator because labels do not
+        // flush pending batches. The jump lands on the label before `x(2)`, but
+        // the GPU executor skips the whole `[x(1), x(2)]` batch because it
+        // starts at the earlier instruction index for `x(1)`.
+        let circuit = Circuit::new(3)
+            .x(0)
+            .jump("target")
+            .x(1)
+            .label("target")
+            .x(2);
+
+        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
+        let cpu = SVSimulator::build(circuit).unwrap();
+
+        assert_eq!(cpu.run(), 0b101);
+        assert_eq!(gpu.run(), cpu.run());
     }
 }

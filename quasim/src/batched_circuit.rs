@@ -35,6 +35,8 @@ impl BatchedCircuit {
 
         let mut batch_start_inst_index = 0;
 
+        // Important TODO: flush batches on labels
+
         for (inst_index, inst) in circuit.as_flat().enumerate() {
             match inst {
                 Instruction::Gate(gate) => {
