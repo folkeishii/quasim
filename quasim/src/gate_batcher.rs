@@ -210,7 +210,6 @@ impl GateBatcher {
             });
 
             self.data.insert_from(batch, &nodes);
-
         }
 
         batch_commands

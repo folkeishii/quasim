@@ -104,9 +104,9 @@ fn collect_jump_targets(circuit: &Circuit<HybridCircuit>) -> HashSet<usize> {
         match inst {
             Instruction::Jump(pc) => targets.insert(pc),
             Instruction::JumpIf(_, pc) => targets.insert(pc),
-            _ => false
+            _ => false,
         };
     }
-    
+
     targets
 }

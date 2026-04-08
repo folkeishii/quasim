@@ -158,7 +158,12 @@ mod tests {
     use cubecl::wgpu::WgpuRuntime;
 
     use crate::{
-        circuit::{Circuit, PureCircuit}, expr_dsl::expr_helpers::rb, ext::equal_to_matrix_c, gpu_sv_simulator::GpuStateVectorSimulator, simulator::{BuildSimulator, RunnableSimulator}, sv_simulator::SVSimulator
+        circuit::{Circuit, PureCircuit},
+        expr_dsl::expr_helpers::{r, rb},
+        ext::equal_to_matrix_c,
+        gpu_sv_simulator::GpuStateVectorSimulator,
+        simulator::{BuildSimulator, RunnableSimulator},
+        sv_simulator::SVSimulator,
     };
 
     #[test]
@@ -229,5 +234,101 @@ mod tests {
 
         assert_eq!(cpu.run(), 0b101);
         assert_eq!(gpu.run(), cpu.run());
+    }
+
+    #[test]
+    fn broad_test() {
+        let leaf = Circuit::new(1).h(0).rz(0.17, 0);
+        let pair = Circuit::new(2)
+            .x(1)
+            .new_sub_circuit("leaf", leaf.clone())
+            .call("leaf", 0)
+            .ccall("leaf", 0, &[1])
+            .cx(&[0], 1);
+        let nested = Circuit::new(5)
+            .new_sub_circuit("pair", pair)
+            .new_sub_circuit("leaf", leaf)
+            .call("pair", 0)
+            .call("pair", 2)
+            .x(4)
+            .ccall("leaf", 1, &[4])
+            .ccall("leaf", 3, &[4])
+            .swap(1, 3);
+
+        let circuit = Circuit::new(6)
+            .new_sub_circuit("nested", nested)
+            .call("nested", 0)
+            .new_reg("picked", 5)
+            .new_reg("sum", 3)
+            .new_reg("parity", 1)
+            .new_reg("anc", 1)
+            .new_reg("confirm", 1)
+            .h(0)
+            .h(1)
+            .h(2)
+            .h(3)
+            .h(4)
+            .measure_bits(&[0, 1, 2, 3, 4], "picked")
+            .assign(
+                "sum",
+                rb("picked", 0)
+                    + rb("picked", 1)
+                    + rb("picked", 2)
+                    + rb("picked", 3)
+                    + rb("picked", 4),
+            )
+            .assign(
+                "parity",
+                rb("picked", 0)
+                    ^ rb("picked", 1)
+                    ^ rb("picked", 2)
+                    ^ rb("picked", 3)
+                    ^ rb("picked", 4),
+            )
+            .jump_if(r("parity").eq(0), "even_branch")
+            .x(5)
+            .measure_bit(5, ("anc", 0))
+            .apply_if(rb("anc", 0).eq(1))
+            .x(5)
+            .jump("after_parity_branch")
+            .label("even_branch")
+            .h(5)
+            .measure_bit(5, ("anc", 0))
+            .apply_if(rb("anc", 0).eq(1))
+            .x(5)
+            .label("after_parity_branch")
+            .jump_if(r("sum").lt(3), "skip_probe")
+            .x(5)
+            .label("skip_probe")
+            .apply_if(r("sum").gte(3))
+            .x(5)
+            .apply_if(rb("picked", 0).eq(1))
+            .x(0)
+            .apply_if(rb("picked", 1).eq(1))
+            .x(1)
+            .apply_if(rb("picked", 2).eq(1))
+            .x(2)
+            .apply_if(rb("picked", 3).eq(1))
+            .x(3)
+            .apply_if(rb("picked", 4).eq(1))
+            .x(4)
+            .assign(
+                "confirm",
+                r("parity")
+                    ^ rb("picked", 0)
+                    ^ rb("picked", 1)
+                    ^ rb("picked", 2)
+                    ^ rb("picked", 3)
+                    ^ rb("picked", 4),
+            );
+
+        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
+        let cpu = SVSimulator::build(circuit).unwrap();
+
+        assert!(equal_to_matrix_c(
+            &gpu.final_state(),
+            &cpu.final_state(),
+            0.001
+        ));
     }
 }
