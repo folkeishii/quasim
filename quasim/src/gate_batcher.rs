@@ -382,7 +382,7 @@ mod tests {
     use crate::{circuit::Circuit, gate_batcher::GateBatcher};
 
     #[test]
-    fn example_test_circuit() {
+    fn test_example_circuit() {
         let circ = Circuit::new(3)
             .x(0)
             .x(2)
@@ -396,7 +396,7 @@ mod tests {
         for gate in circ.instructions() {
             match &gate {
                 crate::instruction::PureInstruction::Gate(gate) => circ_ir.add_gate(gate),
-                crate::instruction::PureInstruction::Call(_, _, _) => todo!(),
+                crate::instruction::PureInstruction::Call(_, _, _) => unreachable!(),
             }
         }
 

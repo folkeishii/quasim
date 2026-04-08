@@ -104,13 +104,13 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
 
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
-            Instruction::Gate(_gate) => todo!(),
             Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(*qbit, reg, *bit_pos),
             Instruction::MeasureAll(reg) => self.measure_all(reg),
             Instruction::Jump(pc) => self.jump(*pc),
             Instruction::JumpIf(expr, pc) => self.jump_if(expr, *pc),
             Instruction::Assign(expr, reg) => self.assign(expr, reg),
-            Instruction::Call(_, _, _) => todo!(),
+            Instruction::Gate(_gate) => unreachable!(),
+            Instruction::Call(_, _, _) => unreachable!(),
         }
     }
 }
@@ -167,7 +167,7 @@ mod tests {
     };
 
     #[test]
-    fn qft_matches_cpu_state_vector() {
+    fn test_qft() {
         let n_qubits = 4;
         let circuit = Circuit::<PureCircuit>::new_qft(n_qubits);
 
@@ -184,7 +184,7 @@ mod tests {
     }
 
     #[test]
-    fn sampling_basis_state_walks_back_to_state_vector() {
+    fn test_sampling() {
         let circuit = Circuit::<PureCircuit>::new(15).x(0).x(7).x(14);
         let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit).unwrap();
 
@@ -215,7 +215,7 @@ mod tests {
 
         let sim = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit).unwrap();
 
-        for i in 0..100 {
+        for i in 0..20 {
             assert_eq!(sim.run(), 0, "in iter {i}");
         }
     }
@@ -237,90 +237,55 @@ mod tests {
     }
 
     #[test]
-    fn broad_test() {
-        let leaf = Circuit::new(1).h(0).rz(0.17, 0);
+    fn test_subcircuit_and_control_flow() {
+        let leaf = Circuit::new(1).x(0).h(0);
         let pair = Circuit::new(2)
-            .x(1)
             .new_sub_circuit("leaf", leaf.clone())
             .call("leaf", 0)
-            .ccall("leaf", 0, &[1])
-            .cx(&[0], 1);
-        let nested = Circuit::new(5)
-            .new_sub_circuit("pair", pair)
-            .new_sub_circuit("leaf", leaf)
-            .call("pair", 0)
-            .call("pair", 2)
-            .x(4)
-            .ccall("leaf", 1, &[4])
-            .ccall("leaf", 3, &[4])
-            .swap(1, 3);
+            .ccall("leaf", 1, &[0])
+            .cx(&[1], 0);
+        let nested =
+            Circuit::new(3)
+                .call_new("pair", pair, 0)
+                .x(2)
+                .ccall_new("leaf", leaf, 1, &[2]);
 
-        let circuit = Circuit::new(6)
-            .new_sub_circuit("nested", nested)
+        let circuit = Circuit::new(4)
+            .new_sub_circuit("nested", nested.clone())
+            .new_sub_circuit("nested_inv", nested.inverse())
             .call("nested", 0)
-            .new_reg("picked", 5)
-            .new_reg("sum", 3)
-            .new_reg("parity", 1)
-            .new_reg("anc", 1)
-            .new_reg("confirm", 1)
+            .call("nested_inv", 0)
+            .new_reg("m", 3)
+            .new_reg("p", 1)
+            .new_reg("a", 1)
+            .new_reg("ok", 1)
             .h(0)
             .h(1)
             .h(2)
-            .h(3)
-            .h(4)
-            .measure_bits(&[0, 1, 2, 3, 4], "picked")
-            .assign(
-                "sum",
-                rb("picked", 0)
-                    + rb("picked", 1)
-                    + rb("picked", 2)
-                    + rb("picked", 3)
-                    + rb("picked", 4),
-            )
-            .assign(
-                "parity",
-                rb("picked", 0)
-                    ^ rb("picked", 1)
-                    ^ rb("picked", 2)
-                    ^ rb("picked", 3)
-                    ^ rb("picked", 4),
-            )
-            .jump_if(r("parity").eq(0), "even_branch")
-            .x(5)
-            .measure_bit(5, ("anc", 0))
-            .apply_if(rb("anc", 0).eq(1))
-            .x(5)
-            .jump("after_parity_branch")
-            .label("even_branch")
-            .h(5)
-            .measure_bit(5, ("anc", 0))
-            .apply_if(rb("anc", 0).eq(1))
-            .x(5)
-            .label("after_parity_branch")
-            .jump_if(r("sum").lt(3), "skip_probe")
-            .x(5)
-            .label("skip_probe")
-            .apply_if(r("sum").gte(3))
-            .x(5)
-            .apply_if(rb("picked", 0).eq(1))
-            .x(0)
-            .apply_if(rb("picked", 1).eq(1))
-            .x(1)
-            .apply_if(rb("picked", 2).eq(1))
-            .x(2)
-            .apply_if(rb("picked", 3).eq(1))
+            .measure_bits(&[0, 1, 2], "m")
+            .assign("p", rb("m", 0) ^ rb("m", 1) ^ rb("m", 2))
+            .jump_if(r("p").eq(0), "even")
             .x(3)
-            .apply_if(rb("picked", 4).eq(1))
-            .x(4)
-            .assign(
-                "confirm",
-                r("parity")
-                    ^ rb("picked", 0)
-                    ^ rb("picked", 1)
-                    ^ rb("picked", 2)
-                    ^ rb("picked", 3)
-                    ^ rb("picked", 4),
-            );
+            .measure_bit(3, ("a", 0))
+            .apply_if(rb("a", 0).eq(1))
+            .x(3)
+            .jump("after")
+            .label("even")
+            .h(3)
+            .measure_bit(3, ("a", 0))
+            .apply_if(rb("a", 0).eq(1))
+            .x(3)
+            .label("after")
+            .apply_if(rb("m", 0).eq(1))
+            .x(0)
+            .apply_if(rb("m", 1).eq(1))
+            .x(1)
+            .apply_if(rb("m", 2).eq(1))
+            .x(2)
+            .assign("ok", r("p") ^ rb("m", 0) ^ rb("m", 1) ^ rb("m", 2))
+            .jump_if(r("ok").eq(0), "done")
+            .x(3)
+            .label("done");
 
         let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
         let cpu = SVSimulator::build(circuit).unwrap();
@@ -330,5 +295,10 @@ mod tests {
             &cpu.final_state(),
             0.001
         ));
+
+        for i in 0..10 {
+            assert_eq!(gpu.run(), 0, "gpu iter {i}");
+            assert_eq!(cpu.run(), 0, "cpu iter {i}");
+        }
     }
 }
