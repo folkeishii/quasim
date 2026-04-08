@@ -1,14 +1,16 @@
 use cubecl::Runtime;
 use nalgebra::{Complex, DVector};
 
-use crate::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
 use crate::circuit::{CircuitBehaviour, HybridCircuit};
 use crate::expr_dsl::{BitExpr, BoolExpr};
 use crate::gate::QBits;
+use crate::gpu_sv_simulator::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
 use crate::gpu_sv_simulator::gpu_state_vector::GpuStateVector;
 use crate::simulator::RunnableSimulator;
 use crate::{circuit::Circuit, instruction::Instruction, register_file::RegisterFile};
 
+pub mod batched_circuit;
+pub mod gate_batcher;
 mod gpu_kernels;
 mod gpu_state_vector;
 mod mem_helpers;

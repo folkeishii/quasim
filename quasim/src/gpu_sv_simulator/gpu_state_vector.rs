@@ -4,9 +4,9 @@ use nalgebra::Complex;
 use rand::Rng;
 
 use crate::gate::QBits;
-use crate::gate_batcher::BatchCommand;
-use crate::gpu_sv_simulator::gpu_kernels;
-use crate::{batched_circuit::BatchedCircuit, gpu_sv_simulator::mem_helpers};
+use crate::gpu_sv_simulator::batched_circuit::BatchedCircuit;
+use crate::gpu_sv_simulator::gate_batcher::BatchCommand;
+use crate::gpu_sv_simulator::{gpu_kernels, mem_helpers};
 
 const GPU_REDUCE_FACTOR_EXP: usize = 7;
 const GPU_REDUCE_FACTOR: usize = 1 << GPU_REDUCE_FACTOR_EXP;

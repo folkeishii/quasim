@@ -379,7 +379,7 @@ impl GateBatcher {
 
 #[cfg(test)]
 mod tests {
-    use crate::{circuit::Circuit, gate_batcher::GateBatcher};
+    use crate::{circuit::Circuit, gpu_sv_simulator::gate_batcher::GateBatcher};
 
     #[test]
     fn test_example_circuit() {

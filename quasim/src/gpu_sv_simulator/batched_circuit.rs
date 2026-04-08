@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit},
     gate::QBits,
-    gate_batcher::{BatchCommand, GateBatchData, GateBatcher},
+    gpu_sv_simulator::gate_batcher::{BatchCommand, GateBatchData, GateBatcher},
     instruction::{Instruction, PureInstruction},
 };
 
