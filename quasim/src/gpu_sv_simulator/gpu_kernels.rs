@@ -4,22 +4,22 @@ use cubecl::prelude::*;
 use crate::gpu_sv_simulator::GPU_MAX_BLOCK_SIZE;
 
 #[derive(CubeType, Clone, Copy)]
-struct ComplexF32 {
-    re: f32,
-    im: f32,
+struct ComplexF64 {
+    re: f64,
+    im: f64,
 }
 
 #[cube]
-impl ComplexF32 {
+impl ComplexF64 {
     fn mul(self, rhs: Self) -> Self {
-        ComplexF32 {
+        ComplexF64 {
             re: self.re * rhs.re - self.im * rhs.im,
             im: self.re * rhs.im + self.im * rhs.re,
         }
     }
 
     fn add(self, rhs: Self) -> Self {
-        ComplexF32 {
+        ComplexF64 {
             re: self.re + rhs.re,
             im: self.im + rhs.im,
         }
@@ -28,7 +28,7 @@ impl ComplexF32 {
 
 /// Removes amplitudes in statevector where basis doesnt align with measurement
 #[cube(launch)]
-pub fn state_vector_observe(state_vector: &mut Array<f32>, measurement: u32, target_mask: u32) {
+pub fn state_vector_observe(state_vector: &mut Array<f64>, measurement: u32, target_mask: u32) {
     let basis = ABSOLUTE_POS;
     if ((basis as u32) & target_mask) != measurement {
         state_vector[basis * 2] = 0.0; // re
@@ -37,7 +37,7 @@ pub fn state_vector_observe(state_vector: &mut Array<f32>, measurement: u32, tar
 }
 
 #[cube(launch)]
-pub fn state_vector_observe_full(state_vector: &mut Array<f32>, measurement: u32) {
+pub fn state_vector_observe_full(state_vector: &mut Array<f64>, measurement: u32) {
     let basis = ABSOLUTE_POS;
     if (basis as u32) == measurement {
         state_vector[basis * 2] = 1.0; // re
@@ -50,8 +50,8 @@ pub fn state_vector_observe_full(state_vector: &mut Array<f32>, measurement: u32
 
 #[cube(launch)]
 pub fn reduce_pass(
-    partial_in: &Array<f32>,
-    partial_out: &mut Array<f32>,
+    partial_in: &Array<f64>,
+    partial_out: &mut Array<f64>,
     #[comptime] block_size: usize,
 ) {
     let tid = UNIT_POS as usize;
@@ -59,7 +59,7 @@ pub fn reduce_pass(
     let gid = ABSOLUTE_POS;
 
     // Shared scratch memory between all threads in a block
-    let mut shared: SharedMemory<f32> = SharedMemory::new(block_size);
+    let mut shared: SharedMemory<f64> = SharedMemory::new(block_size);
 
     let partial_len = partial_in.len();
 
@@ -88,7 +88,7 @@ pub fn reduce_pass(
 }
 
 #[cube(launch)]
-pub fn calculate_probs(state_vector: &Array<f32>, probs: &mut Array<f32>) {
+pub fn calculate_probs(state_vector: &Array<f64>, probs: &mut Array<f64>) {
     let gid = ABSOLUTE_POS;
     let amp_count = state_vector.len() / 2;
 
@@ -103,15 +103,15 @@ pub fn calculate_probs(state_vector: &Array<f32>, probs: &mut Array<f32>) {
 
 #[cube(launch)]
 pub fn sample_cdf_block(
-    probs: &Array<f32>,
+    probs: &Array<f64>,
     sample_index: &mut Array<u32>,
-    threshold: &mut Array<f32>,
+    threshold: &mut Array<f64>,
     #[comptime] block_size: usize,
 ) {
     let tid = UNIT_POS as usize;
     let block_index = sample_index[0] as usize;
     let base = block_index * block_size;
-    let mut shared: SharedMemory<f32> = SharedMemory::new(block_size);
+    let mut shared: SharedMemory<f64> = SharedMemory::new(block_size);
 
     shared[tid] = if base + tid < probs.len() {
         probs[base + tid]
@@ -146,7 +146,7 @@ pub fn sample_cdf_block(
 }
 
 #[cube(launch)]
-pub fn state_vector_normalize(array: &mut Array<f32>, norm_sqr: &Array<f32>) {
+pub fn state_vector_normalize(array: &mut Array<f64>, norm_sqr: &Array<f64>) {
     if ABSOLUTE_POS < array.len() {
         array[ABSOLUTE_POS] /= norm_sqr[0].sqrt();
     }
@@ -155,10 +155,10 @@ pub fn state_vector_normalize(array: &mut Array<f32>, norm_sqr: &Array<f32>) {
 /// Applies `size` number of gates in one batch
 #[cube(launch)]
 pub fn batched_gate2(
-    state_vector: &mut Array<f32>,
+    state_vector: &mut Array<f64>,
     target_data: &Array<u32>,
     control_data: &Array<u32>,
-    gate_data: &Array<f32>,
+    gate_data: &Array<f64>,
     start_index: u32,
     size: u32,
     target_mask: u32,
@@ -181,19 +181,19 @@ pub fn batched_gate2(
             let control: usize = control_data[data_index] as usize;
             let gate_base = data_index * 8;
 
-            let u00 = ComplexF32 {
+            let u00 = ComplexF64 {
                 re: gate_data[gate_base],
                 im: gate_data[gate_base + 1],
             };
-            let u01 = ComplexF32 {
+            let u01 = ComplexF64 {
                 re: gate_data[gate_base + 2],
                 im: gate_data[gate_base + 3],
             };
-            let u10 = ComplexF32 {
+            let u10 = ComplexF64 {
                 re: gate_data[gate_base + 4],
                 im: gate_data[gate_base + 5],
             };
-            let u11 = ComplexF32 {
+            let u11 = ComplexF64 {
                 re: gate_data[gate_base + 6],
                 im: gate_data[gate_base + 7],
             };
@@ -219,14 +219,14 @@ pub fn batched_gate2(
 /// Applies a gate to specified basis state on state vector
 #[cube]
 fn apply_unitary2(
-    state_vector: &mut Array<f32>,
+    state_vector: &mut Array<f64>,
     basis_state: usize,
     target: usize,
     control: usize,
-    u00: ComplexF32,
-    u01: ComplexF32,
-    u10: ComplexF32,
-    u11: ComplexF32,
+    u00: ComplexF64,
+    u01: ComplexF64,
+    u10: ComplexF64,
+    u11: ComplexF64,
 ) {
     let basis0: usize = basis_state * 2;
     let basis1: usize = (basis_state | target) * 2;
@@ -235,11 +235,11 @@ fn apply_unitary2(
     let controls_active: bool = (basis_state & control) == control;
 
     if is_block_base && controls_active {
-        let amp0 = ComplexF32 {
+        let amp0 = ComplexF64 {
             re: state_vector[basis0],
             im: state_vector[basis0 + 1],
         };
-        let amp1 = ComplexF32 {
+        let amp1 = ComplexF64 {
             re: state_vector[basis1],
             im: state_vector[basis1 + 1],
         };

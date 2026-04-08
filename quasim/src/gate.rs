@@ -1,5 +1,5 @@
 use std::{
-    f32::consts::{FRAC_1_SQRT_2, PI},
+    f64::consts::{FRAC_1_SQRT_2, PI},
     ops::{BitAnd, BitOr, BitOrAssign, Shl, Shr, ShrAssign},
 };
 
@@ -107,7 +107,7 @@ pub enum GateType {
     Z,
     H,
     SWAP,
-    U(f32, f32, f32),
+    U(f64, f64, f64),
     S,
 }
 
@@ -143,31 +143,31 @@ pub struct Gate {
 
 impl Gate {
     #[rustfmt::skip]
-    pub const PAULI_X_DATA: [Complex<f32>; 4] = [
+    pub const PAULI_X_DATA: [Complex<f64>; 4] = [
         cart!(0.0), cart!(1.0),
         cart!(1.0), cart!(0.0),
     ];
 
     #[rustfmt::skip]
-    pub const PAULI_Y_DATA: [Complex<f32>; 4] = [
+    pub const PAULI_Y_DATA: [Complex<f64>; 4] = [
         cart!(0.0), cart!(0.0, -1.0),
         cart!(0.0, 1.0), cart!(0.0),
     ];
 
     #[rustfmt::skip]
-    pub const PAULI_Z_DATA: [Complex<f32>; 4] = [
+    pub const PAULI_Z_DATA: [Complex<f64>; 4] = [
         cart!(1.0), cart!(0.0),
         cart!(0.0), cart!(-1.0, 0.0),
     ];
 
     #[rustfmt::skip]
-    pub const HADAMARD_DATA: [Complex<f32>; 4] = [
+    pub const HADAMARD_DATA: [Complex<f64>; 4] = [
         cart!(FRAC_1_SQRT_2, 0.0), cart!(FRAC_1_SQRT_2, 0.0),
         cart!(FRAC_1_SQRT_2, 0.0), cart!(-FRAC_1_SQRT_2, 0.0),
     ];
 
     #[rustfmt::skip]
-    pub const SWAP_DATA: [Complex<f32>; 16] = [
+    pub const SWAP_DATA: [Complex<f64>; 16] = [
         cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0),
         cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0),
         cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0),
@@ -175,7 +175,7 @@ impl Gate {
     ];
 
     #[rustfmt::skip]
-    pub const PHASE_S_DATA: [Complex<f32>; 4] = [
+    pub const PHASE_S_DATA: [Complex<f64>; 4] = [
         cart!(1.0), cart!(0.0),
         cart!(0.0), cart!(0.0, 1.0),
     ];

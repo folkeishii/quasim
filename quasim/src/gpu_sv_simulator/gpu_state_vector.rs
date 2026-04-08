@@ -56,7 +56,7 @@ impl<R: Runtime> GpuStateVector<R> {
         let mut reduce_levels = Vec::new();
         let mut reduce_pass_size = state_vector_len.div_ceil(GPU_REDUCE_FACTOR);
         for _ in 0..n_reduce_passes {
-            let handle = client.empty(reduce_pass_size * size_of::<f32>());
+            let handle = client.empty(reduce_pass_size * size_of::<f64>());
             reduce_levels.push(ReduceLevel {
                 handle,
                 len: reduce_pass_size,
@@ -66,13 +66,13 @@ impl<R: Runtime> GpuStateVector<R> {
         }
 
         // State vector init
-        let mut init_state: Vec<f32> = vec![0.0; state_vector_len * 2]; // two floats for each complex number
+        let mut init_state: Vec<f64> = vec![0.0; state_vector_len * 2]; // two floats for each complex number
         init_state[0] = 1.0; // Sets first complex re = 1.0
         let init_bytes = Bytes::from_elems(init_state);
         let state_vector_handle = client.create_from_slice(&init_bytes);
 
         // Probs init
-        let mut init_probs: Vec<f32> = vec![0.0; state_vector_len];
+        let mut init_probs: Vec<f64> = vec![0.0; state_vector_len];
         init_probs[0] = 1.0; // Sets first state prob = 1.0
         let init_probs = Bytes::from_elems(init_probs);
         let probs_handle = client.create_from_slice(&init_probs);
@@ -101,11 +101,11 @@ impl<R: Runtime> GpuStateVector<R> {
         self.state_vector_handle = self.client.create(self.state_vector_cache.clone());
     }
 
-    pub fn as_slice(&self) -> &[Complex<f32>] {
+    pub fn as_slice(&self) -> &[Complex<f64>] {
         unsafe { mem_helpers::complex_from_bytes(&self.state_vector_cache) }
     }
 
-    pub fn as_slice_mut(&mut self) -> &mut [Complex<f32>] {
+    pub fn as_slice_mut(&mut self) -> &mut [Complex<f64>] {
         unsafe { mem_helpers::complex_from_bytes_mut(&mut self.state_vector_cache) }
     }
 
@@ -122,10 +122,10 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, n_amplitudes * 2, 1),
+                ArrayArg::from_raw_parts::<f64>(&self.state_vector_handle, n_amplitudes * 2, 1),
                 ArrayArg::from_raw_parts::<u32>(&self.target_data_handle, self.data_len, 1),
                 ArrayArg::from_raw_parts::<u32>(&self.control_data_handle, self.data_len, 1),
-                ArrayArg::from_raw_parts::<f32>(&self.gate_data_handle, self.data_len * 8, 1),
+                ArrayArg::from_raw_parts::<f64>(&self.gate_data_handle, self.data_len * 8, 1),
                 ScalarArg::new(command.start_index),
                 ScalarArg::new(command.size),
                 ScalarArg::new(command.targets.get_bitstring() as u32),
@@ -137,9 +137,9 @@ impl<R: Runtime> GpuStateVector<R> {
         self.launch_calculate_probs();
         self.build_prob_reduction_hierarchy();
 
-        let threshold = rand::rng().random_range(0.0..1.0f32);
+        let threshold = rand::rng().random_range(0.0..1.0f64);
         let sample_index_handle = self.client.create_from_slice(u32::as_bytes(&[0]));
-        let sample_threshold_handle = self.client.create_from_slice(f32::as_bytes(&[threshold]));
+        let sample_threshold_handle = self.client.create_from_slice(f64::as_bytes(&[threshold]));
 
         for (prob_handle, prob_len) in self
             .reduced_probs
@@ -171,7 +171,7 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(
+                ArrayArg::from_raw_parts::<f64>(
                     &self.state_vector_handle,
                     self.state_vector_len * 2,
                     1,
@@ -195,7 +195,7 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(
+                ArrayArg::from_raw_parts::<f64>(
                     &self.state_vector_handle,
                     self.state_vector_len * 2,
                     1,
@@ -244,8 +244,8 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, num_elems * 2, 1),
-                ArrayArg::from_raw_parts::<f32>(&self.probs_handle, num_elems, 1),
+                ArrayArg::from_raw_parts::<f64>(&self.state_vector_handle, num_elems * 2, 1),
+                ArrayArg::from_raw_parts::<f64>(&self.probs_handle, num_elems, 1),
             );
         }
     }
@@ -261,8 +261,8 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(in_handle, in_len, 1),
-                ArrayArg::from_raw_parts::<f32>(out_handle, out_len, 1),
+                ArrayArg::from_raw_parts::<f64>(in_handle, in_len, 1),
+                ArrayArg::from_raw_parts::<f64>(out_handle, out_len, 1),
                 GPU_REDUCE_FACTOR,
             );
         }
@@ -282,8 +282,8 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(&self.state_vector_handle, num_elems, 1),
-                ArrayArg::from_raw_parts::<f32>(&final_sum_level.handle, 1, 1),
+                ArrayArg::from_raw_parts::<f64>(&self.state_vector_handle, num_elems, 1),
+                ArrayArg::from_raw_parts::<f64>(&final_sum_level.handle, 1, 1),
             );
         }
     }
@@ -304,9 +304,9 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(prob_handle, prob_len, 1),
+                ArrayArg::from_raw_parts::<f64>(prob_handle, prob_len, 1),
                 ArrayArg::from_raw_parts::<u32>(sample_index_handle, 1, 1),
-                ArrayArg::from_raw_parts::<f32>(sample_threshold_handle, 1, 1),
+                ArrayArg::from_raw_parts::<f64>(sample_threshold_handle, 1, 1),
                 GPU_REDUCE_FACTOR,
             );
         }
@@ -329,7 +329,7 @@ mod tests {
         let mut state = make_state_vector(2);
 
         let init = Bytes::from_elems(vec![
-            1.0f32, 0.0, // |00>
+            1.0f64, 0.0, // |00>
             1.0, 0.0, // |01>
             0.0, 0.0, // |10>
             0.0, 0.0, // |11>
@@ -344,7 +344,7 @@ mod tests {
                 &state.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(
+                ArrayArg::from_raw_parts::<f64>(
                     &state.state_vector_handle,
                     state.state_vector_len * 2,
                     1,
@@ -368,7 +368,7 @@ mod tests {
         let mut state = make_state_vector(2);
 
         let init = Bytes::from_elems(vec![
-            0.0f32, 0.0, // |00>
+            0.0f64, 0.0, // |00>
             0.0, 0.0, // |01>
             1.0, 0.0, // |10>
             0.0, 0.0, // |11>
@@ -383,7 +383,7 @@ mod tests {
                 &state.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f32>(
+                ArrayArg::from_raw_parts::<f64>(
                     &state.state_vector_handle,
                     state.state_vector_len * 2,
                     1,

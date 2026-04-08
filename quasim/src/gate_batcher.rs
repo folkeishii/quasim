@@ -13,7 +13,7 @@ type BatchId = usize;
 #[derive(Debug, Clone)]
 struct GateNode {
     batch_id: BatchId,
-    matrix: Matrix2<Complex<f32>>,
+    matrix: Matrix2<Complex<f64>>,
     target: QBits,
     control: QBits,
     n_gates: usize,
@@ -37,7 +37,7 @@ impl GateNode {
 }
 
 // Matrix helper
-fn matrix2(gate2: &Gate) -> Matrix2<Complex<f32>> {
+fn matrix2(gate2: &Gate) -> Matrix2<Complex<f64>> {
     get_gate2_matrix(gate2).expect("gate size mismatch")
 }
 
@@ -69,7 +69,7 @@ pub struct BatchCommand {
 
 #[derive(Debug, Clone)]
 pub struct GateBatchData {
-    gate_data: Vec<Complex<f32>>,
+    gate_data: Vec<Complex<f64>>,
     target_data: Vec<u32>,
     control_data: Vec<u32>,
     len: usize,
@@ -101,7 +101,7 @@ impl GateBatchData {
         self.len += other.len;
     }
 
-    pub fn gate_data(&self) -> &[Complex<f32>] {
+    pub fn gate_data(&self) -> &[Complex<f64>] {
         &self.gate_data
     }
 

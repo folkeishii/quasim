@@ -1,4 +1,4 @@
-use std::f32::consts::FRAC_1_SQRT_2;
+use std::f64::consts::FRAC_1_SQRT_2;
 
 use nalgebra::{Complex, DVector, dvector};
 
@@ -33,7 +33,7 @@ pub fn double_sub<
         .h(2)
         .h(3);
 
-    const L: usize = 5; //(std::f32::consts::PI * 2f32.sqrt() / 4f32).floor() as usize;
+    const L: usize = 5; //(std::f64::consts::PI * 2f64.sqrt() / 4f64).floor() as usize;
 
     for _ in 0..L {
         circuit = circuit.call("sub", 0);
@@ -129,7 +129,7 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
         forward_steps += 1;
     }
 
-    let mut correct = DVector::<Complex<f32>>::zeros(1 << LEVELS);
+    let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
     correct[0] = cart!(FRAC_1_SQRT_2);
     correct[1 << (LEVELS - 1)] = cart!(FRAC_1_SQRT_2);
 
@@ -142,7 +142,7 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
         }
         assert_eq!(forward_steps, backward_steps);
 
-        let mut correct = DVector::<Complex<f32>>::zeros(1 << LEVELS);
+        let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
         correct[0] = cart!(1);
         assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
     }
@@ -177,7 +177,7 @@ pub fn hybrid_test<
     let mut sim = D::build(circuit).unwrap();
     while sim.next() {}
 
-    let mut expected = DVector::<Complex<f32>>::zeros(16);
+    let mut expected = DVector::<Complex<f64>>::zeros(16);
     expected[0] = cart!(1.0);
 
     assert!(equal_to_matrix_c(&sim.current_state(), &expected, 0.001));
@@ -234,7 +234,7 @@ pub fn deep_ctrl_sub<
         forward_steps += 1;
     }
 
-    let mut correct = DVector::<Complex<f32>>::zeros(1 << LEVELS);
+    let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
     correct[0b00000] = cart!(FRAC_1_SQRT_2);
     correct[0b00001] = cart!(0.5);
     correct[0b00011] = cart!(-0.35355);
@@ -252,7 +252,7 @@ pub fn deep_ctrl_sub<
         }
         assert_eq!(forward_steps, backward_steps);
 
-        let mut correct = DVector::<Complex<f32>>::zeros(1 << LEVELS);
+        let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
         correct[0] = cart!(1);
         assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
     }

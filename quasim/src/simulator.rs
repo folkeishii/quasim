@@ -34,7 +34,7 @@ where
 /// should implement this trait
 pub trait RunnableSimulator {
     fn run(&self) -> usize;
-    fn final_state(&self) -> DVector<Complex<f32>>;
+    fn final_state(&self) -> DVector<Complex<f64>>;
 }
 
 /// # DebuggableSimulator
@@ -77,9 +77,9 @@ pub trait DebuggableSimulator {
     /// If returned value is (pc, None)
     /// then we have reached the end of (sub) circuit
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>);
-    fn current_state(&self) -> &DVector<Complex<f32>>;
+    fn current_state(&self) -> &DVector<Complex<f64>>;
 
-    fn cont(&mut self) -> &DVector<Complex<f32>>
+    fn cont(&mut self) -> &DVector<Complex<f64>>
     where
         Self: StoredCircuitSimulator,
     {

@@ -142,7 +142,7 @@ impl<R: Runtime> RunnableSimulator for GpuStateVectorSimulator<R> {
             .get_collapsed_state()
     }
 
-    fn final_state(&self) -> DVector<Complex<f32>> {
+    fn final_state(&self) -> DVector<Complex<f64>> {
         let mut exec = GpuStateVectorExecutor::<R>::new(self.circuit.clone());
         exec.step_all();
         exec.gpu_state_vector.sync_state_to_cpu();
