@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 use std::mem::replace;
-use std::ops::Deref;
+use std::ops::{Deref, Index};
 use std::{iter::Map, ops::Range};
 
-use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, Matrix2, RawStorage, dmatrix};
+use nalgebra::{Complex, DMatrix, DVector, Matrix2, dmatrix};
 use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
 
@@ -56,23 +56,14 @@ pub fn equal_to_c(lhs: Complex<f64>, rhs: Complex<f64>, margin: f64) -> bool {
 ///
 /// Return `Ordering::Less` if all elements preceeding an element
 /// are equal and the same element is less
-pub fn equal_to_matrix_c<R, C, S>(
-    lhs: &Matrix<Complex<f64>, R, C, S>,
-    rhs: &Matrix<Complex<f64>, R, C, S>,
+pub fn equal_state_c<'a>(
+    lhs: &'a impl Index<usize, Output = Complex<f64>>,
+    rhs: &'a impl Index<usize, Output = Complex<f64>>,
+    n_qubits: usize,
     margin: f64,
-) -> bool
-where
-    R: Dim,
-    C: Dim,
-    S: RawStorage<Complex<f64>, R, C>,
-{
-    let ((l1, l2), (r1, r2)) = (lhs.shape(), rhs.shape());
-    if l1 != r1 || l2 != r2 {
-        return false;
-    }
-
-    for (lel, rel) in lhs.iter().zip(rhs.iter()) {
-        if !equal_to_c(*lel, *rel, margin) {
+) -> bool {
+    for state in 0..(1 << n_qubits) {
+        if !equal_to_c(lhs[state], rhs[state], margin) {
             return false;
         }
     }
@@ -423,8 +414,8 @@ impl<T: Ord> OrdByKey<T> for T {
 #[cfg(test)]
 mod tests {
     use crate::ext::{
-        convert_matrix, convert_vector, equal_to_matrix_c, expand_matrix_from_gate,
-        get_gate_matrix, swap_matrix,
+        convert_matrix, convert_vector, equal_state_c, expand_matrix_from_gate, get_gate_matrix,
+        swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
@@ -432,15 +423,16 @@ mod tests {
 
     #[test]
     fn swap_test() {
-        assert!(equal_to_matrix_c(
+        assert!(equal_state_c(
             &swap_matrix(&[], 0, 1, 2),
             &get_gate_matrix(&Gate::new(GateType::SWAP, &[], &[0, 1]).unwrap()),
+            4,
             0.001
         ));
     }
     #[test]
     fn fredkin_test() {
-        assert!(equal_to_matrix_c(
+        assert!(equal_state_c(
             &swap_matrix(&[2], 1, 0, 3),
             &dmatrix![
                 cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -452,6 +444,7 @@ mod tests {
                 cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
                 cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
             ],
+            6,
             0.001
         ));
     }
@@ -478,16 +471,8 @@ mod tests {
             cart!(3.0), //|110>
             cart!(7.0), //|111>
         ];
-        assert!(equal_to_matrix_c(
-            &vec_lsb,
-            &convert_vector(&vec_msb),
-            0.001
-        ));
-        assert!(equal_to_matrix_c(
-            &vec_msb,
-            &convert_vector(&vec_lsb),
-            0.001
-        ));
+        assert!(equal_state_c(&vec_lsb, &convert_vector(&vec_msb), 3, 0.001));
+        assert!(equal_state_c(&vec_msb, &convert_vector(&vec_lsb), 3, 0.001));
         let textbook_ch = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
@@ -496,14 +481,16 @@ mod tests {
         ];
         let sim_ch = expand_matrix_from_gate(&Gate::new(GateType::H, &[0], &[1]).unwrap(), 2);
 
-        assert!(equal_to_matrix_c(
+        assert!(equal_state_c(
             &convert_matrix(&sim_ch),
             &textbook_ch,
+            4,
             0.001
         ));
-        assert!(equal_to_matrix_c(
+        assert!(equal_state_c(
             &convert_matrix(&textbook_ch),
             &sim_ch,
+            4,
             0.001
         ));
     }

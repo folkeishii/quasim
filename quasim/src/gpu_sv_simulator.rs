@@ -136,16 +136,20 @@ where
 }
 
 impl<R: Runtime> RunnableSimulator for GpuStateVectorSimulator<R> {
+    type Storage = DVector<Complex<f64>>;
+    type State = Complex<f64>;
+
     fn run(&self) -> usize {
         GpuStateVectorExecutor::<R>::new(self.circuit.clone())
             .step_all()
             .get_collapsed_state()
     }
 
-    fn final_state(&self) -> DVector<Complex<f64>> {
+    fn final_state(&self) -> Self::Storage {
         let mut exec = GpuStateVectorExecutor::<R>::new(self.circuit.clone());
         exec.step_all();
         exec.gpu_state_vector.sync_state_to_cpu();
+        // This is extremely expensive, we should probably do something about this
         DVector::from_row_slice(exec.gpu_state_vector.as_slice())
     }
 }
@@ -160,7 +164,7 @@ mod tests {
     use crate::{
         circuit::{Circuit, PureCircuit},
         expr_dsl::expr_helpers::{r, rb},
-        ext::equal_to_matrix_c,
+        ext::equal_state_c,
         gpu_sv_simulator::GpuStateVectorSimulator,
         simulator::{BuildSimulator, RunnableSimulator},
         sv_simulator::SVSimulator,
@@ -176,9 +180,10 @@ mod tests {
 
         println!("{}", &gpu.final_state());
         println!("{}", &cpu.final_state());
-        assert!(equal_to_matrix_c(
+        assert!(equal_state_c(
             &gpu.final_state(),
             &cpu.final_state(),
+            n_qubits,
             0.001
         ));
     }
@@ -290,9 +295,10 @@ mod tests {
         let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
         let cpu = SVSimulator::build(circuit).unwrap();
 
-        assert!(equal_to_matrix_c(
+        assert!(equal_state_c(
             &gpu.final_state(),
             &cpu.final_state(),
+            4,
             0.001
         ));
 

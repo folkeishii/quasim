@@ -16,10 +16,6 @@ serde = { version = "1.0.228", features = ["derive"] }
 cubecl = { version = "0.10.0-pre.2", features = ["wgpu", "cuda"] }
 
 [[bench]]
-name = "gate-dsl"
-harness = false
-
-[[bench]]
 name = "debug-simulator"
 harness = false
 
