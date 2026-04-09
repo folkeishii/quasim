@@ -1,4 +1,4 @@
-use core::{f32, panic};
+use core::f32;
 use std::{
     collections::VecDeque,
     fmt::{Debug, Display},
@@ -208,9 +208,47 @@ impl ExtendedQubitBasis {
             MinusI => I,
         }
     }
+
+    #[inline(always)]
+    fn y(&self) -> ExtendedQubitBasis {
+        use ExtendedQubitBasis::*;
+        match self {
+            Zero => One,
+            One => Zero,
+            Plus => Minus,
+            Minus => Plus,
+            I => I,
+            MinusI => MinusI,
+        }
+    }
+
+    fn z(&self) -> ExtendedQubitBasis {
+        use ExtendedQubitBasis::*;
+        match self {
+            Zero => Zero,
+            One => One,
+            Plus => Minus,
+            Minus => Plus,
+            I => MinusI,
+            MinusI => I,
+        }
+    }
+
+    #[inline(always)]
+    fn h(&self) -> ExtendedQubitBasis {
+        use ExtendedQubitBasis::*;
+        match self {
+            Zero => Plus,
+            One => Minus,
+            Plus => Zero,
+            Minus => One,
+            I => MinusI,
+            MinusI => I,
+        }
+    }
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone)]
 enum ExtendedBasis {
     Binary(usize),
     Superposition(Vec<ExtendedQubitBasis>),
@@ -299,9 +337,9 @@ impl ExtendedBasis {
                 // but now with one less qubit to expand.
 
                 let all_terms = just_existing_expansions
-                    .flat_map(|ScaledState(_, scalar)| {
+                    .flat_map(|ScaledState(basis, scalar)| {
                         // If a scaled state turns into more terms, the scalar needs to be distributed across the terms.
-                        *scalar * self.clone().expand_qubits_helper(qubits_to_expand.clone())
+                        *scalar * basis.clone().expand_qubits_helper(qubits_to_expand.clone()) // Expensive clone(s)?
                     })
                     .collect::<Sum>();
 
@@ -340,6 +378,12 @@ impl ExtendedBasis {
         let mut vec_form = self.vec_form();
         vec_form.resize(n, ExtendedQubitBasis::Zero);
         vec_form
+    }
+
+    fn pad_to_length(superposition: &mut Vec<ExtendedQubitBasis>, n: usize) {
+        if superposition.len() < n {
+            superposition.resize(n, ExtendedQubitBasis::Zero);
+        }
     }
 
     fn all_inherent_states_of(extended_basis: ExtendedBasis) -> Sum {
@@ -401,16 +445,57 @@ impl ExtendedBasis {
 
     // Gates
 
-    fn x(basis: &mut Self, target: usize) {
+    fn x(&mut self, target: usize) {
         use ExtendedBasis::*;
-        match basis {
+        match self {
             Binary(bits) => *bits = *bits ^ (1 << target),
             Superposition(bases) => {
-                let target = bases
-                    .get_mut(target)
-                    .expect("Cannot perform x gate on qubit that does not exist");
+                Self::pad_to_length(bases, target + 1);
+                bases[target] = bases[target].x();
+            }
+        }
+    }
 
-                *target = target.x();
+    fn y(&mut self, target: usize) {
+        use ExtendedBasis::*;
+        match self {
+            Binary(bits) => *bits = *bits ^ (1 << target),
+            Superposition(bases) => {
+                Self::pad_to_length(bases, target + 1);
+                bases[target] = bases[target].y();
+            }
+        }
+    }
+
+    fn z(&mut self, target: usize) {
+        use ExtendedBasis::*;
+        match self {
+            Binary(_) => (),
+            Superposition(bases) => {
+                Self::pad_to_length(bases, target + 1);
+                bases[target] = bases[target].z();
+            }
+        }
+    }
+
+    fn h(&mut self, target: usize) {
+        use ExtendedBasis::*;
+        match self {
+            Binary(bits) => {
+                let bit_is_one = (*bits & (1 << target)) != 0;
+                let new_qubit_basis = if bit_is_one {
+                    ExtendedQubitBasis::Minus
+                } else {
+                    ExtendedQubitBasis::Plus
+                };
+                // Clone is cheap because self is effectively a usize
+                let mut new_bases = self.clone().vec_form_padded_to_len(target + 1);
+                new_bases[target] = new_qubit_basis;
+                *self = Superposition(new_bases);
+            }
+            Superposition(bases) => {
+                Self::pad_to_length(bases, target + 1);
+                bases[target] = bases[target].h();
             }
         }
     }
@@ -442,6 +527,33 @@ impl Debug for ExtendedBasis {
     }
 }
 
+impl PartialEq for ExtendedBasis {
+    fn eq(&self, other: &Self) -> bool {
+        use ExtendedBasis::*;
+        match (self, other) {
+            (Binary(b1), Binary(b2)) => b1 == b2,
+            (Superposition(s1), Superposition(s2)) => s1 == s2,
+            (Binary(l), Superposition(r)) => {
+                let mut l = *l;
+                for basis in r {
+                    let bit_is_one = (l & 1) == 1;
+                    let expected_basis = if bit_is_one {
+                        ExtendedQubitBasis::One
+                    } else {
+                        ExtendedQubitBasis::Zero
+                    };
+                    if *basis != expected_basis {
+                        return false;
+                    }
+                    l = l >> 1;
+                }
+                true
+            }
+            _ => other == self,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq)]
 struct ScaledState(ExtendedBasis, Scalar);
 
@@ -462,7 +574,7 @@ impl ScaledState {
 impl Debug for ScaledState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ScaledState(basis, scalar) = self;
-        write!(f, "{}|{:?}⟩", scalar, basis)
+        write!(f, "{}{:?}", scalar, basis)
     }
 }
 
@@ -579,9 +691,19 @@ impl SyntaxSimulator {
         assert_eq!(targets.get_indices().len(), 1);
         let target = targets.get_indices()[0];
 
+        trace!(
+            "Applying gate {:?} with controls {:?} and target {}",
+            gate.get_type(),
+            controls,
+            target
+        );
+
         use GateType::*;
         expr.sum = match gate.get_type() {
             X => expr.apply_controlled_gate(ExtendedBasis::x, controls, target),
+            Y => expr.apply_controlled_gate(ExtendedBasis::y, controls, target),
+            Z => expr.apply_controlled_gate(ExtendedBasis::z, controls, target),
+            H => expr.apply_controlled_gate(ExtendedBasis::h, controls, target),
             _ => todo!(),
         };
     }
@@ -646,6 +768,8 @@ impl TryFrom<Circuit<PureCircuit>> for SyntaxSimulator {
 
 #[cfg(test)]
 mod tests {
+    use crate::simulator::BuildSimulator;
+
     use super::*;
 
     #[test]
@@ -682,16 +806,32 @@ mod tests {
             ]
         );
 
-        /*let expand_both = QBits::from_indices(&[0, 1]);
+        let expand_both = QBits::from_indices(&[0, 1]);
         let half = Scalar::FRAC_1_SQRT_2 * Scalar::FRAC_1_SQRT_2;
-        assert_eq!(
-            basis_to_expand.clone().expand_qubits(expand_both),
-            vec![
-                ScaledState(ExtendedBasis::Binary(0), half),
-                ScaledState(ExtendedBasis::Binary(1), -half),
-                ScaledState(ExtendedBasis::Binary(2), half),
-                ScaledState(ExtendedBasis::Binary(3), -half),
-            ]
-        );*/
+
+        let correct = vec![
+            ScaledState(ExtendedBasis::Superposition(vec![Zero, Zero]), half),
+            ScaledState(ExtendedBasis::Superposition(vec![One, Zero]), half),
+            ScaledState(ExtendedBasis::Superposition(vec![Zero, One]), -half),
+            ScaledState(ExtendedBasis::Superposition(vec![One, One]), -half),
+        ];
+        let attempt = basis_to_expand.clone().expand_qubits(expand_both);
+        assert!(correct.len() == attempt.len());
+        for state in correct {
+            assert!(attempt.contains(&state));
+        }
+    }
+
+    #[test]
+    fn test_hadamard_cnot_entanglement() {
+        let circuit = Circuit::new(2).h(0).cx(&[0], 1);
+        for _ in 0..1000 {
+            let mut sim = match SyntaxSimulator::build(circuit.clone()) {
+                Ok(sim) => sim,
+                Err(e) => panic!("Error building simulator: {}", e),
+            };
+            let result = sim.run();
+            assert!(result == 0b00 || result == 0b11);
+        }
     }
 }
