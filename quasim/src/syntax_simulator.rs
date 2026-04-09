@@ -7,6 +7,7 @@ use std::{
 
 use log::trace;
 use nalgebra::Complex;
+use rand::random;
 
 use crate::{
     circuit::{Circuit, PureCircuit, pc::CircuitPc},
@@ -48,6 +49,11 @@ impl Scalar {
     fn is_zero(&self) -> bool {
         self == &Scalar::ZERO
     }
+
+    fn probability(&self) -> f32 {
+        let c: Complex<f32> = (*self).into();
+        c.norm_sqr()
+    }
 }
 
 impl Neg for Scalar {
@@ -69,6 +75,15 @@ impl Mul for Scalar {
             frac_1_sqrt_2_power: self.frac_1_sqrt_2_power + rhs.frac_1_sqrt_2_power,
             number: self.number * rhs.number,
         }
+    }
+}
+
+impl Mul<ScaledState> for Scalar {
+    type Output = ScaledState;
+
+    fn mul(self, rhs: ScaledState) -> Self::Output {
+        let ScaledState(state, scalar) = rhs;
+        ScaledState(state, self * scalar)
     }
 }
 
@@ -197,16 +212,6 @@ impl ExtendedBasis {
         self.try_into_binary()
             .expect("Cannot convert superposition basis into binary basis!")
     }
-
-    /*fn from_bitstring(mut bitstring: usize, n_qubits: usize) -> Self {
-        let mut new_basis = vec![ExtendedQubitBasis::Zero; n_qubits];
-        for i in 0..n_qubits {
-            if (bitstring & (1 << i)) != 0 {
-                new_basis[i] = ExtendedQubitBasis::One;
-            };
-        }
-        ExtendedBasis::Superposition(new_basis)
-    }*/
 }
 
 impl From<ScaledQubitBasis> for ScaledState {
@@ -287,6 +292,18 @@ impl ScaledState {
     fn has_zero_coef(&self) -> bool {
         self.1.is_zero()
     }
+
+    fn all_inherent_states(&self) -> Sum {
+        let my_scalar = self.1;
+
+        self.0
+            .clone()
+            .all_inherent_states()
+            .iter()
+            // Guaranteed usize means cheap clone.
+            .map(|substate| my_scalar * substate.clone())
+            .collect()
+    }
 }
 
 impl From<(usize, Scalar)> for ScaledState {
@@ -321,16 +338,7 @@ impl SumOfScaledStates {
     fn probability_distribution(&self) -> impl Iterator<Item = &ScaledState> {
         self.sum.iter()
     }
-    /*
-    fn evaluate_full_state_vector(&self) -> DVector<Complex<f32>> {
-        let mut result: DVector<Complex<f32>> = DVector::zeros(1usize << self.n_qubits);
-        for (ScaledState(state, scalar)) in self.sum.iter() {
-            let state = state.get_bitstring();
-            result[state] = (*scalar).into();
-        }
-        result
-    }
-    */
+
     // Gates
 
     pub fn apply_cx(self: &mut SumOfScaledStates, controls: QBits, target: QBits) {
@@ -377,17 +385,6 @@ impl SumOfScaledStates {
             controls, target, self.sum
         );
     }
-
-    /*pub fn apply_h(self: &mut SumOfScaledStates, controls: QBits, target: QBits) {
-        let mut new_terms: Vec<ScaledState> = Vec::new();
-        for term in self.sum.iter_mut() {
-            if term.state & controls == controls {
-                // Controls are set!
-                let flipped_variant = term.state;
-                term.scalar.mul_frac_1_sqrt_2()
-            }
-        }
-    }*/
 }
 
 pub struct SyntaxSimulator {
@@ -439,20 +436,23 @@ impl SyntaxSimulator {
     pub fn run(&mut self) -> usize {
         self.step_all();
 
-        /*let mut probability_so_far = 0f32;
+        let mut probability_so_far = 0f32;
         let guess = random::<f32>();
-        for (state, prob) in self.step_all().probability_distribution() {
-            probability_so_far += prob;
+        for ScaledState(state, scalar) in self
+            .state
+            .probability_distribution()
+            .flat_map(|s| s.all_inherent_states())
+        {
+            probability_so_far += scalar.probability();
             if probability_so_far >= guess {
-                return state.get_bitstring() as usize;
+                return state.into_binary();
             }
         }
 
         panic!(
             "Probabilities did not sum to 1! Total probability: {}",
             probability_so_far
-        );*/
-        1337
+        );
     }
 }
 
