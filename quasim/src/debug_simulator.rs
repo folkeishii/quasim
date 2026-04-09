@@ -5,7 +5,7 @@ use crate::{
     ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv},
     instruction::Instruction,
     register_file::{RegisterError, RegisterFile},
-    simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
+    simulator::{Debuggable, Simulator, StoredCircuit, StoredRegisters},
 };
 use nalgebra::{Complex, DVector};
 
@@ -49,16 +49,36 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
     }
 }
 
-impl HybridSimulator for DebugSimulator {
+impl Simulator for DebugSimulator {
+    type State = DVector<Complex<f64>>;
+    type BasisValue = Complex<f64>;
+
+    fn run(&mut self) -> &mut Self {
+        while self.next() {}
+
+        self
+    }
+
+    fn reset(&mut self) -> &mut Self {
+        self.current_state.fill(cart!(0.0));
+        self.current_state[0] = cart!(1.0);
+        self.pc = Default::default();
+
+        self
+    }
+
+    fn state(&self) -> &Self::State {
+        &self.current_state
+    }
+}
+
+impl StoredRegisters for DebugSimulator {
     fn registers(&self) -> &RegisterFile {
         &self.registers
     }
 }
 
-impl DebuggableSimulator for DebugSimulator {
-    type Storage = DVector<Complex<f64>>;
-    type State = Complex<f64>;
-
+impl Debuggable for DebugSimulator {
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
@@ -88,14 +108,6 @@ impl DebuggableSimulator for DebugSimulator {
 
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>) {
         (self.pc(), self.circuit.instruction(self.pc()))
-    }
-
-    fn current_state(&self) -> &DVector<Complex<f64>> {
-        &self.current_state
-    }
-
-    fn collapse_peek(&self) -> usize {
-        collapse(self.current_state.as_slice())
     }
 
     fn prev(&mut self) -> bool {
@@ -196,7 +208,7 @@ impl DebugSimulator {
     }
 }
 
-impl StoredCircuitSimulator for DebugSimulator {
+impl StoredCircuit for DebugSimulator {
     type B = HybridCircuit;
     fn circuit(&self) -> &Circuit<HybridCircuit> {
         &self.circuit
@@ -222,12 +234,13 @@ mod tests {
         collapse, equal_state_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
         measure_and_observe_sv,
     };
+    use crate::simulator::Simulator;
     use crate::{
         cart,
         circuit::Circuit,
         debug_simulator::DebugSimulator,
         gate::{Gate, GateType},
-        simulator::{BuildSimulator, DebuggableSimulator},
+        simulator::{Buildable, Debuggable},
     };
     use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
     use std::f64::consts::FRAC_1_SQRT_2;
@@ -237,7 +250,7 @@ mod tests {
         let circ = Circuit::new(3).h(0).h(1).h(2);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
         sim.cont();
-        let mut res = sim.current_state().clone();
+        let mut res = sim.state().clone();
         let plus_plus_plus: DVector<Complex<f64>> = dvector![
             cart!(0.5 * FRAC_1_SQRT_2), // |000>
             cart!(0.5 * FRAC_1_SQRT_2), // |001>
@@ -345,7 +358,7 @@ mod tests {
         let circ = Circuit::new(3).h(0).cx(&[0], 1);
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
         sim.cont();
-        let mut res = sim.current_state().clone();
+        let mut res = sim.state().clone();
         // Expected state vector before any measurments
         let bell: DVector<Complex<f64>> = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
@@ -399,7 +412,7 @@ mod tests {
 
         let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
         sim.cont();
-        let collapsed = collapse(sim.current_state().as_ref());
+        let collapsed = collapse(sim.state().as_ref());
 
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
         assert!(collapsed == 0b00 || collapsed == 0b11);
@@ -600,13 +613,13 @@ mod tests {
             cart!(FRAC_1_SQRT_2) // |111>
         ];
         let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
-        assert!(equal_state_c(&psi0, sim.current_state(), 3, 0.001));
+        assert!(equal_state_c(&psi0, sim.state(), 3, 0.001));
         sim.next();
-        assert!(equal_state_c(&psi1, sim.current_state(), 3, 0.001));
+        assert!(equal_state_c(&psi1, sim.state(), 3, 0.001));
         sim.next();
-        assert!(equal_state_c(&psi2, sim.current_state(), 3, 0.001));
+        assert!(equal_state_c(&psi2, sim.state(), 3, 0.001));
         sim.next();
-        assert!(equal_state_c(&psi3, sim.current_state(), 3, 0.001));
+        assert!(equal_state_c(&psi3, sim.state(), 3, 0.001));
 
         let res = sim.next();
         match res {
@@ -615,11 +628,11 @@ mod tests {
         }
 
         sim.prev();
-        assert!(equal_state_c(&psi2, sim.current_state(), 3, 0.001));
+        assert!(equal_state_c(&psi2, sim.state(), 3, 0.001));
         sim.prev();
-        assert!(equal_state_c(&psi1, sim.current_state(), 3, 0.001));
+        assert!(equal_state_c(&psi1, sim.state(), 3, 0.001));
         sim.prev();
-        assert!(equal_state_c(&psi0, sim.current_state(), 3, 0.001));
+        assert!(equal_state_c(&psi0, sim.state(), 3, 0.001));
 
         let res = sim.prev();
         match res {

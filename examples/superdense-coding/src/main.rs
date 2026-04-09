@@ -1,7 +1,7 @@
 use quasim::circuit::Circuit;
 use quasim::expr_dsl::expr_helpers::r;
-use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
-use quasim::sv_simulator::SVSimulatorDebugger;
+use quasim::simulator::{Buildable, Simulator, StoredRegisters};
+use quasim::sv_simulator::SVSimulator;
 
 /// Simulate sending a 2-bit integer using one qubit
 ///
@@ -35,10 +35,9 @@ fn send_int(i: u8) -> u8 {
         // Bob measures his qubit + the received one to get c and d
         .measure_bits(&[0, 1], "b");
 
-    let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.cont();
+    let mut sim = SVSimulator::build(circuit).unwrap();
 
-    sim.register("b").read() as u8
+    sim.run().register("b").read() as u8
 }
 
 fn main() {

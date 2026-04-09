@@ -1,6 +1,6 @@
 use quasim::circuit::Circuit;
-use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
-use quasim::sv_simulator::SVSimulatorDebugger;
+use quasim::simulator::{Buildable, Simulator, StoredRegisters};
+use quasim::sv_simulator::SVSimulator;
 
 const N: usize = 8;
 
@@ -76,8 +76,8 @@ fn check_quantum(function_type: FunctionType) -> bool {
     }
 
     circuit = circuit.measure_bits(&[0, 1, 2, 3, 4, 5, 6, 7], "res");
-    let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.cont();
+    let mut sim = SVSimulator::build(circuit).unwrap();
+    sim.run();
 
     sim.register("res").read() == 0
 }

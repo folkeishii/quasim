@@ -1,8 +1,8 @@
 use quasim::{
     circuit::{Circuit, HybridCircuit},
     debug_simulator::DebugSimulator,
-    simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
-    sv_simulator::SVSimulatorDebugger,
+    simulator::{Buildable, Debuggable, StoredCircuit},
+    sv_simulator::SVSimulator,
 };
 
 extern crate quasim;
@@ -12,13 +12,13 @@ fn main() {
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, DebugSimulator],
+    types = [SVSimulator, DebugSimulator],
     args = [2,3,4,5,6,7,8,9,10,11],
     sample_count = 10,
 )]
 fn circuit_size<S>(n_qubits: usize)
 where
-    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
+    S: Debuggable + Buildable<HybridCircuit> + StoredCircuit,
 {
     let mut circuit = Circuit::new(n_qubits);
 
@@ -31,13 +31,13 @@ where
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, DebugSimulator],
+    types = [SVSimulator, DebugSimulator],
     args = [1000,2000,4000,8000,16000,32000],
     sample_count = 10,
 )]
 fn num_gates<S>(n_gates: usize)
 where
-    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
+    S: Debuggable + Buildable<HybridCircuit> + StoredCircuit,
 {
     let mut circuit = Circuit::new(6);
 

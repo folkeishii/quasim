@@ -871,7 +871,7 @@ mod tests {
         circuit::Circuit,
         ext::{equal_state_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
-        simulator::{BuildSimulator, RunnableSimulator},
+        simulator::{Buildable, Simulator},
         sv_simulator::SVSimulator,
     };
     use nalgebra::{Complex, DMatrix, dvector};
@@ -910,7 +910,7 @@ mod tests {
     }
     #[test]
     fn qft_test() {
-        let sim = SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
+        let mut sim = SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
             "QFT",
             Circuit::new_qft(4),
             0,
@@ -935,7 +935,7 @@ mod tests {
             cart!(0.25, -0.25),   // |1110>
             cart!(0.0),           // |1111>
         ];
-        assert!(equal_state_c(&expected_vec, &sim.final_state(), 4, 0.001));
+        assert!(equal_state_c(&expected_vec, sim.run().state(), 4, 0.001));
     }
 
     #[test]

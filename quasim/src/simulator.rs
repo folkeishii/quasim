@@ -1,6 +1,7 @@
 use crate::circuit::CircuitBehaviour;
 use crate::circuit::pc::CircuitPc;
 use crate::register_file::{Register, RegisterFile};
+use crate::sampler::Sampler;
 use crate::{circuit::Circuit, instruction::Instruction};
 
 /// # BuildSimulator
@@ -10,14 +11,14 @@ use crate::{circuit::Circuit, instruction::Instruction};
 /// To support `TryFrom<Cicuit>` there is an auto
 /// implementation of `BuildSimulator` for any type
 /// that implements `TryFrom<Circuit>`
-pub trait BuildSimulator<B: CircuitBehaviour>: Sized {
+pub trait Buildable<B: CircuitBehaviour>: Simulator + Sized {
     type E: std::error::Error;
 
     fn build(circuit: Circuit<B>) -> Result<Self, Self::E>;
 }
-impl<T, B: CircuitBehaviour, E> BuildSimulator<B> for T
+impl<T, B: CircuitBehaviour, E> Buildable<B> for T
 where
-    T: TryFrom<Circuit<B>, Error = E>,
+    T: Simulator + TryFrom<Circuit<B>, Error = E>,
     E: std::error::Error,
 {
     type E = E;
@@ -27,25 +28,30 @@ where
     }
 }
 
-/// # RunnableSimulator
-/// Any simulator that can calculate the circuits
-/// final state without changing internal state
-/// should implement this trait
-pub trait RunnableSimulator {
-    type Storage;
-    type State;
+pub trait QuantumState {
+    type BasisValue;
 
-    fn run(&self) -> usize;
-    fn final_state(&self) -> Self::Storage;
+    fn collapse(&self) -> usize;
+    fn basis_value(&self, basis: usize) -> Self::BasisValue;
 }
 
-/// # DebuggableSimulator
+/// # Simulator
+/// The base simulator trait
+///
+/// Mutates internal state using `run` and `reset` functions
+pub trait Simulator {
+    type State: QuantumState<BasisValue = Self::BasisValue>;
+    type BasisValue;
+
+    fn run(&mut self) -> &mut Self;
+    fn reset(&mut self) -> &mut Self;
+    fn state(&self) -> &Self::State;
+}
+
+/// # Debuggable
 /// Any simulator that can step through a circuit
 /// one gate at a time should implement this trait
-pub trait DebuggableSimulator {
-    type Storage;
-    type State;
-
+pub trait Debuggable: Simulator {
     fn next(&mut self) -> bool;
     /// Unlike `next`, `next_over` will execute all instructions
     /// inside a sub circuit
@@ -82,12 +88,10 @@ pub trait DebuggableSimulator {
     /// If returned value is (pc, None)
     /// then we have reached the end of (sub) circuit
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>);
-    fn current_state(&self) -> &Self::Storage;
-    fn collapse_peek(&self) -> usize;
 
     fn cont(&mut self) -> bool
     where
-        Self: StoredCircuitSimulator,
+        Self: StoredCircuit,
     {
         while self.next() {
             let (pc, _) = self.current_instruction();
@@ -99,10 +103,10 @@ pub trait DebuggableSimulator {
     }
 }
 
-/// # StoredCircuitSimulator
+/// # StoredCircuit
 /// Any simulator that stores the underlying circuit
-/// internally should implment this trait
-pub trait StoredCircuitSimulator {
+/// internally should implement this trait
+pub trait StoredCircuit: Simulator {
     type B: CircuitBehaviour;
 
     fn circuit(&self) -> &Circuit<Self::B>;
@@ -118,16 +122,57 @@ pub trait StoredCircuitSimulator {
     }
 }
 
-/// # HybridSimulator
+/// # StoredRegisters
 /// Any simulator that implements classical operations
 /// and stores registers should implement this trait
-pub trait HybridSimulator {
+pub trait StoredRegisters: Simulator {
     fn registers(&self) -> &RegisterFile;
 
     fn register(&self, register: &str) -> Register {
         self.registers()[register]
     }
 }
+
+/// # Sampleable
+/// Simulators that implement this trait can be sampled using a Sampler.
+/// Is autoimplemented by all simulators, but requires the simulator to be buildable
+/// in order to use the sampling functions.
+pub trait Sampleable: Simulator {
+    fn sample_once<T>(
+        sampler: &T,
+    ) -> Result<<T as Sampler<Self>>::Output, <Self as Buildable<T::CircuitBehaviour>>::E>
+    where
+        T: Sampler<Self>,
+        Self: Buildable<T::CircuitBehaviour>,
+        Circuit<T::CircuitBehaviour>: Clone,
+    {
+        let mut sim = Self::build(sampler.circuit().clone())?;
+        sim.run();
+        Ok(sampler.sample(&sim))
+    }
+
+    fn sample<T>(
+        sampler: &T,
+        times: usize,
+    ) -> Result<
+        impl Iterator<Item = <T as Sampler<Self>>::Output>,
+        <Self as Buildable<T::CircuitBehaviour>>::E,
+    >
+    where
+        T: Sampler<Self>,
+        Self: Buildable<T::CircuitBehaviour>,
+        Circuit<T::CircuitBehaviour>: Clone,
+    {
+        let mut sim = Self::build(sampler.circuit().clone())?;
+        let iter = (0..times).map(move |_| {
+            sim.run();
+            sampler.sample(&sim)
+        });
+        Ok(iter)
+    }
+}
+
+impl<T: Simulator> Sampleable for T {}
 
 #[cfg(test)]
 mod tests {
@@ -136,7 +181,7 @@ mod tests {
         circuit::Circuit,
         debug_simulator::DebugSimulator,
         ext::equal_state_c,
-        simulator::{BuildSimulator, DebuggableSimulator},
+        simulator::{Buildable, Debuggable, Simulator},
     };
 
     #[test]
@@ -149,11 +194,6 @@ mod tests {
         sim1.next();
         sim1.next();
         sim2.cont();
-        assert!(equal_state_c(
-            sim1.current_state(),
-            sim2.current_state(),
-            3,
-            0.001
-        ))
+        assert!(equal_state_c(sim1.state(), sim2.state(), 3, 0.001))
     }
 }

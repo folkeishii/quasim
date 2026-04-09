@@ -3,12 +3,12 @@ use std::env;
 use quasim::circuit::{Circuit, HybridCircuit};
 use quasim::debug_simulator::DebugSimulator;
 use quasim::debug_terminal::DebugTerminal;
-use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
-use quasim::sv_simulator::SVSimulatorDebugger;
+use quasim::simulator::{Buildable, Simulator, StoredRegisters};
+use quasim::sv_simulator::SVSimulator;
 
 fn check_quantum(func: &[usize]) -> bool {
-    let mut sim = SVSimulatorDebugger::build(circuit(func)).unwrap();
-    sim.cont();
+    let mut sim = SVSimulator::build(circuit(func)).unwrap();
+    sim.run();
 
     let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
 

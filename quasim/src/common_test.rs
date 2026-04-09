@@ -7,12 +7,12 @@ use crate::{
     circuit::{Circuit, HybridCircuit},
     expr_dsl::expr_helpers::r,
     ext::equal_state_c,
-    simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
+    simulator::{Buildable, Debuggable, StoredCircuit, StoredRegisters},
 };
 
-pub fn double_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator>()
+pub fn double_sub<D: Buildable<HybridCircuit> + Debuggable + StoredCircuit>()
 where
-    D::Storage: Index<usize, Output = Complex<f64>>,
+    D::State: Index<usize, Output = Complex<f64>>,
 {
     // Keep for sub circuits
     const N: usize = 2;
@@ -49,7 +49,7 @@ where
     }
 
     assert!(equal_state_c(
-        sim.current_state(),
+        sim.state(),
         &dvector![
             cart!(0.25),
             cart!(0.25),
@@ -79,7 +79,7 @@ where
         }
         assert_eq!(forward_steps, backward_steps);
         assert!(equal_state_c(
-            sim.current_state(),
+            sim.state(),
             &dvector![
                 cart!(1),
                 cart!(0),
@@ -104,9 +104,9 @@ where
     }
 }
 
-pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator>()
+pub fn deep_sub<D: Buildable<HybridCircuit> + Debuggable + StoredCircuit>()
 where
-    D::Storage: Index<usize, Output = Complex<f64>>,
+    D::State: Index<usize, Output = Complex<f64>>,
 {
     // Keep for sub circuits
     const LEVELS: usize = 5;
@@ -139,7 +139,7 @@ where
     correct[0] = cart!(FRAC_1_SQRT_2);
     correct[1 << (LEVELS - 1)] = cart!(FRAC_1_SQRT_2);
 
-    assert!(equal_state_c(sim.current_state(), &correct, LEVELS, 0.001));
+    assert!(equal_state_c(sim.state(), &correct, LEVELS, 0.001));
 
     if sim.double_ended() {
         let mut backward_steps = 0;
@@ -150,15 +150,13 @@ where
 
         let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
         correct[0] = cart!(1);
-        assert!(equal_state_c(sim.current_state(), &correct, LEVELS, 0.001));
+        assert!(equal_state_c(sim.state(), &correct, LEVELS, 0.001));
     }
 }
 
-pub fn hybrid_test<
-    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
->()
+pub fn hybrid_test<D: Buildable<HybridCircuit> + StoredCircuit>()
 where
-    D::Storage: Index<usize, Output = Complex<f64>>,
+    D::State: Index<usize, Output = Complex<f64>>,
 {
     let circuit = Circuit::new(4)
         .new_reg("r0", 1)
@@ -184,34 +182,27 @@ where
         .x(3);
 
     let mut sim = D::build(circuit).unwrap();
-    while sim.next() {}
 
     let mut expected = DVector::<Complex<f64>>::zeros(16);
     expected[0] = cart!(1.0);
 
-    assert!(equal_state_c(sim.current_state(), &expected, 4, 0.001));
+    assert!(equal_state_c(sim.run().state(), &expected, 4, 0.001));
 }
 
-pub fn register_test<
-    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator + HybridSimulator,
->() {
+pub fn register_test<D: Buildable<HybridCircuit> + StoredCircuit + StoredRegisters>() {
     let circuit = Circuit::new(2)
         .new_reg("r0", 1)
         .x(1)
         .measure_bit(1, ("r0", 0));
 
     let mut sim = D::build(circuit).unwrap();
-    while sim.next() {}
 
-    assert_eq!(sim.registers()["r0"].read(), 1);
+    assert_eq!(sim.run().registers()["r0"].read(), 1);
 }
 
 pub fn test_measure_overwrites_with_zero<T>()
 where
-    T: BuildSimulator<HybridCircuit>
-        + DebuggableSimulator
-        + StoredCircuitSimulator
-        + HybridSimulator,
+    T: Buildable<HybridCircuit> + StoredCircuit + StoredRegisters,
 {
     let circuit = Circuit::new(2)
         .new_reg("tmp", 1)
@@ -220,16 +211,13 @@ where
         .measure_bit(1, ("tmp", 0));
 
     let mut sim = T::build(circuit).unwrap();
-    sim.cont();
 
-    assert_eq!(sim.register("tmp").read(), 0);
+    assert_eq!(sim.run().register("tmp").read(), 0);
 }
 
-pub fn deep_ctrl_sub<
-    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
->()
+pub fn deep_ctrl_sub<D: Buildable<HybridCircuit> + Debuggable + StoredCircuit>()
 where
-    D::Storage: Index<usize, Output = Complex<f64>>,
+    D::State: Index<usize, Output = Complex<f64>>,
 {
     // Keep for sub circuits
     const LEVELS: usize = 5;
@@ -254,7 +242,7 @@ where
     correct[0b01111] = cart!(-0.17678);
     correct[0b11111] = cart!(0.17678);
 
-    assert!(equal_state_c(sim.current_state(), &correct, 5, 0.001));
+    assert!(equal_state_c(sim.state(), &correct, 5, 0.001));
 
     if sim.double_ended() {
         let mut backward_steps = 0;
@@ -265,6 +253,6 @@ where
 
         let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
         correct[0] = cart!(1);
-        assert!(equal_state_c(sim.current_state(), &correct, LEVELS, 0.001));
+        assert!(equal_state_c(sim.state(), &correct, LEVELS, 0.001));
     }
 }
