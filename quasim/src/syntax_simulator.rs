@@ -196,7 +196,8 @@ impl ExtendedQubitBasis {
         }
     }
 
-    fn x(self) -> Self {
+    #[inline(always)]
+    fn x(&self) -> ExtendedQubitBasis {
         use ExtendedQubitBasis::*;
         match self {
             Zero => One,
@@ -216,27 +217,6 @@ enum ExtendedBasis {
 }
 
 impl ExtendedBasis {
-    /// If the basis is binary, checks if the control are satisfied.
-    /// If the basis is a superposition, returns None.
-    fn check_controls(&self, controls: QBits) -> Option<bool> {
-        let controls = controls.get_bitstring();
-        if controls == 0 {
-            // There are no controls to fail
-            return Some(true);
-        }
-
-        match self {
-            ExtendedBasis::Binary(bitstring) => {
-                trace!(
-                    "Checking if controls {:?}, are zero for binary basis {}",
-                    controls, bitstring
-                );
-                return Some((bitstring & controls) == controls);
-            }
-            ExtendedBasis::Superposition(_) => None,
-        }
-    }
-
     /// Expands the given qubit in the basis, returning the two cases of the expansion if
     /// the qubit is in an extended basis (eg, |+⟩, |−⟩, |i⟩, |−i⟩),
     /// otherwise returning the same basis if the qubit is already binary (eg, |0⟩, |1⟩).
@@ -418,6 +398,22 @@ impl ExtendedBasis {
     pub fn all_inherent_states(self: ExtendedBasis) -> Sum {
         Self::all_inherent_states_of(self.clone())
     }
+
+    // Gates
+
+    fn x(basis: &mut Self, target: usize) {
+        use ExtendedBasis::*;
+        match basis {
+            Binary(bits) => *bits = *bits ^ (1 << target),
+            Superposition(bases) => {
+                let target = bases
+                    .get_mut(target)
+                    .expect("Cannot perform x gate on qubit that does not exist");
+
+                *target = target.x();
+            }
+        }
+    }
 }
 
 impl From<ScaledQubitBasis> for ScaledState {
@@ -450,10 +446,6 @@ impl Debug for ExtendedBasis {
 struct ScaledState(ExtendedBasis, Scalar);
 
 impl ScaledState {
-    fn has_zero_coef(&self) -> bool {
-        self.1.is_zero()
-    }
-
     fn all_inherent_states(&self) -> Sum {
         let my_scalar = self.1;
 
@@ -463,59 +455,6 @@ impl ScaledState {
             .iter()
             // Guaranteed usize means cheap clone.
             .map(|substate| my_scalar * substate.clone())
-            .collect()
-    }
-
-    // Gates
-
-    fn cx(ScaledState(basis, scalar): Self, controls: QBits, target: QBits) -> Sum {
-        if let Some(controls_are_satisfied) = basis.check_controls(controls) {
-            if controls_are_satisfied {
-                let target_index = *target
-                    .get_indices()
-                    .first()
-                    .expect("Gates are expected to target single qubits!");
-                let mut basis = basis.vec_form_padded_to_len(target_index + 1);
-
-                // Flip the target bit in the basis.
-                let qubit_basis_to_flip = basis
-                    .get_mut(target_index)
-                    .expect("Basis should have been padded to include this index.");
-
-                *qubit_basis_to_flip = qubit_basis_to_flip.x();
-
-                return vec![ScaledState(ExtendedBasis::Superposition(basis), scalar)];
-            } else {
-                return vec![ScaledState(basis, scalar)];
-            }
-        }
-        // At this point, the controls are in superposition...
-
-        // This is bad. We should only get inherent states if the control bits are a superposition.
-        // But this currently turns non-control bits that are in superposition into binary bits, which is not ideal.
-        basis
-            .all_inherent_states()
-            .iter()
-            .map(|ScaledState(true_basis, inner_scalar)| {
-                let term_scalar = scalar * (*inner_scalar);
-                let binary_basis = true_basis.into_binary(); // Basis should be binary at this point.
-
-                let new_basis =
-                    if binary_basis & controls.get_bitstring() == controls.get_bitstring() {
-                        trace!(
-                            "Flipping target bit for basis {}, scalar {}",
-                            binary_basis, term_scalar
-                        );
-                        ExtendedBasis::Binary(binary_basis ^ target.get_bitstring())
-                    } else {
-                        trace!(
-                            "Controls not satisfied for basis {} and controls {:?}, scalar {}.",
-                            binary_basis, controls, term_scalar
-                        );
-                        ExtendedBasis::Binary(binary_basis)
-                    };
-                ScaledState(new_basis, term_scalar)
-            })
             .collect()
     }
 }
@@ -552,35 +491,48 @@ impl SumOfScaledStates {
         }
     }
 
-    fn states(&self) -> impl Iterator<Item = &ExtendedBasis> {
-        self.sum.iter().map(|ScaledState(state, _)| state)
-    }
-
     fn probability_distribution(&self) -> impl Iterator<Item = &ScaledState> {
         self.sum.iter()
     }
 
-    pub fn apply_on_all_terms(
-        self: &mut SumOfScaledStates,
-        cx_one_state: fn(ScaledState, QBits, QBits) -> Vec<ScaledState>,
+    pub fn apply_controlled_gate(
+        &self,
+        unconditional_single_qubit_gate: fn(&mut ExtendedBasis, usize),
         controls: QBits,
-        target: QBits,
-    ) {
-        self.sum = self
-            .sum
-            .iter()
-            .map(|ss| cx_one_state(ss.clone(), controls, target))
-            .flatten()
-            .collect();
+        target: usize,
+    ) -> Sum {
+        let mut result = self.expand_necessary_controls(controls);
+
+        result
+            .iter_mut()
+            // Keep only the states where all the controls are satisfied
+            .filter(|ScaledState(basis, _)| {
+                use ExtendedBasis::*;
+                match basis {
+                    Binary(bits) => bits & controls.get_bitstring() == controls.get_bitstring(),
+                    Superposition(bases) => {
+                        use ExtendedQubitBasis::*;
+                        controls
+                            .get_indices()
+                            .iter()
+                            .all(|&i| *bases.get(i).expect("Control qubit out of bounds") == One)
+                    }
+                }
+            })
+            .for_each(|ScaledState(basis, _)| {
+                unconditional_single_qubit_gate(basis, target);
+            });
+
+        result
     }
 
     /// Expands only states that are necessary to check the controls,
     /// meaning that states where any control qubit is definite zero will be ignored,
     /// while others will be expanded so checks can be performed on the underlying binary states.
-    fn expand_necessary_controls(self, controls: QBits) -> Sum {
+    fn expand_necessary_controls(&self, controls: QBits) -> Sum {
         let control_indices = controls.get_indices();
-        let sum = self.sum;
-        let expanded: Sum = sum
+        let expanded: Sum = self
+            .sum
             .iter()
             .map(|ScaledState(basis, scalar)| {
                 use ExtendedBasis::*;
@@ -625,12 +577,13 @@ impl SyntaxSimulator {
         let controls = gate.get_control_bits();
         let targets = gate.get_target_bits();
         assert_eq!(targets.get_indices().len(), 1);
+        let target = targets.get_indices()[0];
 
         use GateType::*;
-        match gate.get_type() {
-            X => expr.apply_on_all_terms(ScaledState::cx, controls, targets),
+        expr.sum = match gate.get_type() {
+            X => expr.apply_controlled_gate(ExtendedBasis::x, controls, target),
             _ => todo!(),
-        }
+        };
     }
 
     fn step(&mut self) -> Option<&SumOfScaledStates> {
