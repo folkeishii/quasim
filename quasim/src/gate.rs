@@ -140,7 +140,7 @@ pub enum GateError {
     TargetControlOverlap,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Gate {
     ty: GateType,
     controls: QBits,

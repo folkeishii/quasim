@@ -730,6 +730,9 @@ impl SyntaxSimulator {
             Z => expr.apply_controlled_gate(ExtendedBasis::z, controls, target),
             H => expr.apply_controlled_gate(ExtendedBasis::h, controls, target),
             S => expr.apply_controlled_gate(ExtendedBasis::s, controls, target),
+            SWAP => {
+                panic!("SWAP gates should have been removed in the circuit preprocessing step!")
+            }
             _ => todo!(),
         };
     }
@@ -783,6 +786,9 @@ impl TryFrom<Circuit<PureCircuit>> for SyntaxSimulator {
 
     fn try_from(circuit: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
         let n_qubits = circuit.n_qubits();
+
+        // Turn SWAP gates into 3 CX gates
+        let circuit = circuit.swaps_to_cxs();
 
         Ok(Self {
             circuit,
