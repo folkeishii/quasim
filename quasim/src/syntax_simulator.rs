@@ -292,7 +292,11 @@ impl ExtendedBasis {
     /// Expands all the qubit indexes in the given list, meaning that qubits in an extended
     /// basis (eg, |+⟩, |−⟩, |i⟩, |−i⟩) will be expanded into a sum of binary states,
     /// while qubits already in a binary basis (eg, |0⟩, |1⟩) will be left unchanged.
-    fn expand_qubits(self, mut qubits_to_expand: VecDeque<usize>) -> Sum {
+    fn expand_qubits(self, qubits_to_expand: QBits) -> Sum {
+        self.expand_qubits_helper(qubits_to_expand.get_indices().into())
+    }
+
+    fn expand_qubits_helper(self, mut qubits_to_expand: VecDeque<usize>) -> Sum {
         let Some(qubit_to_expand) = qubits_to_expand.pop_front() else {
             return vec![ScaledState(self, Scalar::ONE)];
         };
@@ -317,7 +321,7 @@ impl ExtendedBasis {
                 let all_terms = just_existing_expansions
                     .flat_map(|ScaledState(_, scalar)| {
                         // If a scaled state turns into more terms, the scalar needs to be distributed across the terms.
-                        *scalar * self.clone().expand_qubits(qubits_to_expand.clone())
+                        *scalar * self.clone().expand_qubits_helper(qubits_to_expand.clone())
                     })
                     .collect::<Sum>();
 
@@ -464,7 +468,7 @@ impl ScaledState {
 
     // Gates
 
-    fn cx(ScaledState(basis, scalar): Self, controls: QBits, target: QBits) -> Vec<ScaledState> {
+    fn cx(ScaledState(basis, scalar): Self, controls: QBits, target: QBits) -> Sum {
         if let Some(controls_are_satisfied) = basis.check_controls(controls) {
             if controls_are_satisfied {
                 let target_index = *target
@@ -568,6 +572,39 @@ impl SumOfScaledStates {
             .map(|ss| cx_one_state(ss.clone(), controls, target))
             .flatten()
             .collect();
+    }
+
+    /// Expands only states that are necessary to check the controls,
+    /// meaning that states where any control qubit is definite zero will be ignored,
+    /// while others will be expanded so checks can be performed on the underlying binary states.
+    fn expand_necessary_controls(self, controls: QBits) -> Sum {
+        let control_indices = controls.get_indices();
+        let sum = self.sum;
+        let expanded: Sum = sum
+            .iter()
+            .map(|ScaledState(basis, scalar)| {
+                use ExtendedBasis::*;
+                match basis {
+                    Superposition(bases) => {
+                        let any_controls_are_zero = control_indices.iter().any(|&i| {
+                            use ExtendedQubitBasis::*;
+                            bases.get(i).unwrap_or(&Zero) == &Zero
+                        });
+
+                        if any_controls_are_zero {
+                            return vec![ScaledState(Superposition(bases.clone()), *scalar)];
+                        } else {
+                            // A term where the controls are fulfilled is contained within `basis`
+                            basis.clone().expand_qubits(controls) // Probably expensive clone
+                        }
+                    }
+                    Binary(bits) => vec![ScaledState(Binary(*bits), *scalar)],
+                }
+            })
+            .flatten()
+            .collect();
+
+        expanded
     }
 }
 
