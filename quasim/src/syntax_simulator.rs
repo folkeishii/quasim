@@ -1,14 +1,12 @@
-use core::f32;
+use core::{f32, panic};
 use std::{
-    collections::HashMap,
-    fmt::{Debug, Display, write},
-    iter,
+    fmt::{Debug, Display},
     ops::{Mul, Neg},
+    vec,
 };
 
 use log::trace;
-use nalgebra::{Complex, DVector};
-use rand::random;
+use nalgebra::Complex;
 
 use crate::{
     circuit::{Circuit, PureCircuit, pc::CircuitPc},
@@ -106,7 +104,6 @@ impl Into<Complex<f32>> for Scalar {
 }
 
 type TrueQubitBasis = bool;
-type TrueBasis = usize;
 
 #[derive(Copy, Clone)]
 struct ScaledQubitBasis(TrueQubitBasis, Scalar);
@@ -162,56 +159,124 @@ impl ExtendedQubitBasis {
 }
 
 #[derive(Debug, Clone)]
-struct ExtendedBasis(Vec<ExtendedQubitBasis>);
+enum ExtendedBasis {
+    Binary(usize),
+    Superposition(Vec<ExtendedQubitBasis>),
+}
+
+impl ExtendedBasis {
+    /// If the basis is binary, checks if the control are satisfied.
+    /// If the basis is a superposition, returns None.
+    fn check_controls(&self, controls: QBits) -> Option<bool> {
+        let controls = controls.get_bitstring();
+        if controls == 0 {
+            // There are no controls to fail
+            return Some(true);
+        }
+
+        match self {
+            ExtendedBasis::Binary(bitstring) => {
+                trace!(
+                    "Checking if controls {:?}, are zero for binary basis {}",
+                    controls, bitstring
+                );
+                return Some((bitstring & controls) == controls);
+            }
+            ExtendedBasis::Superposition(_) => None,
+        }
+    }
+
+    fn try_into_binary(&self) -> Option<usize> {
+        match self {
+            ExtendedBasis::Binary(bitstring) => Some(*bitstring),
+            ExtendedBasis::Superposition(_) => None,
+        }
+    }
+
+    fn into_binary(&self) -> usize {
+        self.try_into_binary()
+            .expect("Cannot convert superposition basis into binary basis!")
+    }
+
+    /*fn from_bitstring(mut bitstring: usize, n_qubits: usize) -> Self {
+        let mut new_basis = vec![ExtendedQubitBasis::Zero; n_qubits];
+        for i in 0..n_qubits {
+            if (bitstring & (1 << i)) != 0 {
+                new_basis[i] = ExtendedQubitBasis::One;
+            };
+        }
+        ExtendedBasis::Superposition(new_basis)
+    }*/
+}
 
 impl From<ScaledQubitBasis> for ScaledState {
     fn from(value: ScaledQubitBasis) -> Self {
-        use ExtendedQubitBasis::*;
-        let basis = vec![if value.0 { One } else { Zero }];
-        ScaledState(ExtendedBasis(basis), value.1)
+        let basis = match value.0 {
+            false => 0,
+            true => 1,
+        };
+        ScaledState(ExtendedBasis::Binary(basis), value.1)
     }
 }
 
 impl ExtendedBasis {
-    fn inherent_states(mut extended_basis: ExtendedBasis) -> Vec<(TrueBasis, Scalar)> {
-        let Some(basis) = extended_basis.0.pop() else {
+    fn all_inherent_states_of(extended_basis: ExtendedBasis) -> Sum {
+        let mut extended_basis = match extended_basis {
+            ExtendedBasis::Binary(bitstring) => {
+                return vec![ScaledState(ExtendedBasis::Binary(bitstring), Scalar::ONE)];
+            }
+            ExtendedBasis::Superposition(b) => b,
+        };
+
+        let Some(qubit_basis) = extended_basis.pop() else {
             panic!("Cannot get inherent states of empty basis!");
         };
 
-        if extended_basis.0.is_empty() {
-            return basis
+        if extended_basis.is_empty() {
+            return qubit_basis
                 .semantic_expressions()
                 .iter()
                 .filter(|ScaledQubitBasis(_, scalar)| !scalar.is_zero())
                 .map(|ScaledQubitBasis(basis, scalar)| {
                     let basis = if *basis { 1 } else { 0 };
-                    (basis, *scalar)
+                    ScaledState(ExtendedBasis::Binary(basis), *scalar)
                 })
                 .collect();
         }
 
-        let semantics = basis.semantic_expressions();
-        // trace!("Basis: {:?}, Semantic expressions: {:?}", basis, semantics);
+        let semantics = qubit_basis.semantic_expressions();
 
         semantics
             .into_iter()
             .filter(|ScaledQubitBasis(_, s)| !s.is_zero())
             .map(|msb| {
                 trace!("extended basis: {:?}", extended_basis);
-                let lesser_bits = Self::inherent_states(extended_basis.clone());
+                let lesser_bits = Self::all_inherent_states_of(ExtendedBasis::Superposition(
+                    extended_basis.clone(),
+                ));
                 trace!("Lesser bits: {:?}", lesser_bits);
                 lesser_bits
                     .iter()
                     .map(|lsb| {
-                        let basis = (msb.0 as usize) << extended_basis.0.len() | (lsb.0 as usize);
-                        let scalar = msb.1 * lsb.1;
-                        trace!("Basis: {}, Scalar: {}", basis, scalar);
-                        (basis, scalar)
+                        let lsb_state = match &lsb.0 {
+                            ExtendedBasis::Binary(bitstring) => bitstring,
+                            ExtendedBasis::Superposition(_) => {
+                                panic!("Lesser bits should always be binary at this point!")
+                            }
+                        };
+                        let basis = (msb.0 as usize) << extended_basis.len() | lsb_state;
+                        let scalar_product = msb.1 * lsb.1;
+                        trace!("Basis: {}, Scalar: {}", basis, scalar_product);
+                        ScaledState(ExtendedBasis::Binary(basis), scalar_product)
                     })
                     .collect::<Vec<_>>()
             })
             .flatten()
             .collect()
+    }
+
+    pub fn all_inherent_states(self: ExtendedBasis) -> Sum {
+        Self::all_inherent_states_of(self.clone())
     }
 }
 
@@ -224,21 +289,29 @@ impl ScaledState {
     }
 }
 
+impl From<(usize, Scalar)> for ScaledState {
+    fn from(value: (usize, Scalar)) -> Self {
+        let basis = value.0;
+        let scalar = value.1;
+        ScaledState(ExtendedBasis::Binary(basis), scalar)
+    }
+}
+
 type Sum = Vec<ScaledState>;
 
 #[derive(Debug, Clone)]
 struct SumOfScaledStates {
     n_qubits: usize,
-    sum: Vec<ScaledState>,
+    sum: Sum,
 }
 
 impl SumOfScaledStates {
     fn guaranteed_full_zero(n_qubits: usize) -> Self {
-        let mut sum = Vec::<ScaledState>::new();
-        let n_zeros: ExtendedBasis =
-            ExtendedBasis(iter::repeat_n(ExtendedQubitBasis::Zero, n_qubits).collect());
-        sum.push(ScaledState(n_zeros, Scalar::ONE));
-        Self { n_qubits, sum }
+        let n_zeros = ScaledState(ExtendedBasis::Binary(0), Scalar::ONE);
+        Self {
+            n_qubits,
+            sum: vec![n_zeros],
+        }
     }
 
     fn states(&self) -> impl Iterator<Item = &ExtendedBasis> {
@@ -259,33 +332,52 @@ impl SumOfScaledStates {
     }
     */
     // Gates
-    /*
-    pub fn apply_x(self: &mut SumOfScaledStates, controls: QBits, target: QBits) {
-        let to_insert: HashMap<QBits, Scalar> = HashMap::new();
 
-        let old_with_controls_set: Vec<(&QBits, &Scalar)> = self
+    pub fn apply_cx(self: &mut SumOfScaledStates, controls: QBits, target: QBits) {
+        self.sum = self
             .sum
             .iter()
-            .filter(|(state, _)| {
-                **state & controls == controls // && **state & target == QBits::from_bitstring(0)
-            })
-            .collect();
+            .map(|ScaledState(basis, outer_scalar)| {
+                let basis = basis.clone();
 
-        for (state, scalar) in old_with_controls_set {
-            let state_with_target_flipped = *state ^ target;
-            let flipped = match self.sum.get(&state_with_target_flipped) {
-                Some(flipped) => {
-                    // A flipped variant already exists. Exchange the original and flipped variants.
-                    flipped
-                }
-                None => {
-                    // No flipped variant exists. Remove the original and add the flipped variant.
-                    continue;
-                }
-            };
-        }
+                // This is bad. We should only get inherent states if the control bits are a superposition.
+                // But this currently turns non-control bits that are in superposition into binary bits, which is not ideal.
+                let expanded_and_modified_states: Vec<ScaledState> = basis
+                    .all_inherent_states()
+                    .iter()
+                    .map(|ScaledState(true_basis, inner_scalar)| {
+                        let term_scalar = *outer_scalar * (*inner_scalar);
+                        let binary_basis = true_basis.into_binary(); // Basis should be binary at this point.
+
+                        let new_basis = if binary_basis & controls.get_bitstring()
+                            == controls.get_bitstring()
+                        {
+                            trace!(
+                                "Flipping target bit for basis {}, scalar {}",
+                                binary_basis, term_scalar
+                            );
+                            ExtendedBasis::Binary(binary_basis ^ target.get_bitstring())
+                        } else {
+                            trace!(
+                                "Controls not satisfied for basis {} and controls {:?}, scalar {}.",
+                                binary_basis, controls, term_scalar
+                            );
+                            ExtendedBasis::Binary(binary_basis)
+                        };
+                        ScaledState(new_basis, term_scalar)
+                    })
+                    .collect();
+
+                expanded_and_modified_states
+            })
+            .flatten()
+            .collect();
+        trace!(
+            "After applying CX with controls {:?} and target {:?}, state is: {:?}",
+            controls, target, self.sum
+        );
     }
-    */
+
     /*pub fn apply_h(self: &mut SumOfScaledStates, controls: QBits, target: QBits) {
         let mut new_terms: Vec<ScaledState> = Vec::new();
         for term in self.sum.iter_mut() {
@@ -316,7 +408,9 @@ impl SyntaxSimulator {
         let targets = gate.get_target_bits();
         assert_eq!(targets.get_indices().len(), 1);
 
+        use GateType::*;
         match gate.get_type() {
+            X => expr.apply_cx(controls, targets),
             _ => todo!(),
         }
     }
@@ -343,11 +437,7 @@ impl SyntaxSimulator {
     }
 
     pub fn run(&mut self) -> usize {
-        use ExtendedQubitBasis::*;
-        println!(
-            "{:?}",
-            ExtendedBasis::inherent_states(ExtendedBasis(vec![One, One, Minus, One, One]))
-        );
+        self.step_all();
 
         /*let mut probability_so_far = 0f32;
         let guess = random::<f32>();
