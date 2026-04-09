@@ -142,7 +142,7 @@ pub enum GateError {
     InvalidTargets,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Gate {
     ty: GateType,
     controls: QBits,

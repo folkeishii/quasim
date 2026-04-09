@@ -142,6 +142,50 @@ impl Circuit {
             pc: CircuitPc::new(0),
         }
     }
+
+    // Turns a circuit with SWAP gates into an equivalent circuit with only CX gates.
+    pub fn swaps_to_cxs(mut self) -> Self {
+        self.instructions = self
+            .instructions()
+            .iter()
+            .map(|instr| match instr {
+                PureInstruction::Gate(gate) => match gate.get_type() {
+                    GateType::SWAP => {
+                        let targets = gate.get_target_bits().get_indices();
+                        assert_eq!(targets.len(), 2);
+                        let (t1, t2) = (targets[0], targets[1]);
+                        let controls = gate.get_control_bits().get_indices();
+                        let cx0_controls = controls
+                            .clone()
+                            .into_iter()
+                            .chain(std::iter::once(t1))
+                            .collect::<Vec<_>>();
+                        let cx1_controls = controls
+                            .into_iter()
+                            .chain(std::iter::once(t2))
+                            .collect::<Vec<_>>();
+                        vec![
+                            PureInstruction::Gate(
+                                Gate::new(GateType::X, &cx0_controls, &[t2]).unwrap(),
+                            ),
+                            PureInstruction::Gate(
+                                Gate::new(GateType::X, &cx1_controls, &[t1]).unwrap(),
+                            ),
+                            PureInstruction::Gate(
+                                Gate::new(GateType::X, &cx0_controls, &[t2]).unwrap(),
+                            ),
+                        ]
+                    }
+                    _ => {
+                        vec![instr.clone()]
+                    }
+                },
+                _ => vec![instr.clone()],
+            })
+            .flatten()
+            .collect();
+        self
+    }
 }
 
 // Hybrid specific
