@@ -5,3 +5,10 @@ edition = "2024"
 
 [dependencies]
 quasim = { path = "../../quasim" }
+
+[dev-dependencies]
+divan = "0.1.21"
+
+[[bench]]
+name = "deutsch-jozsa-benchmark"
+harness = false
