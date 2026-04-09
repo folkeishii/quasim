@@ -161,9 +161,9 @@ impl ProductState {
     }
 }
 
+#[cfg(test)]
 mod tests {
     use crate::{
-        cart,
         circuit::Circuit,
         ext::equal_state_c,
         prod_simulator::ProdSimulator,
@@ -181,7 +181,7 @@ mod tests {
     }
 
     #[test]
-    pub fn interleaved_amp_test() {
+    fn interleaved_amp_test() {
         let mut sim = ProdSimulator::build(
             Circuit::new(4)
                 .h(0)
