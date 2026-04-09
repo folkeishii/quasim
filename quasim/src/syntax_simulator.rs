@@ -1,5 +1,6 @@
 use core::{f32, panic};
 use std::{
+    collections::VecDeque,
     fmt::{Debug, Display},
     ops::{Mul, Neg},
     vec,
@@ -87,6 +88,14 @@ impl Mul<ScaledState> for Scalar {
     }
 }
 
+impl Mul<Sum> for Scalar {
+    type Output = Sum;
+
+    fn mul(self, rhs: Sum) -> Sum {
+        rhs.into_iter().map(|ss| self * ss).collect()
+    }
+}
+
 impl Debug for Scalar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self)
@@ -131,7 +140,7 @@ impl Debug for ScaledQubitBasis {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 enum ExtendedQubitBasis {
     Zero,
     One,
@@ -139,6 +148,21 @@ enum ExtendedQubitBasis {
     Minus,
     I,
     MinusI,
+}
+
+impl Debug for ExtendedQubitBasis {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use ExtendedQubitBasis::*;
+        let s = match self {
+            Zero => "0",
+            One => "1",
+            Plus => "+",
+            Minus => "-",
+            I => "i",
+            MinusI => "(-i)",
+        };
+        write!(f, "{}", s)
+    }
 }
 
 impl ExtendedQubitBasis {
@@ -171,9 +195,21 @@ impl ExtendedQubitBasis {
             ],
         }
     }
+
+    fn x(self) -> Self {
+        use ExtendedQubitBasis::*;
+        match self {
+            Zero => One,
+            One => Zero,
+            Plus => Plus,
+            Minus => Minus,
+            I => MinusI,
+            MinusI => I,
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, PartialEq)]
 enum ExtendedBasis {
     Binary(usize),
     Superposition(Vec<ExtendedQubitBasis>),
@@ -201,6 +237,92 @@ impl ExtendedBasis {
         }
     }
 
+    /// Expands the given qubit in the basis, returning the two cases of the expansion if
+    /// the qubit is in an extended basis (eg, |+⟩, |−⟩, |i⟩, |−i⟩),
+    /// otherwise returning the same basis if the qubit is already binary (eg, |0⟩, |1⟩).
+    fn expand_qubit(self, qubit_to_expand: usize) -> [Option<ScaledState>; 2] {
+        use ExtendedBasis::*;
+        match self {
+            Binary(_) => [Some(ScaledState(self, Scalar::ONE)), None],
+            Superposition(bases) => {
+                let qubit_basis_to_expand = bases
+                    .get(qubit_to_expand)
+                    .expect("Tried to expand a qubit out of bounds");
+
+                use ExtendedQubitBasis::*;
+                match *qubit_basis_to_expand {
+                    One | Zero => {
+                        // If the qubit is already in a binary state, there is nothing to expand.
+                        return [
+                            Some(ScaledState(Self::Superposition(bases), Scalar::ONE)),
+                            None,
+                        ];
+                    }
+                    _ => (),
+                };
+
+                let apply_minus: bool = matches!(
+                    qubit_basis_to_expand,
+                    ExtendedQubitBasis::Minus | ExtendedQubitBasis::MinusI
+                );
+
+                let mut zero_case = bases.clone();
+                zero_case[qubit_to_expand] = Zero;
+                let mut one_case = bases;
+                one_case[qubit_to_expand] = One;
+
+                [
+                    Some(ScaledState(
+                        Self::Superposition(zero_case),
+                        Scalar::FRAC_1_SQRT_2,
+                    )),
+                    Some(ScaledState(
+                        Self::Superposition(one_case),
+                        if apply_minus {
+                            -Scalar::FRAC_1_SQRT_2
+                        } else {
+                            Scalar::FRAC_1_SQRT_2
+                        },
+                    )),
+                ]
+            }
+        }
+    }
+
+    fn expand_qubits(self, mut qubits_to_expand: VecDeque<usize>) -> Sum {
+        let Some(qubit_to_expand) = qubits_to_expand.pop_front() else {
+            return vec![ScaledState(self, Scalar::ONE)];
+        };
+
+        use ExtendedBasis::*;
+        match self {
+            Binary(_) => vec![ScaledState(self, Scalar::ONE)],
+            Superposition(_) => {
+                // Expand the first qubit, which yields just two terms.
+                let possible_expansion = self.clone().expand_qubit(qubit_to_expand);
+
+                // Actually, expanding |0⟩ or |1⟩ just gives one term, so we need to filter out the None case.
+                let just_existing_expansions = possible_expansion
+                    .iter()
+                    // Flatten removes the Option wrapping
+                    .flatten();
+
+                // At this point we have all the expansions for the first qubit to expand.
+                // Take those terms we expanded into, and just run this function on those terms,
+                // but now with one less qubit to expand.
+
+                let all_terms = just_existing_expansions
+                    .flat_map(|ScaledState(_, scalar)| {
+                        // If a scaled state turns into more terms, the scalar needs to be distributed across the terms.
+                        *scalar * self.clone().expand_qubits(qubits_to_expand.clone())
+                    })
+                    .collect::<Sum>();
+
+                all_terms
+            }
+        }
+    }
+
     fn try_into_binary(&self) -> Option<usize> {
         match self {
             ExtendedBasis::Binary(bitstring) => Some(*bitstring),
@@ -212,19 +334,27 @@ impl ExtendedBasis {
         self.try_into_binary()
             .expect("Cannot convert superposition basis into binary basis!")
     }
-}
 
-impl From<ScaledQubitBasis> for ScaledState {
-    fn from(value: ScaledQubitBasis) -> Self {
-        let basis = match value.0 {
-            false => 0,
-            true => 1,
-        };
-        ScaledState(ExtendedBasis::Binary(basis), value.1)
+    fn vec_form(self) -> Vec<ExtendedQubitBasis> {
+        match self {
+            ExtendedBasis::Binary(mut bitstring) => {
+                let mut bases = Vec::new();
+                while bitstring > 0 {
+                    bases.push(ExtendedQubitBasis::One);
+                    bitstring -= 1;
+                }
+                bases
+            }
+            ExtendedBasis::Superposition(bases) => bases,
+        }
     }
-}
 
-impl ExtendedBasis {
+    fn vec_form_padded_to_len(self, n: usize) -> Vec<ExtendedQubitBasis> {
+        let mut vec_form = self.vec_form();
+        vec_form.resize(n, ExtendedQubitBasis::Zero);
+        vec_form
+    }
+
     fn all_inherent_states_of(extended_basis: ExtendedBasis) -> Sum {
         let mut extended_basis = match extended_basis {
             ExtendedBasis::Binary(bitstring) => {
@@ -255,11 +385,9 @@ impl ExtendedBasis {
             .into_iter()
             .filter(|ScaledQubitBasis(_, s)| !s.is_zero())
             .map(|msb| {
-                trace!("extended basis: {:?}", extended_basis);
                 let lesser_bits = Self::all_inherent_states_of(ExtendedBasis::Superposition(
                     extended_basis.clone(),
                 ));
-                trace!("Lesser bits: {:?}", lesser_bits);
                 lesser_bits
                     .iter()
                     .map(|lsb| {
@@ -285,7 +413,33 @@ impl ExtendedBasis {
     }
 }
 
-#[derive(Debug, Clone)]
+impl From<ScaledQubitBasis> for ScaledState {
+    fn from(value: ScaledQubitBasis) -> Self {
+        let basis = match value.0 {
+            false => 0,
+            true => 1,
+        };
+        ScaledState(ExtendedBasis::Binary(basis), value.1)
+    }
+}
+
+impl Debug for ExtendedBasis {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ExtendedBasis::Binary(bitstring) => write!(f, "|{}⟩", bitstring),
+            ExtendedBasis::Superposition(bases) => {
+                write!(f, "|")?;
+                for basis in bases {
+                    write!(f, "{:?}", basis)?;
+                }
+                write!(f, "⟩")?;
+                Ok(())
+            }
+        }
+    }
+}
+
+#[derive(Clone, PartialEq)]
 struct ScaledState(ExtendedBasis, Scalar);
 
 impl ScaledState {
@@ -303,6 +457,66 @@ impl ScaledState {
             // Guaranteed usize means cheap clone.
             .map(|substate| my_scalar * substate.clone())
             .collect()
+    }
+
+    // Gates
+
+    fn cx(ScaledState(basis, scalar): Self, controls: QBits, target: QBits) -> Vec<ScaledState> {
+        if let Some(controls_are_satisfied) = basis.check_controls(controls) {
+            if controls_are_satisfied {
+                let target_index = *target
+                    .get_indices()
+                    .first()
+                    .expect("Gates are expected to target single qubits!");
+                let mut basis = basis.vec_form_padded_to_len(target_index + 1);
+
+                // Flip the target bit in the basis.
+                let qubit_basis_to_flip = basis
+                    .get_mut(target_index)
+                    .expect("Basis should have been padded to include this index.");
+
+                *qubit_basis_to_flip = qubit_basis_to_flip.x();
+
+                return vec![ScaledState(ExtendedBasis::Superposition(basis), scalar)];
+            } else {
+                return vec![ScaledState(basis, scalar)];
+            }
+        }
+        // At this point, the controls are in superposition...
+
+        // This is bad. We should only get inherent states if the control bits are a superposition.
+        // But this currently turns non-control bits that are in superposition into binary bits, which is not ideal.
+        basis
+            .all_inherent_states()
+            .iter()
+            .map(|ScaledState(true_basis, inner_scalar)| {
+                let term_scalar = scalar * (*inner_scalar);
+                let binary_basis = true_basis.into_binary(); // Basis should be binary at this point.
+
+                let new_basis =
+                    if binary_basis & controls.get_bitstring() == controls.get_bitstring() {
+                        trace!(
+                            "Flipping target bit for basis {}, scalar {}",
+                            binary_basis, term_scalar
+                        );
+                        ExtendedBasis::Binary(binary_basis ^ target.get_bitstring())
+                    } else {
+                        trace!(
+                            "Controls not satisfied for basis {} and controls {:?}, scalar {}.",
+                            binary_basis, controls, term_scalar
+                        );
+                        ExtendedBasis::Binary(binary_basis)
+                    };
+                ScaledState(new_basis, term_scalar)
+            })
+            .collect()
+    }
+}
+
+impl Debug for ScaledState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ScaledState(basis, scalar) = self;
+        write!(f, "{}|{:?}⟩", scalar, basis)
     }
 }
 
@@ -339,51 +553,18 @@ impl SumOfScaledStates {
         self.sum.iter()
     }
 
-    // Gates
-
-    pub fn apply_cx(self: &mut SumOfScaledStates, controls: QBits, target: QBits) {
+    pub fn apply_on_all_terms(
+        self: &mut SumOfScaledStates,
+        cx_one_state: fn(ScaledState, QBits, QBits) -> Vec<ScaledState>,
+        controls: QBits,
+        target: QBits,
+    ) {
         self.sum = self
             .sum
             .iter()
-            .map(|ScaledState(basis, outer_scalar)| {
-                let basis = basis.clone();
-
-                // This is bad. We should only get inherent states if the control bits are a superposition.
-                // But this currently turns non-control bits that are in superposition into binary bits, which is not ideal.
-                let expanded_and_modified_states: Vec<ScaledState> = basis
-                    .all_inherent_states()
-                    .iter()
-                    .map(|ScaledState(true_basis, inner_scalar)| {
-                        let term_scalar = *outer_scalar * (*inner_scalar);
-                        let binary_basis = true_basis.into_binary(); // Basis should be binary at this point.
-
-                        let new_basis = if binary_basis & controls.get_bitstring()
-                            == controls.get_bitstring()
-                        {
-                            trace!(
-                                "Flipping target bit for basis {}, scalar {}",
-                                binary_basis, term_scalar
-                            );
-                            ExtendedBasis::Binary(binary_basis ^ target.get_bitstring())
-                        } else {
-                            trace!(
-                                "Controls not satisfied for basis {} and controls {:?}, scalar {}.",
-                                binary_basis, controls, term_scalar
-                            );
-                            ExtendedBasis::Binary(binary_basis)
-                        };
-                        ScaledState(new_basis, term_scalar)
-                    })
-                    .collect();
-
-                expanded_and_modified_states
-            })
+            .map(|ss| cx_one_state(ss.clone(), controls, target))
             .flatten()
             .collect();
-        trace!(
-            "After applying CX with controls {:?} and target {:?}, state is: {:?}",
-            controls, target, self.sum
-        );
     }
 }
 
@@ -407,7 +588,7 @@ impl SyntaxSimulator {
 
         use GateType::*;
         match gate.get_type() {
-            X => expr.apply_cx(controls, targets),
+            X => expr.apply_on_all_terms(ScaledState::cx, controls, targets),
             _ => todo!(),
         }
     }
@@ -467,5 +648,57 @@ impl TryFrom<Circuit<PureCircuit>> for SyntaxSimulator {
             pc: CircuitPc::default(),
             state: SumOfScaledStates::guaranteed_full_zero(n_qubits),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_expand_qubits() {
+        let basis_to_expand =
+            ExtendedBasis::Superposition(vec![ExtendedQubitBasis::Plus, ExtendedQubitBasis::Minus]);
+
+        use ExtendedQubitBasis::*;
+        assert_eq!(
+            basis_to_expand.clone().expand_qubit(0),
+            [
+                Some(ScaledState(
+                    ExtendedBasis::Superposition(vec![Zero, Minus]),
+                    Scalar::FRAC_1_SQRT_2
+                )),
+                Some(ScaledState(
+                    ExtendedBasis::Superposition(vec![One, Minus]),
+                    Scalar::FRAC_1_SQRT_2
+                )),
+            ]
+        );
+
+        assert_eq!(
+            basis_to_expand.clone().expand_qubit(1),
+            [
+                Some(ScaledState(
+                    ExtendedBasis::Superposition(vec![Plus, Zero]),
+                    Scalar::FRAC_1_SQRT_2
+                )),
+                Some(ScaledState(
+                    ExtendedBasis::Superposition(vec![Plus, One]),
+                    -Scalar::FRAC_1_SQRT_2
+                )),
+            ]
+        );
+
+        /*let expand_both = QBits::from_indices(&[0, 1]);
+        let half = Scalar::FRAC_1_SQRT_2 * Scalar::FRAC_1_SQRT_2;
+        assert_eq!(
+            basis_to_expand.clone().expand_qubits(expand_both),
+            vec![
+                ScaledState(ExtendedBasis::Binary(0), half),
+                ScaledState(ExtendedBasis::Binary(1), -half),
+                ScaledState(ExtendedBasis::Binary(2), half),
+                ScaledState(ExtendedBasis::Binary(3), -half),
+            ]
+        );*/
     }
 }
