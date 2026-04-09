@@ -289,6 +289,9 @@ impl ExtendedBasis {
         }
     }
 
+    /// Expands all the qubit indexes in the given list, meaning that qubits in an extended
+    /// basis (eg, |+⟩, |−⟩, |i⟩, |−i⟩) will be expanded into a sum of binary states,
+    /// while qubits already in a binary basis (eg, |0⟩, |1⟩) will be left unchanged.
     fn expand_qubits(self, mut qubits_to_expand: VecDeque<usize>) -> Sum {
         let Some(qubit_to_expand) = qubits_to_expand.pop_front() else {
             return vec![ScaledState(self, Scalar::ONE)];
