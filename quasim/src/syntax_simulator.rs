@@ -246,6 +246,20 @@ impl ExtendedQubitBasis {
             MinusI => I,
         }
     }
+
+    #[inline(always)]
+    fn s(&self) -> ExtendedQubitBasis {
+        // The S gate is just a 90 degree rotation around z-axis on bloch sphere.
+        use ExtendedQubitBasis::*;
+        match self {
+            Zero => Zero,
+            One => One,
+            Plus => I,
+            I => Minus,
+            Minus => MinusI,
+            MinusI => Plus,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -499,6 +513,17 @@ impl ExtendedBasis {
             }
         }
     }
+
+    fn s(&mut self, target: usize) {
+        use ExtendedBasis::*;
+        match self {
+            Binary(_) => (),
+            Superposition(bases) => {
+                Self::pad_to_length(bases, target + 1);
+                bases[target] = bases[target].s();
+            }
+        }
+    }
 }
 
 impl From<ScaledQubitBasis> for ScaledState {
@@ -704,6 +729,7 @@ impl SyntaxSimulator {
             Y => expr.apply_controlled_gate(ExtendedBasis::y, controls, target),
             Z => expr.apply_controlled_gate(ExtendedBasis::z, controls, target),
             H => expr.apply_controlled_gate(ExtendedBasis::h, controls, target),
+            S => expr.apply_controlled_gate(ExtendedBasis::s, controls, target),
             _ => todo!(),
         };
     }
