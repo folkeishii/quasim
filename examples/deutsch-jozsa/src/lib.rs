@@ -2,7 +2,6 @@ use quasim::circuit::{Circuit, HybridCircuit};
 use quasim::simulator::{
     BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator,
 };
-use quasim::sv_simulator::SVSimulatorDebugger;
 
 #[derive(PartialEq, Debug)]
 pub enum FunctionType {

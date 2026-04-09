@@ -1,5 +1,4 @@
 use deutsch_jozsa::{FunctionType, find_function_type_quantum};
-use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::SVSimulatorDebugger;
 
 fn main() {
