@@ -1,30 +1,29 @@
 use crate::{cart, ext::swap_matrix, gate::QBits};
 use nalgebra::{Complex, DVector, dvector};
+use std::ops::{Deref, DerefMut, Mul};
 
 /// A system of potentially entangled qubits.
 #[derive(Debug, Clone)]
 pub struct SubSystem {
-    pub state: DVector<Complex<f64>>,
-    pub qubits: Vec<usize>,
+    state_vector: DVector<Complex<f64>>,
+    qubits: Vec<usize>,
 }
+impl Mul for SubSystem {
+    type Output = Self;
 
-/// A collection of subsystems.
-#[derive(Debug, Clone)]
-pub struct ProductState {
-    pub systems: Vec<SubSystem>,
-}
-
-impl SubSystem {
     /// Concatinates qubit-lists and "tensors" state vectors.
-    pub fn combine(&self, rhs: &Self) -> Self {
+    fn mul(self, rhs: Self) -> Self::Output {
         let mut qubits = self.qubits.clone();
         qubits.extend(rhs.qubits.clone());
         Self {
-            state: rhs.state.kronecker(&self.state),
+            state_vector: rhs.state_vector.kronecker(&self.state_vector),
             qubits: qubits,
         }
     }
+}
 
+impl SubSystem {
+    /// Index of specified qubit
     pub fn local_index(&self, global_index: usize) -> usize {
         let Some(local_index) = self.qubits.iter().position(|&q| q == global_index) else {
             panic!("Qubit is not member of system!")
@@ -43,73 +42,100 @@ impl SubSystem {
                 self.qubits.swap(j, j - 1);
 
                 // Sort the state vector.
-                self.state = swap_matrix(&[], j, j - 1, n_qubits) * self.state.clone();
+                self.state_vector =
+                    swap_matrix(&[], j, j - 1, n_qubits) * self.state_vector.clone();
 
                 j -= 1;
             }
             i += 1;
         }
     }
+
+    pub fn qubits(&self) -> &Vec<usize> {
+        &self.qubits
+    }
+
+    pub fn qubits_mut(&mut self) -> &mut Vec<usize> {
+        &mut self.qubits
+    }
+
+    pub fn state_vector(&self) -> &DVector<Complex<f64>> {
+        &self.state_vector
+    }
+
+    pub fn state_vector_mut(&mut self) -> &mut DVector<Complex<f64>> {
+        &mut self.state_vector
+    }
+
+    pub fn n_qubits(&self) -> usize {
+        self.qubits.len()
+    }
+
+    /// The system |0>.
+    pub fn zero(qubit: usize) -> Self {
+        Self {
+            state_vector: dvector![cart!(1.0), cart!(0.0)],
+            qubits: vec![qubit],
+        }
+    }
+
+    /// The system |1>.
+    pub fn one(qubit: usize) -> Self {
+        Self {
+            state_vector: dvector![cart!(0.0), cart!(1.0)],
+            qubits: vec![qubit],
+        }
+    }
 }
 
 impl std::fmt::Display for SubSystem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "QUBITS: {:?}, STATE: {}", self.qubits, self.state)
+        write!(f, "QUBITS: {:?}, STATE: {}", self.qubits, self.state_vector)
     }
 }
 
-impl std::fmt::Display for ProductState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let parts: Vec<String> = self.systems.iter().map(|s| format!("{}", s)).collect();
-        write!(f, "{}", parts.join(", "))
-    }
-}
-
-impl Into<DVector<Complex<f64>>> for ProductState {
-    fn into(self) -> DVector<Complex<f64>> {
-        self.vector()
-    }
-}
+/// A collection of subsystems.
+#[derive(Debug, Clone)]
+pub struct ProductState(Vec<SubSystem>);
 
 impl ProductState {
+    /// The system |b> where b is any bitstring.
     pub fn from_bitstring(bitstring: usize, n_qubits: usize) -> Self {
         // No entanglement -> one system for each qubit.
         let mut sys = vec![];
 
         for i in 0..n_qubits {
-            let state = if (bitstring >> i) & 1 == 0 {
-                dvector![cart!(1.0), cart!(0.0)] // |0>
+            if (bitstring >> i) & 1 == 0 {
+                sys.push(SubSystem::zero(i));
             } else {
-                dvector![cart!(0.0), cart!(1.0)] // |1>
+                sys.push(SubSystem::one(i));
             };
-            sys.push(SubSystem {
-                state: state,
-                qubits: vec![i],
-            })
         }
-        Self { systems: sys }
+        ProductState::from(sys)
     }
 
+    /// The system |0> * |0> * |0> * ...
     pub fn zeros(n_qubits: usize) -> Self {
         Self::from_bitstring(0, n_qubits)
     }
 
-    pub fn get_subsystem(&self, index: usize) -> SubSystem {
-        self.systems[index].clone()
+    pub fn n_qubits(&self) -> usize {
+        self.iter().map(|sub| sub.n_qubits()).sum()
     }
 
     fn product(&self) -> SubSystem {
-        self.systems.clone().into_iter().fold(
+        self.clone().into_iter().fold(
             SubSystem {
-                state: dvector![cart!(1.0)],
+                state_vector: dvector![cart!(1.0)],
                 qubits: vec![],
             },
-            |acc, sys| acc.combine(&sys),
+            |acc, sys| acc * sys,
         )
     }
 
+    /// Returns the index for the system that contains `qubit`.
     pub fn system_of_qubit(&self, qubit: usize) -> usize {
-        let Some(sys_idx) = self.systems.iter().position(|s| s.qubits.contains(&qubit)) else {
+        let Some(sys_idx) = self.iter().position(|s| s.qubits.contains(&qubit)) else {
             panic!("Qubit is not member of any system!")
         };
         sys_idx
@@ -121,13 +147,13 @@ impl ProductState {
         let mut tot_sys = self.product();
 
         tot_sys.sort();
-        tot_sys.state
+        tot_sys.state_vector
     }
 
+    /// Return the amplitude for a given basis state.
     pub fn amp_at(&self, basis: usize) -> Complex<f64> {
         //Translate to order of system
         let product_order = self
-            .systems
             .iter()
             .fold(vec![], |acc, sys| vec![acc, sys.qubits.clone()].concat());
 
@@ -149,15 +175,78 @@ impl ProductState {
         let mut amp_acc = cart!(1.0);
         let mut base_index = 0;
 
-        for sys in &self.systems {
-            let n = sys.qubits.len();
+        for sys in self.iter() {
+            let n = sys.n_qubits();
             let mask = (1 << n) - 1; // 1111..
             let amp_idx = (translation >> base_index) & mask;
             base_index += n;
-            amp_acc *= sys.state[amp_idx];
+            amp_acc *= sys.state_vector[amp_idx];
         }
 
         amp_acc
+    }
+}
+
+impl std::fmt::Display for ProductState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let parts: Vec<String> = self.iter().map(|s| format!("{}", s)).collect();
+        write!(f, "{}", parts.join(", "))
+    }
+}
+
+impl Deref for ProductState {
+    type Target = Vec<SubSystem>;
+    fn deref(&self) -> &Vec<SubSystem> {
+        &self.0
+    }
+}
+impl DerefMut for ProductState {
+    fn deref_mut(&mut self) -> &mut Vec<SubSystem> {
+        &mut self.0
+    }
+}
+
+impl From<Vec<SubSystem>> for ProductState {
+    fn from(v: Vec<SubSystem>) -> Self {
+        ProductState(v)
+    }
+}
+impl From<ProductState> for Vec<SubSystem> {
+    fn from(m: ProductState) -> Vec<SubSystem> {
+        m.0
+    }
+}
+
+impl AsRef<Vec<SubSystem>> for ProductState {
+    fn as_ref(&self) -> &Vec<SubSystem> {
+        &self.0
+    }
+}
+impl AsMut<Vec<SubSystem>> for ProductState {
+    fn as_mut(&mut self) -> &mut Vec<SubSystem> {
+        &mut self.0
+    }
+}
+
+impl IntoIterator for ProductState {
+    type Item = SubSystem;
+    type IntoIter = std::vec::IntoIter<SubSystem>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+impl<'a> IntoIterator for &'a ProductState {
+    type Item = &'a SubSystem;
+    type IntoIter = std::slice::Iter<'a, SubSystem>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
+    }
+}
+impl<'a> IntoIterator for &'a mut ProductState {
+    type Item = &'a mut SubSystem;
+    type IntoIter = std::slice::IterMut<'a, SubSystem>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter_mut()
     }
 }
 

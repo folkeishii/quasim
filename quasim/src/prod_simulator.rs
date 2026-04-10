@@ -1,5 +1,4 @@
 use crate::{
-    cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
     ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv, reduced_state},
@@ -9,11 +8,11 @@ use crate::{
     register_file::{RegisterError, RegisterFile},
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
-use nalgebra::{Complex, DVector, dvector};
+use nalgebra::{Complex, DVector};
 
 #[derive(Debug, Clone)]
 pub struct ProdSimulator {
-    state: ProductState,
+    product_state: ProductState,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile,
@@ -30,12 +29,12 @@ impl ProdSimulator {
             pc: Default::default(),
             registers: registers,
             state_vector_cache: init_state.vector(), //TODO: remove cache when state is generic
-            state: init_state,
+            product_state: init_state,
         }
     }
 
     pub fn get_state(&self) -> &ProductState {
-        &self.state
+        &self.product_state
     }
 
     fn apply_gate(&mut self, gate: Gate) {
@@ -64,13 +63,13 @@ impl ProdSimulator {
         // Systems that gate acts on.
         let mut gate_systems = vec![];
         for qubit in gate_qubits {
-            let sys_idx = self.state.system_of_qubit(qubit);
+            let sys_idx = self.product_state.system_of_qubit(qubit);
             if !gate_systems.contains(&sys_idx) {
                 gate_systems.push(sys_idx);
             }
         }
 
-        let mut sys = self.state.systems[gate_systems[0]].clone();
+        let mut sys = self.product_state[gate_systems[0]].clone();
 
         let gate_acts_on_several_systems = gate_systems.len() > 1;
         let is_swap_gate = gate.get_type() == GateType::SWAP && controls.is_empty();
@@ -79,24 +78,24 @@ impl ProdSimulator {
             // Regular swaps do not result in entanglement.
             // Only change global qubit index.
             let sys1_local_target = sys.local_index(targets[0]);
-            let mut sys2 = self.state.systems[gate_systems[1]].clone();
+            let mut sys2 = self.product_state[gate_systems[1]].clone();
             let sys2_local_target = sys2.local_index(targets[1]);
 
             // Swap.
-            let temp = sys.qubits[sys1_local_target];
-            sys.qubits[sys1_local_target] = sys2.qubits[sys2_local_target];
-            sys2.qubits[sys2_local_target] = temp;
+            sys.qubits_mut()[sys1_local_target] = targets[1];
+            sys2.qubits_mut()[sys2_local_target] = targets[0];
 
-            self.state.systems[gate_systems[0]] = sys;
-            self.state.systems[gate_systems[1]] = sys2;
+            self.product_state[gate_systems[0]] = sys;
+            self.product_state[gate_systems[1]] = sys2;
             return;
         } else if gate_acts_on_several_systems {
             // Combine all systems acted on.
             sys = gate_systems
-                .iter()
+                .clone()
+                .into_iter()
                 .skip(1)
-                .map(|&qs_idx| self.state.systems[qs_idx].clone())
-                .fold(sys, |acc, qs| acc.combine(&qs));
+                .map(|qs_idx| self.product_state[qs_idx].clone())
+                .fold(sys, |acc, qs| acc * qs);
         }
 
         // Translate global qubit indexing to the system's local indexing.
@@ -104,37 +103,38 @@ impl ProdSimulator {
 
         if is_swap_gate {
             // Swap qubit indecies, no need for matrix multiplication.
-            sys.qubits.swap(local_targets[0], local_targets[1]);
-            self.state.systems[gate_systems[0]] = sys;
+            sys.qubits_mut()[local_targets[0]] = targets[1];
+            sys.qubits_mut()[local_targets[1]] = targets[0];
+            self.product_state[gate_systems[0]] = sys;
             return;
         }
 
         // Continue to translate global qubit indexing to the system's local indexing.
-        let local_controls: Vec<usize> = controls.iter().map(|&t| sys.local_index(t)).collect();
-        let local_n_qubits = sys.qubits.len();
+        let local_controls: Vec<usize> = controls.iter().map(|&c| sys.local_index(c)).collect();
+        let local_n_qubits = sys.n_qubits();
         let local_gate = Gate::new(gate.get_type(), &local_controls, &local_targets).unwrap();
 
         // Apply the gate to the system's state vector using: |s>` == U|s>
         let mat = expand_matrix_from_gate(&local_gate, local_n_qubits);
-        sys.state = mat * sys.state;
+        *sys.state_vector_mut() = mat * sys.state_vector();
 
         if gate_acts_on_several_systems {
             // Remove systems that were combined.
-            self.state.systems = self
-                .state
-                .systems
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| !gate_systems.contains(i))
-                .map(|(_, s)| s.clone())
-                .collect();
+            self.product_state = ProductState::from(
+                self.product_state
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| !gate_systems.contains(i))
+                    .map(|(_, s)| s.clone())
+                    .collect::<Vec<SubSystem>>(),
+            );
 
             // Add combined system.
-            self.state.systems.push(sys);
+            self.product_state.push(sys);
             return;
         }
         // Update system acted on.
-        self.state.systems[gate_systems[0]] = sys;
+        self.product_state[gate_systems[0]] = sys;
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
@@ -151,40 +151,35 @@ impl ProdSimulator {
 
         self.pc_mut().increment();
 
-        let target_system = self.state.system_of_qubit(target);
-        let mut sys = self.state.systems[target_system].clone();
+        let target_system = self.product_state.system_of_qubit(target);
+        let mut sys = self.product_state[target_system].clone();
 
         // Translate global qubit indexing to the system's local indexing.
         let local_target = sys.local_index(target);
-        let local_n_qubits = sys.qubits.len();
+        let local_n_qubits = sys.n_qubits();
         let local_non_targets: Vec<usize> =
             (0..local_n_qubits).filter(|&i| i != local_target).collect();
 
         let (measurement, post_measure_state) =
-            measure_and_observe_sv(local_target, &sys.state, local_n_qubits);
+            measure_and_observe_sv(local_target, &sys.state_vector(), local_n_qubits);
 
         // "Split" state.
-        sys.qubits.remove(local_target);
+        sys.qubits_mut().remove(local_target);
         let post_measure_state_adj = post_measure_state.adjoint();
         let density = post_measure_state * post_measure_state_adj; //|s><s|
-        sys.state = DVector::from(
+        *sys.state_vector_mut() = DVector::from(
             reduced_state(&density, &local_non_targets, local_n_qubits)
                 .symmetric_eigen()
                 .eigenvectors
                 .column(0),
         );
-        self.state.systems[target_system] = sys;
+        self.product_state[target_system] = sys;
 
-        let collapsed_state = if measurement == 0 {
-            dvector![cart!(1.0), cart!(0.0)] // |0>
+        if measurement == 0 {
+            self.product_state.push(SubSystem::zero(target));
         } else {
-            dvector![cart!(0.0), cart!(1.0)] // |1>
+            self.product_state.push(SubSystem::one(target));
         };
-
-        self.state.systems.push(SubSystem {
-            state: collapsed_state,
-            qubits: vec![target],
-        });
 
         // Write measurement to register.
         self.registers[reg]
@@ -193,11 +188,11 @@ impl ProdSimulator {
     }
 
     fn measure_all(&mut self, reg: &str) {
-        let measurement_bitstring = collapse(&self.state.vector().as_slice());
+        let measurement_bitstring = collapse(&self.product_state.vector().as_slice());
 
         self.registers[reg].write(measurement_bitstring);
 
-        self.state = ProductState::from_bitstring(measurement_bitstring, self.n_qubits());
+        self.product_state = ProductState::from_bitstring(measurement_bitstring, self.n_qubits());
 
         self.pc_mut().increment();
     }
@@ -260,7 +255,7 @@ impl DebuggableSimulator for ProdSimulator {
     type State = Complex<f64>;
 
     fn collapse_peek(&self) -> usize {
-        collapse(&self.state.vector().as_slice())
+        collapse(&self.product_state.vector().as_slice())
     }
 
     fn next(&mut self) -> bool {
@@ -278,7 +273,7 @@ impl DebuggableSimulator for ProdSimulator {
             Instruction::Call(name, lsq, ctrl) => self.pc_mut().jump_and_link(name, lsq, ctrl),
         }
 
-        self.state_vector_cache = self.state.vector(); //TODO: remove cache when state is generic
+        self.state_vector_cache = self.product_state.vector(); //TODO: remove cache when state is generic
 
         true
     }
