@@ -377,6 +377,7 @@ mod tests {
     use nalgebra::dvector;
 
     use crate::ext::equal_state_c;
+    use crate::sampler::CircuitSampler;
     use crate::simulator::{Debuggable, Sampleable};
     use crate::{cart, common_test};
     use crate::{
@@ -621,11 +622,14 @@ mod tests {
             .reset(2)
             .reset(3);
 
-        let sampler = circuit.sample();
-
         for _ in 0..100 {
-            assert!(SVSimulator::sample_once(&sampler).unwrap() == 0);
+            assert!(SVSimulator::sample_once(circuit.clone(), CircuitSampler).unwrap() == 0);
         }
+        assert!(
+            SVSimulator::sample(circuit, CircuitSampler, 100)
+                .unwrap()
+                .fold(true, |acc, it| acc && it == 0)
+        )
     }
 
     #[test]

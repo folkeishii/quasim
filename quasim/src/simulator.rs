@@ -137,33 +137,23 @@ pub trait StoredRegisters: Simulator {
 /// Simulators that implement this trait can be sampled using a Sampler.
 /// Is autoimplemented by all simulators, but requires the simulator to be buildable
 /// in order to use the sampling functions.
-pub trait Sampleable: Simulator {
-    fn sample_once<T>(
-        sampler: &T,
-    ) -> Result<<T as Sampler<Self>>::Output, <Self as Buildable<T::CircuitBehaviour>>::E>
-    where
-        T: Sampler<Self>,
-        Self: Buildable<T::CircuitBehaviour>,
-        Circuit<T::CircuitBehaviour>: Clone,
-    {
-        let mut sim = Self::build(sampler.circuit().clone())?;
+pub trait Sampleable<B, S>: Simulator + Buildable<B>
+where
+    B: CircuitBehaviour,
+    S: Sampler<Self>,
+{
+    fn sample_once(circuit: Circuit<B>, sampler: S) -> Result<S::Output, Self::E> {
+        let mut sim = Self::build(circuit)?;
         sim.run();
         Ok(sampler.sample(&sim))
     }
 
-    fn sample<T>(
-        sampler: &T,
+    fn sample(
+        circuit: Circuit<B>,
+        sampler: S,
         times: usize,
-    ) -> Result<
-        impl Iterator<Item = <T as Sampler<Self>>::Output>,
-        <Self as Buildable<T::CircuitBehaviour>>::E,
-    >
-    where
-        T: Sampler<Self>,
-        Self: Buildable<T::CircuitBehaviour>,
-        Circuit<T::CircuitBehaviour>: Clone,
-    {
-        let mut sim = Self::build(sampler.circuit().clone())?;
+    ) -> Result<impl Iterator<Item = S::Output>, Self::E> {
+        let mut sim = Self::build(circuit)?;
         let iter = (0..times).map(move |_| {
             sim.run();
             sampler.sample(&sim)
@@ -171,8 +161,13 @@ pub trait Sampleable: Simulator {
         Ok(iter)
     }
 }
-
-impl<T: Simulator> Sampleable for T {}
+impl<Sim, Samp, B> Sampleable<B, Samp> for Sim
+where
+    Sim: Simulator + Buildable<B>,
+    Samp: Sampler<Sim>,
+    B: CircuitBehaviour,
+{
+}
 
 #[cfg(test)]
 mod tests {
