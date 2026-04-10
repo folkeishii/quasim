@@ -93,7 +93,10 @@ impl<R: Runtime> GpuStateVector<R> {
 
     /// Avoid using this function unless necessary, downloads whole state vector from gpu
     pub fn sync_state_to_cpu(&mut self) {
-        self.state_vector_cache = self.client.read_one(self.state_vector_handle.clone());
+        self.state_vector_cache = self
+            .client
+            .read_one(self.state_vector_handle.clone())
+            .expect("failed to read state back to CPU");
     }
 
     /// Avoid using this function unless necessary, uploads whole state vector to gpu
@@ -122,13 +125,13 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(&self.state_vector_handle, n_amplitudes * 2, 1),
-                ArrayArg::from_raw_parts::<u32>(&self.target_data_handle, self.data_len, 1),
-                ArrayArg::from_raw_parts::<u32>(&self.control_data_handle, self.data_len, 1),
-                ArrayArg::from_raw_parts::<f64>(&self.gate_data_handle, self.data_len * 8, 1),
-                ScalarArg::new(command.start_index),
-                ScalarArg::new(command.size),
-                ScalarArg::new(command.targets.get_bitstring() as u32),
+                ArrayArg::from_raw_parts(self.state_vector_handle.clone(), n_amplitudes * 2),
+                ArrayArg::from_raw_parts(self.target_data_handle.clone(), self.data_len),
+                ArrayArg::from_raw_parts(self.control_data_handle.clone(), self.data_len),
+                ArrayArg::from_raw_parts(self.gate_data_handle.clone(), self.data_len * 8),
+                command.start_index,
+                command.size,
+                command.targets.get_bitstring() as u32,
             );
         }
     }
@@ -156,7 +159,10 @@ impl<R: Runtime> GpuStateVector<R> {
             );
         }
 
-        let bytes = self.client.read_one(sample_index_handle);
+        let bytes = self
+            .client
+            .read_one(sample_index_handle)
+            .expect("failed to read sample result back to CPU");
         u32::from_bytes(&bytes)[0] as usize
     }
 
@@ -171,13 +177,12 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(
-                    &self.state_vector_handle,
+                ArrayArg::from_raw_parts(
+                    self.state_vector_handle.clone(),
                     self.state_vector_len * 2,
-                    1,
                 ),
-                ScalarArg::new(measurement as u32),
-                ScalarArg::new(measurement_mask),
+                measurement as u32,
+                measurement_mask,
             );
         }
         self.normalize();
@@ -195,12 +200,11 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(
-                    &self.state_vector_handle,
+                ArrayArg::from_raw_parts(
+                    self.state_vector_handle.clone(),
                     self.state_vector_len * 2,
-                    1,
                 ),
-                ScalarArg::new(measurement as u32),
+                measurement as u32,
             );
         }
 
@@ -244,8 +248,8 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(&self.state_vector_handle, num_elems * 2, 1),
-                ArrayArg::from_raw_parts::<f64>(&self.probs_handle, num_elems, 1),
+                ArrayArg::from_raw_parts(self.state_vector_handle.clone(), num_elems * 2),
+                ArrayArg::from_raw_parts(self.probs_handle.clone(), num_elems),
             );
         }
     }
@@ -261,8 +265,8 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(in_handle, in_len, 1),
-                ArrayArg::from_raw_parts::<f64>(out_handle, out_len, 1),
+                ArrayArg::from_raw_parts(in_handle.clone(), in_len),
+                ArrayArg::from_raw_parts(out_handle.clone(), out_len),
                 GPU_REDUCE_FACTOR,
             );
         }
@@ -282,8 +286,8 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(&self.state_vector_handle, num_elems, 1),
-                ArrayArg::from_raw_parts::<f64>(&final_sum_level.handle, 1, 1),
+                ArrayArg::from_raw_parts(self.state_vector_handle.clone(), num_elems),
+                ArrayArg::from_raw_parts(final_sum_level.handle.clone(), 1),
             );
         }
     }
@@ -304,9 +308,9 @@ impl<R: Runtime> GpuStateVector<R> {
                 &self.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(prob_handle, prob_len, 1),
-                ArrayArg::from_raw_parts::<u32>(sample_index_handle, 1, 1),
-                ArrayArg::from_raw_parts::<f64>(sample_threshold_handle, 1, 1),
+                ArrayArg::from_raw_parts(prob_handle.clone(), prob_len),
+                ArrayArg::from_raw_parts(sample_index_handle.clone(), 1),
+                ArrayArg::from_raw_parts(sample_threshold_handle.clone(), 1),
                 GPU_REDUCE_FACTOR,
             );
         }
@@ -344,13 +348,12 @@ mod tests {
                 &state.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(
-                    &state.state_vector_handle,
+                ArrayArg::from_raw_parts(
+                    state.state_vector_handle.clone(),
                     state.state_vector_len * 2,
-                    1,
                 ),
-                ScalarArg::new(0u32),
-                ScalarArg::new(1u32),
+                0u32,
+                1u32,
             );
         }
 
@@ -383,12 +386,11 @@ mod tests {
                 &state.client,
                 cube_count,
                 cube_dim,
-                ArrayArg::from_raw_parts::<f64>(
-                    &state.state_vector_handle,
+                ArrayArg::from_raw_parts(
+                    state.state_vector_handle.clone(),
                     state.state_vector_len * 2,
-                    1,
                 ),
-                ScalarArg::new(2u32),
+                2u32,
             );
         }
 
