@@ -2,12 +2,12 @@ use core::f32;
 use std::{
     collections::VecDeque,
     fmt::{Debug, Display},
-    ops::{Mul, Neg},
+    ops::{Add, Mul, Neg},
     vec,
 };
 
 use log::trace;
-use nalgebra::Complex;
+use nalgebra::{Complex, DVector};
 use rand::random;
 
 use crate::{
@@ -57,6 +57,24 @@ impl Scalar {
     }
 }
 
+impl Add for Scalar {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        if self.frac_1_sqrt_2_power == rhs.frac_1_sqrt_2_power {
+            Self {
+                frac_1_sqrt_2_power: self.frac_1_sqrt_2_power,
+                number: self.number + rhs.number,
+            }
+        } else {
+            Self {
+                frac_1_sqrt_2_power: self.frac_1_sqrt_2_power,
+                number: self.number + Complex::<f32>::from(rhs),
+            }
+        }
+    }
+}
+
 impl Neg for Scalar {
     type Output = Self;
 
@@ -76,6 +94,14 @@ impl Mul for Scalar {
             frac_1_sqrt_2_power: self.frac_1_sqrt_2_power + rhs.frac_1_sqrt_2_power,
             number: self.number * rhs.number,
         }
+    }
+}
+
+impl Mul<ExtendedBasis> for Scalar {
+    type Output = ScaledState;
+
+    fn mul(self, rhs: ExtendedBasis) -> Self::Output {
+        ScaledState(rhs, self)
     }
 }
 
@@ -121,9 +147,9 @@ impl From<Complex<f32>> for Scalar {
     }
 }
 
-impl Into<Complex<f32>> for Scalar {
-    fn into(self) -> Complex<f32> {
-        f32::consts::FRAC_1_SQRT_2.powi(self.frac_1_sqrt_2_power as i32) * self.number
+impl From<Scalar> for Complex<f32> {
+    fn from(value: Scalar) -> Self {
+        value.number * f32::consts::FRAC_1_SQRT_2.powi(value.frac_1_sqrt_2_power as i32)
     }
 }
 
@@ -195,6 +221,8 @@ impl ExtendedQubitBasis {
             ],
         }
     }
+
+    // Gates
 
     #[inline(always)]
     fn x(&self) -> ExtendedQubitBasis {
@@ -524,6 +552,62 @@ impl ExtendedBasis {
             }
         }
     }
+
+    fn r_y(self, target: usize, angle: f32) -> [ScaledState; 2] {
+        use ExtendedBasis::*;
+        match self {
+            Binary(_) => Self::r_y(Superposition(self.vec_form()), target, angle),
+            Superposition(_) => {
+                let angle = Complex::from(angle / 2f32);
+                let expanded = self.expand_qubit(target);
+
+                let Some(ScaledState(ref zero_basis, ref zero_scalar)) = expanded[0] else {
+                    panic!("Would expect at least one state after expansion");
+                };
+
+                let top_left = Scalar::from(angle.cos()) * *zero_scalar;
+                let bottom_left = Scalar::from(angle.sin()) * *zero_scalar;
+
+                let r: [ScaledState; 2] =
+                    if let Some(ScaledState(ref one_basis, ref one_scalar)) = expanded[0] {
+                        let top_right = Scalar::from(-angle.sin()) * *one_scalar;
+                        let bottom_right = Scalar::from(angle.cos()) * *one_scalar;
+
+                        [
+                            (top_left + top_right) * zero_basis.clone(),
+                            (bottom_left + bottom_right) * one_basis.clone(),
+                        ]
+                    } else {
+                        [
+                            top_left * zero_basis.clone(),
+                            bottom_left * zero_basis.clone(),
+                        ]
+                    };
+
+                r
+            }
+        }
+    }
+
+    fn r_z(self, target: usize, angle: f32) -> [Option<ScaledState>; 2] {
+        use ExtendedBasis::*;
+        match self {
+            Binary(_) => [Some(ScaledState(self, Scalar::ONE)), None],
+            Superposition(_) => {
+                let mut result = self.expand_qubit(target);
+
+                let Some(Some(ScaledState(_, one_case_scalar))) = result.get_mut(1) else {
+                    // If the qubit was already in a binary state, the phase cannot be altered.
+                    return result;
+                };
+
+                let phase_change: Scalar = Complex::exp(Complex::I * angle).into();
+                *one_case_scalar = phase_change * *one_case_scalar;
+
+                result
+            }
+        }
+    }
 }
 
 impl From<ScaledQubitBasis> for ScaledState {
@@ -628,6 +712,11 @@ impl SumOfScaledStates {
         }
     }
 
+    /// Returns the probability distribution over all basis states
+    /// that exist at this point. Extended bases (eg, |+⟩, |−⟩, |i⟩, |−i⟩)
+    /// will not be expanded, so the resulting states may still contain extended bases.
+    /// If you want to get the distribution over only binary states,
+    /// use `unsugared_probability_distribution` instead.
     fn probability_distribution(&self) -> impl Iterator<Item = &ScaledState> {
         self.sum.iter()
     }
@@ -733,7 +822,60 @@ impl SyntaxSimulator {
             SWAP => {
                 panic!("SWAP gates should have been removed in the circuit preprocessing step!")
             }
-            _ => todo!(),
+            U(theta, phi, lambda) => {
+                let is_just_phase_change = theta == 0f64;
+                let mut states_to_alter: Vec<ScaledState> = Vec::new();
+                let mut sum = expr.expand_necessary_controls(controls);
+                sum.retain(|ss| {
+                    let ScaledState(basis, _) = ss;
+                    use ExtendedBasis::*;
+                    match basis {
+                        Binary(bits) => bits & controls.get_bitstring() == controls.get_bitstring(),
+                        Superposition(bases) => {
+                            if is_just_phase_change && matches!(bases[target], Zero | One) {
+                                // The zero and one states are unaffected by phase changes. Just retain the state.
+                                return true;
+                            }
+
+                            use ExtendedQubitBasis::*;
+                            let all_controls_set = controls
+                                .get_indices()
+                                .iter()
+                                .all(|&i| bases.get(i) == Some(&One));
+
+                            if all_controls_set {
+                                states_to_alter.push(ss.clone());
+                                return false;
+                            } else {
+                                return true;
+                            }
+                        }
+                    }
+                });
+
+                let new_states = states_to_alter
+                    .iter()
+                    .flat_map(|ScaledState(basis, _)| basis.clone().r_z(target, lambda as f32))
+                    .flatten()
+                    .map(|ss| ss.clone())
+                    .collect::<Vec<_>>();
+
+                let new_states = new_states
+                    .iter()
+                    .flat_map(|ScaledState(basis, _)| basis.clone().r_y(target, theta as f32))
+                    .map(|ss| ss.clone())
+                    .collect::<Vec<_>>();
+
+                let new_states = new_states
+                    .iter()
+                    .flat_map(|ScaledState(basis, _)| basis.clone().r_z(target, phi as f32))
+                    .flatten()
+                    .map(|ss| ss.clone())
+                    .collect::<Vec<_>>();
+
+                sum.extend(new_states);
+                sum
+            }
         };
     }
 
@@ -758,16 +900,24 @@ impl SyntaxSimulator {
         &self.state
     }
 
+    /// Returns the probability distribution over binary states,
+    /// all states containing an extended basis (eg, |+⟩, |−⟩, |i⟩, |−i⟩),
+    /// will be expanded into the binary states they represent.
+    ///
+    /// **CAUTION**: There is no deduplication or simplification of the resulting states,
+    /// so the same binary state may appear multiple times with different scalars, and these scalars should be summed to get the actual probability of that binary state.
+    fn unsugared_probability_distribution(&self) -> impl Iterator<Item = ScaledState> {
+        self.state
+            .probability_distribution()
+            .flat_map(|s| s.all_inherent_states())
+    }
+
     pub fn run(&mut self) -> usize {
         self.step_all();
 
         let mut probability_so_far = 0f32;
         let guess = random::<f32>();
-        for ScaledState(state, scalar) in self
-            .state
-            .probability_distribution()
-            .flat_map(|s| s.all_inherent_states())
-        {
+        for ScaledState(state, scalar) in self.unsugared_probability_distribution() {
             probability_so_far += scalar.probability();
             if probability_so_far >= guess {
                 return state.into_binary();
