@@ -19,6 +19,6 @@ jobs:
         with:
           components: rustfmt
       - uses: swatinem/rust-cache@v2
-      - run: cargo fmt --all --features="gpu" -- --check
-      - run: cargo check --feautures="gpu" --benches
+      - run: cargo fmt --all -- --check
+      - run: cargo check --features=gpu --benches
       - run: cargo test
