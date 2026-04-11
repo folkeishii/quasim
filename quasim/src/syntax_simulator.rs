@@ -652,7 +652,7 @@ impl SumOfScaledStates {
                         controls
                             .get_indices()
                             .iter()
-                            .all(|&i| *bases.get(i).expect("Control qubit out of bounds") == One)
+                            .all(|&i| bases.get(i) == Some(&One))
                     }
                 }
             })
