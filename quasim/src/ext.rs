@@ -93,6 +93,22 @@ fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
     ]
 }
 
+pub fn get_gate2_data(gate: &Gate) -> Option<[Complex<f64>; 4]> {
+    match gate.get_type() {
+        GateType::X => Some(Gate::PAULI_X_DATA),
+        GateType::Y => Some(Gate::PAULI_Y_DATA),
+        GateType::Z => Some(Gate::PAULI_Z_DATA),
+        GateType::H => Some(Gate::HADAMARD_DATA),
+        GateType::U(theta, phi, lambda) => Some(u(theta, phi, lambda)),
+        GateType::S => Some(Gate::PHASE_S_DATA),
+        _ => None,
+    }
+}
+
+pub fn get_gate2_matrix(gate: &Gate) -> Option<Matrix2<Complex<f64>>> {
+    get_gate2_data(gate).map(|d| Matrix2::from_row_slice(&d))
+}
+
 pub fn get_u_matrix2(theta: f64, phi: f64, lambda: f64) -> Matrix2<Complex<f64>> {
     Matrix2::from_row_slice(&u(theta, phi, lambda))
 }
@@ -258,14 +274,14 @@ pub fn convention_convertion_matrix(n_qubits: usize) -> DMatrix<Complex<f64>> {
 /// # convert_vector
 /// converts a state vector between little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
 pub fn convert_vector(vector: &DVector<Complex<f64>>) -> DVector<Complex<f64>> {
-    let n_qubits = (vector.nrows() as f32).log2() as usize;
+    let n_qubits = (vector.nrows() as f64).log2() as usize;
     convention_convertion_matrix(n_qubits) * vector
 }
 
 /// # convert_matrix
 /// converts a matrix between little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
 pub fn convert_matrix(matrix: &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>> {
-    let n_qubits = (matrix.nrows() as f32).log2() as usize;
+    let n_qubits = (matrix.nrows() as f64).log2() as usize;
     let mat = convention_convertion_matrix(n_qubits);
     let adj = mat.adjoint();
     mat * matrix * adj
