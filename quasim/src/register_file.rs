@@ -75,6 +75,10 @@ impl RegisterFile {
     pub fn get(&self, key: &str) -> Option<&Register> {
         self.0.get(key)
     }
+
+    pub fn reset(&mut self) {
+        self.0.values_mut().for_each(|reg| reg.write(0));
+    }
 }
 
 impl From<&HashMap<String, usize>> for RegisterFile {

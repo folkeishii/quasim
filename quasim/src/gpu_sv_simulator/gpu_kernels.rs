@@ -1,0 +1,277 @@
+use cubecl::cube;
+use cubecl::prelude::*;
+
+#[derive(CubeType, Clone, Copy)]
+struct ComplexF64 {
+    re: f64,
+    im: f64,
+}
+
+#[cube]
+impl ComplexF64 {
+    fn mul(self, rhs: Self) -> Self {
+        ComplexF64 {
+            re: self.re * rhs.re - self.im * rhs.im,
+            im: self.re * rhs.im + self.im * rhs.re,
+        }
+    }
+
+    fn add(self, rhs: Self) -> Self {
+        ComplexF64 {
+            re: self.re + rhs.re,
+            im: self.im + rhs.im,
+        }
+    }
+}
+
+/// Removes amplitudes in statevector where basis doesnt align with measurement
+#[cube(launch)]
+pub fn state_vector_observe(state_vector: &mut Array<f64>, measurement: u32, target_mask: u32) {
+    let basis = ABSOLUTE_POS;
+    if ((basis as u32) & target_mask) != measurement {
+        state_vector[basis * 2] = 0.0; // re
+        state_vector[basis * 2 + 1] = 0.0; // im
+    }
+}
+
+#[cube(launch)]
+pub fn state_vector_observe_full(state_vector: &mut Array<f64>, measurement: u32) {
+    let basis = ABSOLUTE_POS;
+    if (basis as u32) == measurement {
+        state_vector[basis * 2] = 1.0; // re
+        state_vector[basis * 2 + 1] = 0.0; // im
+    } else {
+        state_vector[basis * 2] = 0.0; // re
+        state_vector[basis * 2 + 1] = 0.0; // im
+    }
+}
+
+#[cube(launch)]
+pub fn reduce_pass(
+    partial_in: &Array<f64>,
+    partial_out: &mut Array<f64>,
+    #[comptime] block_size: usize,
+) {
+    let tid = UNIT_POS as usize;
+    let bid = CUBE_POS;
+    let gid = ABSOLUTE_POS;
+
+    // Shared scratch memory between all threads in a block
+    let mut shared: SharedMemory<f64> = SharedMemory::new(block_size);
+
+    let partial_len = partial_in.len();
+
+    shared[tid] = if gid < partial_len {
+        partial_in[gid]
+    } else {
+        0.0.into()
+    };
+
+    sync_storage();
+
+    let stride = RuntimeCell::<usize>::new(block_size >> 1);
+    while stride.read() > 0 {
+        let current_stride: usize = stride.read();
+        if tid < current_stride {
+            shared[tid] += shared[tid + current_stride];
+        }
+
+        stride.store(current_stride >> 1);
+        sync_storage();
+    }
+
+    if tid == 0 {
+        partial_out[bid] = shared[0];
+    }
+}
+
+#[cube(launch)]
+pub fn calculate_probs(state_vector: &Array<f64>, probs: &mut Array<f64>) {
+    let gid = ABSOLUTE_POS;
+    let amp_count = state_vector.len() / 2;
+
+    probs[gid] = if gid < amp_count {
+        let re = state_vector[2 * gid];
+        let im = state_vector[2 * gid + 1];
+        re * re + im * im
+    } else {
+        0.0.into()
+    };
+}
+
+#[cube(launch)]
+pub fn sample_cdf_block(
+    probs: &Array<f64>,
+    sample_index: &mut Array<u32>,
+    threshold: &mut Array<f64>,
+    #[comptime] block_size: usize,
+) {
+    let tid = UNIT_POS as usize;
+    let block_index = sample_index[0] as usize;
+    let base = block_index * block_size;
+    let mut shared: SharedMemory<f64> = SharedMemory::new(block_size);
+
+    shared[tid] = if base + tid < probs.len() {
+        probs[base + tid]
+    } else {
+        0.0.into()
+    };
+
+    sync_storage();
+
+    if UNIT_POS == 0 {
+        let target = threshold[0];
+        let mut prefix = 0.0;
+        let mut previous_prefix = 0.0;
+        let mut chosen = 0u32;
+        let mut found: bool = false;
+
+        for i in 0..block_size {
+            if !found {
+                prefix += shared[i];
+                if target < prefix {
+                    chosen = i as u32;
+                    found = true;
+                } else {
+                    previous_prefix = prefix;
+                }
+            }
+        }
+
+        sample_index[0] = sample_index[0] * block_size as u32 + chosen;
+        threshold[0] = target - previous_prefix;
+    }
+}
+
+#[cube(launch)]
+pub fn state_vector_normalize(array: &mut Array<f64>, norm_sqr: &Array<f64>) {
+    if ABSOLUTE_POS < array.len() {
+        array[ABSOLUTE_POS] /= norm_sqr[0].sqrt();
+    }
+}
+
+/// Applies `size` number of gates in one batch
+#[cube(launch)]
+pub fn batched_gate2(
+    state_vector: &mut Array<f64>,
+    target_data: &Array<u32>,
+    control_data: &Array<u32>,
+    gate_data: &Array<f64>,
+    start_index: u32,
+    size: u32,
+    target_mask: u32,
+    #[comptime] max_block_size: usize,
+) {
+    let block_size: usize = 1usize << (target_mask.count_ones() as usize);
+    let state_vector_len: usize = state_vector.len() / 2;
+
+    // One unit is launched for each block, so
+    // num units = statevector length / block size
+    let num_units: usize = state_vector_len / block_size;
+    if ABSOLUTE_POS < num_units {
+        let mut block_indices: Array<usize> = Array::new(max_block_size);
+        for i in 0..block_size {
+            block_indices[i] = block_index(ABSOLUTE_POS, target_mask as usize, i);
+        }
+
+        for i in 0..size {
+            let data_index: usize = (start_index + i) as usize;
+            let target: usize = target_data[data_index] as usize;
+            let control: usize = control_data[data_index] as usize;
+            let gate_base = data_index * 8;
+
+            let u00 = ComplexF64 {
+                re: gate_data[gate_base],
+                im: gate_data[gate_base + 1],
+            };
+            let u01 = ComplexF64 {
+                re: gate_data[gate_base + 2],
+                im: gate_data[gate_base + 3],
+            };
+            let u10 = ComplexF64 {
+                re: gate_data[gate_base + 4],
+                im: gate_data[gate_base + 5],
+            };
+            let u11 = ComplexF64 {
+                re: gate_data[gate_base + 6],
+                im: gate_data[gate_base + 7],
+            };
+
+            for local_index in 0..block_size {
+                let block_index = block_indices[local_index];
+
+                apply_unitary2(
+                    state_vector,
+                    block_index,
+                    target,
+                    control,
+                    u00,
+                    u01,
+                    u10,
+                    u11,
+                );
+            }
+        }
+    }
+}
+
+/// Applies a gate to specified basis state on state vector
+#[cube]
+fn apply_unitary2(
+    state_vector: &mut Array<f64>,
+    basis_state: usize,
+    target: usize,
+    control: usize,
+    u00: ComplexF64,
+    u01: ComplexF64,
+    u10: ComplexF64,
+    u11: ComplexF64,
+) {
+    let basis0: usize = basis_state * 2;
+    let basis1: usize = (basis_state | target) * 2;
+
+    let is_block_base: bool = (basis_state & target) == 0;
+    let controls_active: bool = (basis_state & control) == control;
+
+    if is_block_base && controls_active {
+        let amp0 = ComplexF64 {
+            re: state_vector[basis0],
+            im: state_vector[basis0 + 1],
+        };
+        let amp1 = ComplexF64 {
+            re: state_vector[basis1],
+            im: state_vector[basis1 + 1],
+        };
+
+        let new_amp0 = u00.mul(amp0).add(u01.mul(amp1));
+        let new_amp1 = u10.mul(amp0).add(u11.mul(amp1));
+
+        state_vector[basis0] = new_amp0.re;
+        state_vector[basis0 + 1] = new_amp0.im;
+
+        state_vector[basis1] = new_amp1.re;
+        state_vector[basis1 + 1] = new_amp1.im;
+    }
+}
+
+/// Returns the global block index in statevector for a specific superblock,
+/// given target mask and local index in the superblock.
+#[cube]
+fn block_index(mut superblock: usize, mut target_mask: usize, local_index: usize) -> usize {
+    let mut shift = 0usize;
+    while target_mask != 0 {
+        // AND target_mask with wrapping neg of itself to get lowest bit
+        let lowest = target_mask & ((!target_mask) + 1);
+        // Get position of lowest bit by counting ones equivalent of leading zeroes
+        let pos = (lowest - 1).count_ones() as usize;
+        // Take next bit from local_index
+        let bit = (local_index >> shift) & 1;
+        let lower = superblock & ((1 << pos) - 1);
+        let upper = superblock >> pos;
+        // Reconstruct blockindex
+        superblock = lower | (bit << pos) | (upper << (pos + 1));
+        target_mask &= target_mask - 1;
+        shift += 1;
+    }
+    superblock
+}
