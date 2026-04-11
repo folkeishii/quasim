@@ -192,7 +192,8 @@ pub fn measure_and_observe_sv(
             state[basis] = cart!(0.0);
         }
     }
-    *state = state.clone() / normalization.sqrt();
+    normalization = normalization.sqrt();
+    state.iter_mut().for_each(|amp| *amp /= normalization);
     result
 }
 
