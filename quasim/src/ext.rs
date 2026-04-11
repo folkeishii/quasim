@@ -424,9 +424,24 @@ pub fn measure_no_observe_dm(
 }
 
 /// # reduced_state
-/// Returns the reduced state (partial trace) of a density matrix,
+/// Returns the reduced state of a density matrix,
 /// where `targets` specifies the subsystem of qubits.
 pub fn reduced_state(
+    density: &DMatrix<Complex<f64>>,
+    targets: &[usize],
+    n_qubits: usize,
+) -> DMatrix<Complex<f64>> {
+    let non_targets = (0..n_qubits)
+        .filter(|idx| !targets.contains(idx))
+        .collect::<Vec<usize>>();
+
+    partial_trace(density, &non_targets, n_qubits)
+}
+
+/// # partial_trace
+/// Returns the partial trace of a density matrix 
+/// over `targets`.
+pub fn partial_trace(
     density: &DMatrix<Complex<f64>>,
     targets: &[usize],
     n_qubits: usize,
@@ -436,13 +451,12 @@ pub fn reduced_state(
         dmatrix![cart!(0.0), cart!(1.0)], // <1|
     ];
 
-    let dim = 1 << targets.len();
+    let n_non_targets = n_qubits - targets.len();
+
+    let dim = 1 << n_non_targets;
     let mut sum = DMatrix::<Complex<f64>>::zeros(dim, dim);
 
-    let non_targets = (0..n_qubits)
-        .filter(|idx| !targets.contains(idx))
-        .collect::<Vec<usize>>();
-    let n_terms = 1 << (n_qubits - targets.len());
+    let n_terms = 1 << targets.len();
     for i in 0..n_terms {
         /* Example, targets = [2], n_qubits = 3:
          *
@@ -453,8 +467,8 @@ pub fn reduced_state(
          * */
         let mut left_of_density_prod = identity_tensor_factors(n_qubits);
         let mut j: usize = 0;
-        for non_target in non_targets.iter() {
-            left_of_density_prod[*non_target] = bra[(i >> j) & 1].clone();
+        for target in targets.iter() {
+            left_of_density_prod[*target] = bra[(i >> j) & 1].clone();
             j += 1;
         }
         let left_of_density = eval_tensor_product(left_of_density_prod);
@@ -552,7 +566,7 @@ impl<T: Ord> OrdByKey<T> for T {
 mod tests {
     use crate::ext::{
         convert_matrix, convert_vector, equal_state_c, expand_matrix_from_gate, get_gate_matrix,
-        measure_no_observe_dm, swap_matrix,
+        measure_no_observe_dm, reduced_state, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
@@ -628,6 +642,83 @@ mod tests {
             &convert_matrix(&textbook_ch),
             &sim_ch,
             4,
+            0.001
+        ));
+    }
+
+    #[test]
+    fn reduced_state_test() {
+        let mat = dmatrix![
+            cart!(0.5),cart!(0.353553),cart!(0.0),cart!(0.25),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.25);
+            cart!(0.353553),cart!(0.25),cart!(0.0),cart!(0.176777),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.176777);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.25),cart!(0.176777),cart!(0.0),cart!(0.125),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.125);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+            cart!(0.25),cart!(0.176777),cart!(0.0),cart!(0.125),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.125);
+        ];
+        let red01 = dmatrix![
+          cart!(0.5),cart!(0.353553),cart!(0.0),cart!(0.25);
+          cart!(0.353553),cart!(0.25),cart!(0.0),cart!(0.176777);
+          cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+          cart!(0.25),cart!(0.176777),cart!(0.0),cart!(0.25);
+        ];
+        let red12 = dmatrix![
+          cart!(0.75),cart!(0.176777),cart!(0.0),cart!(0.176777);
+          cart!(0.176777),cart!(0.125),cart!(0.0),cart!(0.125);
+          cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
+          cart!(0.176777),cart!(0.125),cart!(0.0),cart!(0.125);
+        ];
+        let red0 = dmatrix![
+            cart!(0.5),cart!(0.353553);
+            cart!(0.353553),cart!(0.5);
+        ];
+        let red1 = dmatrix![
+            cart!(0.75),cart!(0.176777);
+            cart!(0.176777),cart!(0.25);
+        ];
+        let red2 = dmatrix![
+            cart!(0.875),cart!(0.125);
+            cart!(0.125),cart!(0.125);
+        ];
+
+        assert!(equal_state_c(
+            &reduced_state(&mat, &[0, 1, 2], 3),
+            &mat,
+            6,
+            0.001
+        ));
+
+        assert!(equal_state_c(
+            &reduced_state(&mat, &[0, 1], 3),
+            &red01,
+            4,
+            0.001
+        ));
+        assert!(equal_state_c(
+            &reduced_state(&mat, &[1, 2], 3),
+            &red12,
+            4,
+            0.001
+        ));
+
+        assert!(equal_state_c(
+            &reduced_state(&mat, &[0], 3),
+            &red0,
+            2,
+            0.001
+        ));
+        assert!(equal_state_c(
+            &reduced_state(&mat, &[1], 3),
+            &red1,
+            2,
+            0.001
+        ));
+        assert!(equal_state_c(
+            &reduced_state(&mat, &[2], 3),
+            &red2,
+            2,
             0.001
         ));
     }
