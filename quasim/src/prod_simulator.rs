@@ -1,7 +1,7 @@
 use crate::{
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv, reduced_state},
+    ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv, partial_trace},
     gate::{Gate, GateType},
     instruction::Instruction,
     product_state::{ProductState, SubSystem},
@@ -146,7 +146,7 @@ impl ProdSimulator {
          *
          *      ex: 3 qubits A,B,C that might be entangled, A measured to |0>
          *
-         *                      p` == |0><0| * Tr_BC(p)
+         *                      p` == |0><0| * Tr_A(p)
          * */
 
         self.pc_mut().increment();
@@ -157,8 +157,6 @@ impl ProdSimulator {
         // Translate global qubit indexing to the system's local indexing.
         let local_target = sys.local_index(target);
         let local_n_qubits = sys.n_qubits();
-        let local_non_targets: Vec<usize> =
-            (0..local_n_qubits).filter(|&i| i != local_target).collect();
 
         let (measurement, post_measure_state) =
             measure_and_observe_sv(local_target, &sys.state_vector(), local_n_qubits);
@@ -168,7 +166,7 @@ impl ProdSimulator {
         let post_measure_state_adj = post_measure_state.adjoint();
         let density = post_measure_state * post_measure_state_adj; //|s><s|
         *sys.state_vector_mut() = DVector::from(
-            reduced_state(&density, &local_non_targets, local_n_qubits)
+            partial_trace(&density, &[local_target], local_n_qubits)
                 .symmetric_eigen()
                 .eigenvectors
                 .column(0),

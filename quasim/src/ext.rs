@@ -458,12 +458,12 @@ pub fn partial_trace(
 
     let n_terms = 1 << targets.len();
     for i in 0..n_terms {
-        /* Example, targets = [2], n_qubits = 3:
+        /* Example, targets = [0,1], n_qubits = 3:
          *
-         * p_2 = (<0| * <0| * I)p(|0> * |0> * I) +
-         *     + (<0| * <1| * I)p(|0> * |1> * I) +
-         *     + (<1| * <0| * I)p(|1> * |0> * I) +
-         *     + (<1| * <1| * I)p(|1> * |1> * I) +
+         * Tr_01 = (<0| * <0| * I)p(|0> * |0> * I) +
+         *       + (<0| * <1| * I)p(|0> * |1> * I) +
+         *       + (<1| * <0| * I)p(|1> * |0> * I) +
+         *       + (<1| * <1| * I)p(|1> * |1> * I) +
          * */
         let mut left_of_density_prod = identity_tensor_factors(n_qubits);
         let mut j: usize = 0;
