@@ -1,8 +1,6 @@
 use cubecl::cube;
 use cubecl::prelude::*;
 
-use crate::gpu_sv_simulator::GPU_MAX_BLOCK_SIZE;
-
 #[derive(CubeType, Clone, Copy)]
 struct ComplexF64 {
     re: f64,
@@ -162,15 +160,16 @@ pub fn batched_gate2(
     start_index: u32,
     size: u32,
     target_mask: u32,
+    #[comptime] max_block_size: usize,
 ) {
     let block_size: usize = 1usize << (target_mask.count_ones() as usize);
     let state_vector_len: usize = state_vector.len() / 2;
 
-    // One kernel is launcher for each block, so
+    // One unit is launched for each block, so
     // num units = statevector length / block size
     let num_units: usize = state_vector_len / block_size;
     if ABSOLUTE_POS < num_units {
-        let mut block_indices: Array<usize> = Array::new(GPU_MAX_BLOCK_SIZE);
+        let mut block_indices: Array<usize> = Array::new(max_block_size);
         for i in 0..block_size {
             block_indices[i] = block_index(ABSOLUTE_POS, target_mask as usize, i);
         }

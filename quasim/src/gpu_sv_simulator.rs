@@ -15,32 +15,15 @@ mod gpu_kernels;
 mod gpu_state_vector;
 mod mem_helpers;
 
-const GPU_MAX_TARGET_QUBITS: usize = 3;
-const GPU_MAX_BLOCK_SIZE: usize = 1 << GPU_MAX_TARGET_QUBITS;
-
 #[derive(Clone)]
-pub struct GpuStateVectorExecutor<R: Runtime> {
+pub struct GpuStateVectorSimulator<R: Runtime> {
     gpu_state_vector: GpuStateVector<R>,
     batched_circuit: BatchedCircuit,
     pc: usize,
     registers: RegisterFile,
 }
 
-impl<R: Runtime> GpuStateVectorExecutor<R> {
-    fn new(circuit: Circuit<HybridCircuit>) -> Self {
-        let n_qubits = circuit.n_qubits();
-        let registers = RegisterFile::from(circuit.registers());
-        let batched_circuit = BatchedCircuit::from_circuit(circuit, GPU_MAX_TARGET_QUBITS);
-        let gpu_state = GpuStateVector::<R>::new(n_qubits, &batched_circuit);
-
-        Self {
-            gpu_state_vector: gpu_state,
-            batched_circuit,
-            pc: Default::default(),
-            registers,
-        }
-    }
-
+impl<R: Runtime> GpuStateVectorSimulator<R> {
     /// Run the entire circuit
     pub fn step_all(&mut self) -> &Self {
         while let Some(op) = self.batched_circuit.operation(self.pc) {
@@ -63,6 +46,12 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
     /// Gets a collapsed result from the current state vector
     pub fn get_collapsed_state(&self) -> usize {
         self.gpu_state_vector.sample()
+    }
+
+    pub fn reset(&mut self) {
+        self.gpu_state_vector.reset();
+        self.registers.reset();
+        self.pc = 0;
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
@@ -117,22 +106,23 @@ impl<R: Runtime> GpuStateVectorExecutor<R> {
     }
 }
 
-pub struct GpuStateVectorSimulator<R: Runtime> {
-    circuit: Circuit<HybridCircuit>,
-    _runtime: std::marker::PhantomData<R>,
-}
-
 impl<B, R: Runtime> TryFrom<Circuit<B>> for GpuStateVectorSimulator<R>
 where
     B: CircuitBehaviour,
-    Circuit<B>: Into<Circuit<HybridCircuit>>,
+    Circuit<B>: Clone + Into<Circuit<HybridCircuit>>,
 {
     type Error = GPUSVError;
 
     fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
+        let registers = RegisterFile::from(value.registers());
+        let batched_circuit = BatchedCircuit::from(value);
+        let gpu_state_vector = GpuStateVector::<R>::new(&batched_circuit);
+
         Ok(Self {
-            circuit: value.into(),
-            _runtime: std::marker::PhantomData,
+            gpu_state_vector,
+            batched_circuit,
+            pc: Default::default(),
+            registers,
         })
     }
 }
@@ -142,17 +132,19 @@ impl<R: Runtime> RunnableSimulator for GpuStateVectorSimulator<R> {
     type State = Complex<f64>;
 
     fn run(&self) -> usize {
-        GpuStateVectorExecutor::<R>::new(self.circuit.clone())
-            .step_all()
-            .get_collapsed_state()
+        let mut sim = self.clone();
+        sim.reset();
+        sim.step_all().get_collapsed_state()
     }
 
     fn final_state(&self) -> Self::Storage {
-        let mut exec = GpuStateVectorExecutor::<R>::new(self.circuit.clone());
-        exec.step_all();
-        exec.gpu_state_vector.sync_state_to_cpu();
+        let mut sim = self.clone();
+        sim.reset();
+        sim.step_all();
         // This is extremely expensive, we should probably do something about this
-        DVector::from_row_slice(exec.gpu_state_vector.as_slice())
+        // Will be able to be fixed after #193 is merged
+        sim.gpu_state_vector.sync_state_to_cpu();
+        DVector::from_row_slice(sim.gpu_state_vector.as_slice())
     }
 }
 

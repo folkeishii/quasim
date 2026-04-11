@@ -27,6 +27,8 @@ pub struct GpuStateVector<R: Runtime> {
 
     probs_handle: Handle,
     reduced_probs: Vec<ReduceLevel>,
+
+    max_block_size: usize,
 }
 
 #[derive(Clone)]
@@ -36,7 +38,10 @@ struct ReduceLevel {
 }
 
 impl<R: Runtime> GpuStateVector<R> {
-    pub fn new(n_qubits: usize, batched_circuit: &BatchedCircuit) -> Self {
+    pub fn new<const MAX_QUBITS_PER_BATCH: usize>(
+        batched_circuit: &BatchedCircuit<MAX_QUBITS_PER_BATCH>,
+    ) -> Self {
+        let n_qubits = batched_circuit.n_qubits();
         let state_vector_len: usize = 1 << n_qubits;
         let data_len = batched_circuit.data().len();
 
@@ -88,6 +93,7 @@ impl<R: Runtime> GpuStateVector<R> {
             control_data_handle,
             probs_handle,
             reduced_probs: reduce_levels,
+            max_block_size: 1 << MAX_QUBITS_PER_BATCH,
         }
     }
 
@@ -132,6 +138,7 @@ impl<R: Runtime> GpuStateVector<R> {
                 command.start_index,
                 command.size,
                 command.targets.get_bitstring() as u32,
+                self.max_block_size,
             );
         }
     }
@@ -166,7 +173,7 @@ impl<R: Runtime> GpuStateVector<R> {
         u32::from_bytes(&bytes)[0] as usize
     }
 
-    pub fn measure_bits(&mut self, targets: QBits) -> usize {
+    pub fn measure_bits(&self, targets: QBits) -> usize {
         let measurement = self.sample() & targets.get_bitstring();
         let measurement_mask = targets.get_bitstring() as u32;
 
@@ -190,25 +197,16 @@ impl<R: Runtime> GpuStateVector<R> {
         measurement
     }
 
-    pub fn measure(&mut self) -> usize {
+    pub fn measure(&self) -> usize {
         let measurement = self.sample();
 
-        let (cube_dim, cube_count) = self.cube_opts(self.state_vector_len);
-
-        unsafe {
-            let _ = gpu_kernels::state_vector_observe_full::launch(
-                &self.client,
-                cube_count,
-                cube_dim,
-                ArrayArg::from_raw_parts(
-                    self.state_vector_handle.clone(),
-                    self.state_vector_len * 2,
-                ),
-                measurement as u32,
-            );
-        }
+        self.launch_state_vector_observe_full(measurement);
 
         measurement
+    }
+
+    pub fn reset(&mut self) {
+        self.launch_state_vector_observe_full(0);
     }
 
     // Helpers
@@ -315,6 +313,23 @@ impl<R: Runtime> GpuStateVector<R> {
             );
         }
     }
+
+    fn launch_state_vector_observe_full(&self, measurement: usize) {
+        let (cube_dim, cube_count) = self.cube_opts(self.state_vector_len);
+
+        unsafe {
+            let _ = gpu_kernels::state_vector_observe_full::launch(
+                &self.client,
+                cube_count,
+                cube_dim,
+                ArrayArg::from_raw_parts(
+                    self.state_vector_handle.clone(),
+                    self.state_vector_len * 2,
+                ),
+                measurement as u32,
+            );
+        }
+    }
 }
 
 #[cfg(test)]
@@ -325,7 +340,7 @@ mod tests {
     use crate::circuit::Circuit;
 
     fn make_state_vector(n_qubits: usize) -> GpuStateVector<WgpuRuntime> {
-        GpuStateVector::new(n_qubits, &BatchedCircuit::from(Circuit::new(n_qubits)))
+        GpuStateVector::new(&<BatchedCircuit>::from(Circuit::new(n_qubits)))
     }
 
     #[test]

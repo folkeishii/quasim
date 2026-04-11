@@ -68,14 +68,14 @@ pub struct BatchCommand {
 }
 
 #[derive(Debug, Clone)]
-pub struct GateBatchData {
+pub struct BatchedData {
     gate_data: Vec<Complex<f64>>,
     target_data: Vec<u32>,
     control_data: Vec<u32>,
     len: usize,
 }
 
-impl GateBatchData {
+impl BatchedData {
     pub fn new() -> Self {
         Self {
             gate_data: Vec::new(),
@@ -94,7 +94,7 @@ impl GateBatchData {
         }
     }
 
-    pub fn append(&mut self, mut other: GateBatchData) {
+    pub fn append(&mut self, mut other: BatchedData) {
         self.gate_data.append(&mut other.gate_data);
         self.target_data.append(&mut other.target_data);
         self.control_data.append(&mut other.control_data);
@@ -148,7 +148,7 @@ pub struct GateBatcher {
 
     max_target_qubits: usize,
 
-    data: GateBatchData,
+    data: BatchedData,
 }
 
 impl GateBatcher {
@@ -158,7 +158,7 @@ impl GateBatcher {
             batches: Vec::new(),
             nodes: Vec::new(),
             max_target_qubits,
-            data: GateBatchData::new(),
+            data: BatchedData::new(),
         }
     }
 
@@ -215,7 +215,7 @@ impl GateBatcher {
         batch_commands
     }
 
-    pub fn data(&self) -> &GateBatchData {
+    pub fn data(&self) -> &BatchedData {
         &self.data
     }
 
