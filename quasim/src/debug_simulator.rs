@@ -145,14 +145,12 @@ impl DebuggableSimulator for DebugSimulator {
 
 impl DebugSimulator {
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
-        let (measurement, new_state) =
-            measure_and_observe_sv(target, &self.current_state, self.n_qubits());
+        let n_qubits = self.n_qubits();
+        let measurement = measure_and_observe_sv(&mut self.current_state, target, n_qubits);
 
         self.registers[reg]
             .write_bit(bit_pos, measurement)
             .expect("invalid register write");
-
-        self.current_state = new_state;
 
         self.pc_mut().increment();
     }
@@ -269,7 +267,7 @@ mod tests {
             cart!(0.0), // |110>
             cart!(0.5), // |111>
         ];
-        (_, res) = measure_and_observe_sv(0, &res, 3);
+        measure_and_observe_sv(&mut res, 0, 3);
         assert!(
             equal_state_c(&res, &plus_plus_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_plus_measure1, 3, 0.001)
@@ -314,14 +312,14 @@ mod tests {
             cart!(0.0),           // |110>
             cart!(FRAC_1_SQRT_2), // |111>
         ];
-        (_, res) = measure_and_observe_sv(1, &res, 3);
+        measure_and_observe_sv(&mut res, 1, 3);
         assert!(
             equal_state_c(&res, &plus_measure0_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_measure0_measure1, 3, 0.001)
                 || equal_state_c(&res, &plus_measure1_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_measure1_measure1, 3, 0.001)
         );
-        (_, res) = measure_and_observe_sv(2, &res, 3);
+        measure_and_observe_sv(&mut res, 2, 3);
         // Now collapsed to any 3-bit-string.
         assert!(state_is_collapsed(res));
     }
@@ -379,14 +377,15 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
         ];
-        (_, res) = measure_and_observe_sv(0, &res, 3);
+        measure_and_observe_sv(&mut res, 0, 3);
+        println!("{}", res);
 
         assert!(
             equal_state_c(&res, &colapse_00, 3, 0.001)
                 || equal_state_c(&res, &colapse_11, 3, 0.001)
         );
 
-        (_, res) = measure_and_observe_sv(1, &res, 3);
+        measure_and_observe_sv(&mut res, 1, 3);
         assert!(
             equal_state_c(&res, &colapse_00, 3, 0.001)
                 || equal_state_c(&res, &colapse_11, 3, 0.001)

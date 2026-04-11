@@ -3,11 +3,11 @@ use std::mem::replace;
 use std::ops::{Deref, Index};
 use std::{iter::Map, ops::Range};
 
-use nalgebra::{Complex, DMatrix, DVector, Matrix2, dmatrix, dvector};
+use nalgebra::{Complex, DMatrix, DVector, Matrix2, dmatrix};
 use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
 
-use crate::gate::{Gate, GateType, QBits};
+use crate::gate::{Gate, GateType};
 
 #[macro_export]
 macro_rules! cart {
@@ -163,12 +163,12 @@ pub fn collapse_probs(probs: &Vec<f64>) -> usize {
 }
 
 /// # measure_and_observe_sv
-/// Returns a probable measurement and state vector after measurement.
+/// Returns a measurement and updates the state vector.
 pub fn measure_and_observe_sv(
+    state: &mut DVector<Complex<f64>>,
     target: usize,
-    state: &DVector<Complex<f64>>,
     n_qubits: usize,
-) -> (usize, DVector<Complex<f64>>) {
+) -> usize {
     // Choose a collapsed state
     let prob_target_eq_zero = state
         .iter()
@@ -179,32 +179,21 @@ pub fn measure_and_observe_sv(
 
     let mut rng = rand::rng();
     let random_value = rng.random_range(0.0..1.0);
-    let mut result = 1;
-    let mut result_density = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
-    if random_value < prob_target_eq_zero {
-        // 0 was chosen as collapsed state.
-        result = 0;
-        result_density = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
+    let result = if random_value < prob_target_eq_zero {
+        0
+    } else {
+        1
+    };
+    let mut normalization = cart!(0.0);
+    for basis in 0..(1 << n_qubits) {
+        if (basis >> target) & 1 == result {
+            normalization += state[basis].norm_sqr();
+        } else {
+            state[basis] = cart!(0.0);
+        }
     }
-
-    // Calculate projection operator, M
-    let mut projection_operator_prod = identity_tensor_factors(n_qubits);
-    projection_operator_prod[target] = result_density;
-    let projection_operator = eval_tensor_product(projection_operator_prod);
-
-    /*
-     * Use formula for next state,
-     *
-     *                 M|s>
-     *  |s'>  ==   ___________
-     *              _________
-     *             √ <s|M|s>
-     * */
-    let bra_state = state.adjoint(); // <s|
-    let proj_times_ket_state = projection_operator * state; // M|s>
-    let normalization = (bra_state * proj_times_ket_state.clone())[(0, 0)].sqrt(); // √ <s|M|s>
-
-    (result, proj_times_ket_state / normalization)
+    *state = state.clone() / normalization.sqrt();
+    result
 }
 
 /// # expand_matrix_from_gate

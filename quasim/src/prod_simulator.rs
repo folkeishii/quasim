@@ -1,10 +1,7 @@
 use crate::{
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{
-        collapse, expand_matrix_from_gate, measure_and_observe_sv, 
-        trace_with_schmitt,
-    },
+    ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv, trace_with_schmitt},
     gate::{Gate, GateType},
     instruction::Instruction,
     product_state::{ProductState, SubSystem},
@@ -161,13 +158,13 @@ impl ProdSimulator {
         let local_target = sys.local_index(target);
         let local_n_qubits = sys.n_qubits();
 
-        let (measurement, post_measure_state) =
-            measure_and_observe_sv(local_target, &sys.state_vector(), local_n_qubits);
+        let measurement =
+            measure_and_observe_sv(sys.state_vector_mut(), local_target, local_n_qubits);
 
         // "Split" state.
         sys.qubits_mut().remove(local_target);
         *sys.state_vector_mut() =
-            trace_with_schmitt(&post_measure_state, local_target, local_n_qubits);
+            trace_with_schmitt(sys.state_vector(), local_target, local_n_qubits);
 
         self.product_state[target_system] = sys;
 
