@@ -37,6 +37,25 @@ pub trait RunnableSimulator {
     fn final_state(&self) -> DVector<Complex<f64>>;
 }
 
+/// # RunnableOnceSimulator
+/// Any simulator that can calculate the circuits
+/// final state, changing internal state or not,
+/// should implement this trait
+pub trait RunnableOnceSimulator {
+    fn run_once(&mut self) -> usize;
+    fn final_state_once(&mut self) -> DVector<Complex<f64>>;
+}
+
+impl<S: RunnableSimulator> RunnableOnceSimulator for S {
+    fn run_once(&mut self) -> usize {
+        self.run()
+    }
+
+    fn final_state_once(&mut self) -> DVector<Complex<f64>> {
+        self.final_state()
+    }
+}
+
 /// # DebuggableSimulator
 /// Any simulator that can step through a circuit
 /// one gate at a time should implement this trait

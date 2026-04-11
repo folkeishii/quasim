@@ -5,7 +5,9 @@ use crate::{
     ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv},
     instruction::Instruction,
     register_file::{RegisterError, RegisterFile},
-    simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
+    simulator::{
+        DebuggableSimulator, HybridSimulator, RunnableOnceSimulator, StoredCircuitSimulator,
+    },
 };
 use nalgebra::{Complex, DVector};
 
@@ -197,6 +199,16 @@ impl StoredCircuitSimulator for DebugSimulator {
 
     fn circuit_mut(&mut self) -> &mut Circuit<HybridCircuit> {
         &mut self.circuit
+    }
+}
+
+impl RunnableOnceSimulator for DebugSimulator {
+    fn run_once(&mut self) -> usize {
+        collapse(self.current_state.as_slice())
+    }
+
+    fn final_state_once(&mut self) -> DVector<Complex<f64>> {
+        self.cont().clone()
     }
 }
 

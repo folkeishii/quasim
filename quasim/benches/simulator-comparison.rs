@@ -1,8 +1,9 @@
 use quasim::{
-    circuit::{Circuit, HybridCircuit},
+    circuit::{Circuit, PureCircuit},
     debug_simulator::DebugSimulator,
-    simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
-    sv_simulator::SVSimulatorDebugger,
+    simulator::{BuildSimulator, RunnableOnceSimulator},
+    sv_simulator::SVSimulator,
+    syntax_simulator::SyntaxSimulator,
 };
 
 extern crate quasim;
@@ -12,13 +13,13 @@ fn main() {
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, DebugSimulator],
-    args = [2,3,4,5,6,7,8,9,10,11],
+    types = [SVSimulator, DebugSimulator, SyntaxSimulator],
+    args = [2,10,20],
     sample_count = 10,
 )]
-fn circuit_size<S>(n_qubits: usize)
+fn uniform_distribution_n_qubits<S>(n_qubits: usize)
 where
-    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
+    S: BuildSimulator<PureCircuit> + RunnableOnceSimulator,
 {
     let mut circuit = Circuit::new(n_qubits);
 
@@ -27,17 +28,17 @@ where
     }
 
     let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
-    sim.cont();
+    sim.run_once();
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, DebugSimulator],
+    types = [SVSimulator, DebugSimulator, SyntaxSimulator],
     args = [1000,2000,4000,8000,16000,32000],
     sample_count = 10,
 )]
-fn num_gates<S>(n_gates: usize)
+fn n_gates_6_qubits<S>(n_gates: usize)
 where
-    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
+    S: BuildSimulator<PureCircuit> + RunnableOnceSimulator,
 {
     let mut circuit = Circuit::new(6);
 
@@ -46,5 +47,29 @@ where
     }
 
     let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
-    sim.cont();
+    sim.run_once();
+}
+
+#[divan::bench(
+    types = [SVSimulator, DebugSimulator, SyntaxSimulator],
+    args = [2,10,20],
+    sample_count = 10,
+)]
+fn hadamard_cnot_n_qubits<S>(n_qubits: usize)
+where
+    S: BuildSimulator<PureCircuit> + RunnableOnceSimulator,
+{
+    let mut circuit = Circuit::new(n_qubits);
+
+    circuit = circuit.h(0);
+
+    for i in 0..(n_qubits - 1) {
+        circuit = circuit.cx(&[i], i + 1);
+    }
+
+    let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
+    let result = sim.run_once();
+    if result != 0 {
+        assert_eq!(result, usize::MAX >> (usize::BITS as usize - n_qubits));
+    }
 }

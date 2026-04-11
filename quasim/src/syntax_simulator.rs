@@ -7,13 +7,14 @@ use std::{
 };
 
 use log::trace;
-use nalgebra::Complex;
+use nalgebra::{Complex, DVector};
 use rand::random;
 
 use crate::{
     circuit::{Circuit, PureCircuit, pc::CircuitPc},
     gate::{Gate, GateType, QBits},
     instruction::PureInstruction,
+    simulator::RunnableOnceSimulator,
 };
 
 #[derive(Clone, PartialEq, Copy)]
@@ -628,6 +629,11 @@ impl SumOfScaledStates {
         }
     }
 
+    /// Returns the probability distribution over all basis states
+    /// that exist at this point. Extended bases (eg, |+⟩, |−⟩, |i⟩, |−i⟩)
+    /// will not be expanded, so the resulting states may still contain extended bases.
+    /// If you want to get the distribution over only binary states,
+    /// use `unsugared_probability_distribution` instead.
     fn probability_distribution(&self) -> impl Iterator<Item = &ScaledState> {
         self.sum.iter()
     }
@@ -758,16 +764,24 @@ impl SyntaxSimulator {
         &self.state
     }
 
+    /// Returns the probability distribution over binary states,
+    /// all states containing an extended basis (eg, |+⟩, |−⟩, |i⟩, |−i⟩),
+    /// will be expanded into the binary states they represent.
+    ///
+    /// **CAUTION**: There is no deduplication or simplification of the resulting states,
+    /// so the same binary state may appear multiple times with different scalars, and these scalars should be summed to get the actual probability of that binary state.
+    fn unsugared_probability_distribution(&self) -> impl Iterator<Item = ScaledState> {
+        self.state
+            .probability_distribution()
+            .flat_map(|s| s.all_inherent_states())
+    }
+
     pub fn run(&mut self) -> usize {
         self.step_all();
 
         let mut probability_so_far = 0f32;
         let guess = random::<f32>();
-        for ScaledState(state, scalar) in self
-            .state
-            .probability_distribution()
-            .flat_map(|s| s.all_inherent_states())
-        {
+        for ScaledState(state, scalar) in self.unsugared_probability_distribution() {
             probability_so_far += scalar.probability();
             if probability_so_far >= guess {
                 return state.into_binary();
@@ -795,6 +809,29 @@ impl TryFrom<Circuit<PureCircuit>> for SyntaxSimulator {
             pc: CircuitPc::default(),
             state: SumOfScaledStates::guaranteed_full_zero(n_qubits),
         })
+    }
+}
+
+impl RunnableOnceSimulator for SyntaxSimulator {
+    fn run_once(&mut self) -> usize {
+        self.run()
+    }
+
+    fn final_state_once(&mut self) -> DVector<Complex<f64>> {
+        self.step_all();
+
+        let n_qubits = self.circuit.n_qubits();
+        let mut state_vector: DVector<Complex<f64>> =
+            DVector::from_element(1 << n_qubits, Complex::new(0.0, 0.0));
+
+        for ScaledState(basis, scalar) in self.unsugared_probability_distribution() {
+            let bitstring = basis.into_binary();
+            let index = bitstring;
+            let amplitude: Complex<f32> = (scalar).into();
+            state_vector[index] += Complex::new(amplitude.re as f64, amplitude.im as f64);
+        }
+
+        state_vector
     }
 }
 
