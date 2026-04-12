@@ -123,6 +123,12 @@ impl ProductState {
         self.iter().map(|sub| sub.n_qubits()).sum()
     }
 
+    pub fn qubits(&self) -> Vec<usize> {
+        self.clone()
+            .into_iter()
+            .fold(vec![], |acc, sys| vec![acc, sys.qubits].concat())
+    }
+
     fn product(&self) -> SubSystem {
         self.clone().into_iter().fold(
             SubSystem {
@@ -153,23 +159,18 @@ impl ProductState {
     /// Return the amplitude for a given basis state.
     pub fn amp_at(&self, basis: usize) -> Complex<f64> {
         //Translate to order of system
-        let product_order = self
+        let indices = QBits::from_bitstring(basis)
+            .get_indices()
             .iter()
-            .fold(vec![], |acc, sys| vec![acc, sys.qubits.clone()].concat());
+            .map(|&inp| {
+                self.qubits()
+                    .iter()
+                    .position(|&b| b == inp)
+                    .expect("Basis should be a subset of all qubits")
+            })
+            .collect::<Vec<usize>>();
 
-        let translation = QBits::from_indices(
-            &QBits::from_bitstring(basis)
-                .get_indices()
-                .iter()
-                .map(|&inp| {
-                    product_order
-                        .iter()
-                        .position(|&b| b == inp)
-                        .expect("Basis should be a subset of all qubits")
-                })
-                .collect::<Vec<usize>>(),
-        )
-        .get_bitstring();
+        let translation = QBits::from_indices(&indices).get_bitstring();
 
         //Find the amplitude of the whole system.
         let mut amp_acc = cart!(1.0);

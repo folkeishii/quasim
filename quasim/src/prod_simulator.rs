@@ -2,7 +2,7 @@ use crate::{
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
     ext::{apply_gate, collapse, measure_state_vector, schmitt_trace},
-    gate::{Gate, GateType},
+    gate::{Gate, GateType, QBits},
     instruction::Instruction,
     product_state::{ProductState, SubSystem},
     register_file::RegisterFile,
@@ -179,7 +179,20 @@ impl ProdSimulator {
     }
 
     fn measure_all(&mut self, reg: &str) {
-        let measurement_bitstring = collapse(&self.product_state.vector().as_slice());
+        let indicies = self
+            .product_state
+            .iter()
+            .map(|sys| {
+                QBits::from_bitstring(collapse(sys.state_vector().as_slice()))
+                    .get_indices()
+                    .iter()
+                    .map(|&b| sys.qubits()[b])
+                    .collect::<Vec<usize>>()
+            })
+            .collect::<Vec<Vec<usize>>>()
+            .concat();
+
+        let measurement_bitstring = QBits::from_indices(&indicies).get_bitstring();
 
         self.registers[reg].write(measurement_bitstring);
 
