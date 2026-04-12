@@ -152,7 +152,7 @@ where
         circuit: Circuit<B>,
         sampler: S,
         times: usize,
-    ) -> Result<impl Iterator<Item = S::Output>, Self::E> {
+    ) -> Result<impl Iterator<Item = <S as Sampler<Self>>::Output>, Self::E> {
         let mut sim = Self::build(circuit)?;
         let iter = (0..times).map(move |_| {
             sim.run();
