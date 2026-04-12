@@ -3,6 +3,10 @@ name = "quasim"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+gpu = ["dep:cubecl"]
+
 [dependencies]
 crossterm = "0.29.0"
 array-init = "2.1.0"
@@ -13,6 +17,7 @@ thiserror = "2.0.18"
 oq3_syntax = "0.7.0"
 log.workspace = true
 serde = { version = "1.0.228", features = ["derive"] }
+cubecl = { version = "=0.10.0-pre.3", features = ["wgpu", "cuda"], optional = true }
 
 [[bench]]
 name = "debug-simulator"
@@ -21,3 +26,4 @@ harness = false
 [[bench]]
 name = "simulator-comparison"
 harness = false
+required-features = ["gpu"]

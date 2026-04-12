@@ -7,6 +7,8 @@ pub mod debug_terminal;
 pub mod expr_dsl;
 pub mod ext;
 pub mod gate;
+#[cfg(feature = "gpu")]
+pub mod gpu_sv_simulator;
 pub mod instruction;
 pub mod register_file;
 pub mod sampler;

@@ -44,12 +44,22 @@ impl QBits {
 
         vec
     }
+
+    pub fn union(self, other: QBits) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub fn count(&self) -> usize {
+        self.0.count_ones() as usize
+    }
 }
+
 impl From<usize> for QBits {
     fn from(value: usize) -> Self {
         QBits(value)
     }
 }
+
 impl Shl<usize> for QBits {
     type Output = QBits;
 
@@ -57,6 +67,7 @@ impl Shl<usize> for QBits {
         Self(self.0 << rhs)
     }
 }
+
 impl Shr<usize> for QBits {
     type Output = QBits;
 
