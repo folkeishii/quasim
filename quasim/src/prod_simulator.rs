@@ -1,14 +1,15 @@
 use crate::{
+    cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{collapse, expand_matrix_from_gate, measure_state_vector, schmitt_trace},
-    gate::{Gate, GateType},
+    ext::{collapse, get_u_matrix2, measure_state_vector, schmitt_trace},
+    gate::{Gate, GateType, QBits},
     instruction::Instruction,
     product_state::{ProductState, SubSystem},
     register_file::{RegisterError, RegisterFile},
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
-use nalgebra::{Complex, DVector};
+use nalgebra::{Complex, DVector, Matrix2};
 
 #[derive(Debug, Clone)]
 pub struct ProdSimulator {
@@ -20,10 +21,6 @@ pub struct ProdSimulator {
 }
 
 impl ProdSimulator {
-
-
-
-
     fn init(circuit: Circuit<HybridCircuit>) -> Self {
         let registers = RegisterFile::from(circuit.registers());
         let init_state = ProductState::zeros(circuit.n_qubits());
@@ -41,7 +38,130 @@ impl ProdSimulator {
         &self.product_state
     }
 
+    /// Checks that all control bits are 1
+    fn controls_active(i: usize, controls: QBits) -> bool {
+        let control_mask = controls.get_bitstring();
+        (i & control_mask) == control_mask
+    }
 
+    /// Checks that all target bits are 0
+    fn is_block_base(i: usize, targets: QBits) -> bool {
+        let target_mask = targets.get_bitstring();
+        (i & target_mask) == 0
+    }
+
+    // 0 1
+    // 1 0
+    #[inline(always)]
+    fn apply_x(state_vector: &mut DVector<Complex<f64>>, base_index: usize, target: QBits) {
+        state_vector
+            .as_mut_slice()
+            .swap(base_index, base_index | target.get_bitstring());
+    }
+
+    // 0 -i
+    // i  0
+    #[inline(always)]
+    fn apply_y(state_vector: &mut DVector<Complex<f64>>, base_index: usize, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let state = state_vector.as_mut_slice();
+        let a = state[base_index];
+        let b = state[flipped_index];
+
+        state[base_index] = cart!(b.im, -b.re);
+        state[flipped_index] = cart!(-a.im, a.re);
+    }
+
+    // 1  0
+    // 0 -1
+    #[inline(always)]
+    fn apply_z(state_vector: &mut DVector<Complex<f64>>, base_index: usize, target: QBits) {
+        let i = base_index | target.get_bitstring();
+        let amp = &mut state_vector[i];
+
+        amp.re = -amp.re;
+        amp.im = -amp.im;
+    }
+
+    #[inline(always)]
+    fn apply_h(state_vector: &mut DVector<Complex<f64>>, base_index: usize, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let state = state_vector.as_mut_slice();
+        let a = state[base_index];
+        let b = state[flipped_index];
+        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
+
+        state[base_index] = (a + b) * inv_sqrt2;
+        state[flipped_index] = (a - b) * inv_sqrt2;
+    }
+
+    #[inline(always)]
+    fn apply_s(state_vector: &mut DVector<Complex<f64>>, base_index: usize, target: QBits) {
+        let i = base_index | target.get_bitstring();
+        let amp = state_vector[i];
+
+        state_vector[i].re = -amp.im;
+        state_vector[i].im = amp.re;
+    }
+
+    #[inline(always)]
+    fn apply_swap(state_vector: &mut DVector<Complex<f64>>, base_index: usize, targets: QBits) {
+        let t0 = targets.get_indices()[0];
+        let t1 = targets.get_indices()[1];
+
+        let i01 = base_index | (1 << t0);
+        let i10 = base_index | (1 << t1);
+
+        state_vector.as_mut_slice().swap(i01, i10);
+    }
+
+    #[inline(always)]
+    fn apply_unitary2(
+        state_vector: &mut DVector<Complex<f64>>,
+        base_index: usize,
+        u: &Matrix2<Complex<f64>>,
+        target: QBits,
+    ) {
+        let flipped_index = base_index | target.get_bitstring();
+        let a = state_vector[base_index];
+        let b = state_vector[flipped_index];
+
+        state_vector[base_index] = u[(0, 0)] * a + u[(0, 1)] * b;
+        state_vector[flipped_index] = u[(1, 0)] * a + u[(1, 1)] * b;
+    }
+
+    fn gate(state_vector: &mut DVector<Complex<f64>>, gate: &Gate) {
+        let controls = gate.get_control_bits();
+        let targets = gate.get_target_bits();
+        let n = state_vector.len();
+
+        // No parallelization
+        // State vector is length 2^n , n=num qubits
+        for i in 0..n {
+            if !Self::is_block_base(i, targets) {
+                continue;
+            }
+
+            if !Self::controls_active(i, controls) {
+                continue;
+            }
+
+            match gate.get_type() {
+                GateType::X => Self::apply_x(state_vector, i, targets),
+                GateType::Y => Self::apply_y(state_vector, i, targets),
+                GateType::Z => Self::apply_z(state_vector, i, targets),
+                GateType::H => Self::apply_h(state_vector, i, targets),
+                GateType::S => Self::apply_s(state_vector, i, targets),
+                GateType::SWAP => Self::apply_swap(state_vector, i, targets),
+                GateType::U(theta, phi, lambda) => Self::apply_unitary2(
+                    state_vector,
+                    i,
+                    &get_u_matrix2(theta, phi, lambda),
+                    targets,
+                ),
+            }
+        }
+    }
 
     fn apply_gate(&mut self, gate: Gate) {
         /* Overview:
@@ -78,9 +198,9 @@ impl ProdSimulator {
         let mut sys = self.product_state[gate_systems[0]].clone();
 
         let gate_acts_on_several_systems = gate_systems.len() > 1;
-        let is_swap_gate = gate.get_type() == GateType::SWAP && controls.is_empty();
+        let is_non_controlled_swap_gate = gate.get_type() == GateType::SWAP && controls.is_empty();
 
-        if gate_acts_on_several_systems && is_swap_gate {
+        if gate_acts_on_several_systems && is_non_controlled_swap_gate {
             // Regular swaps do not result in entanglement.
             // Only change global qubit index.
             let sys1_local_target = sys.local_index(targets[0]);
@@ -107,7 +227,7 @@ impl ProdSimulator {
         // Translate global qubit indexing to the system's local indexing.
         let local_targets: Vec<usize> = targets.iter().map(|&t| sys.local_index(t)).collect();
 
-        if is_swap_gate {
+        if is_non_controlled_swap_gate {
             // Swap qubit indecies, no need for matrix multiplication.
             sys.qubits_mut()[local_targets[0]] = targets[1];
             sys.qubits_mut()[local_targets[1]] = targets[0];
@@ -117,12 +237,13 @@ impl ProdSimulator {
 
         // Continue to translate global qubit indexing to the system's local indexing.
         let local_controls: Vec<usize> = controls.iter().map(|&c| sys.local_index(c)).collect();
-        let local_n_qubits = sys.n_qubits();
+        //let local_n_qubits = sys.n_qubits();
         let local_gate = Gate::new(gate.get_type(), &local_controls, &local_targets).unwrap();
 
         // Apply the gate to the system's state vector using: |s>` == U|s>
-        let mat = expand_matrix_from_gate(&local_gate, local_n_qubits);
-        *sys.state_vector_mut() = mat * sys.state_vector();
+        Self::gate(sys.state_vector_mut(), &local_gate);
+        //let mat = expand_matrix_from_gate(&local_gate, local_n_qubits);
+        //*sys.state_vector_mut() = mat * sys.state_vector();
 
         if gate_acts_on_several_systems {
             // Remove systems that were combined.
