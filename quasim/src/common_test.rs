@@ -1,12 +1,12 @@
 use std::{f64::consts::FRAC_1_SQRT_2, ops::Index};
 
-use nalgebra::{Complex, DVector, dmatrix, dvector};
+use nalgebra::{Complex, DVector, dvector};
 
 use crate::{
     cart,
     circuit::{Circuit, HybridCircuit},
     expr_dsl::expr_helpers::r,
-    ext::{density, equal_state_c, reduced_state},
+    ext::{equal_state_c, schmitt_reduce},
     simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 
@@ -294,12 +294,11 @@ where
     )
     .unwrap();
     while sim.next() {}
-    let q4 = reduced_state(&density(sim.current_state(), 5), &[4], 5);
+    let q4 = schmitt_reduce(sim.current_state(), &[4], 5);
     assert!(equal_state_c(
         &q4,
-        &dmatrix![cart!(0.0), cart!(0.0);
-                      cart!(0.0), cart!(1.0)],
-        2,
+        &dvector![cart!(0.0), cart!(1.0)],
+        1,
         0.001
     ));
 }
@@ -335,12 +334,11 @@ where
     )
     .unwrap();
     while sim.next() {}
-    let q4 = reduced_state(&density(sim.current_state(), 5), &[4], 5);
+    let q4 = schmitt_reduce(sim.current_state(), &[4], 5);
     assert!(equal_state_c(
         &q4,
-        &dmatrix![cart!(0.0), cart!(0.0);
-                      cart!(0.0), cart!(1.0)],
-        2,
+        &dvector![cart!(0.0), cart!(1.0)],
+        1,
         0.001
     ));
 }

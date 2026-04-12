@@ -1,7 +1,7 @@
 use crate::{
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv, trace_with_schmitt},
+    ext::{collapse, expand_matrix_from_gate, measure_state_vector, schmitt_trace},
     gate::{Gate, GateType},
     instruction::Instruction,
     product_state::{ProductState, SubSystem},
@@ -20,6 +20,10 @@ pub struct ProdSimulator {
 }
 
 impl ProdSimulator {
+
+
+
+
     fn init(circuit: Circuit<HybridCircuit>) -> Self {
         let registers = RegisterFile::from(circuit.registers());
         let init_state = ProductState::zeros(circuit.n_qubits());
@@ -36,6 +40,8 @@ impl ProdSimulator {
     pub fn get_state(&self) -> &ProductState {
         &self.product_state
     }
+
+
 
     fn apply_gate(&mut self, gate: Gate) {
         /* Overview:
@@ -159,12 +165,12 @@ impl ProdSimulator {
         let local_n_qubits = sys.n_qubits();
 
         let measurement =
-            measure_and_observe_sv(sys.state_vector_mut(), local_target, local_n_qubits);
+            measure_state_vector(sys.state_vector_mut(), local_target, local_n_qubits);
 
         // "Split" state.
         sys.qubits_mut().remove(local_target);
         *sys.state_vector_mut() =
-            trace_with_schmitt(sys.state_vector(), local_target, local_n_qubits);
+            schmitt_trace(sys.state_vector(), &[local_target], local_n_qubits);
 
         self.product_state[target_system] = sys;
 

@@ -7,7 +7,7 @@ use nalgebra::{Complex, DMatrix, DVector, Matrix2, dmatrix};
 use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
 
-use crate::gate::{Gate, GateType};
+use crate::gate::{Gate, GateType, QBits};
 
 #[macro_export]
 macro_rules! cart {
@@ -113,19 +113,6 @@ pub fn get_gate_matrix(gate: &Gate) -> DMatrix<Complex<f64>> {
     return DMatrix::from_row_slice(dim, dim, data);
 }
 
-pub fn density(
-    state: &impl Index<usize, Output = Complex<f64>>,
-    n_qubits: usize,
-) -> DMatrix<Complex<f64>> {
-    let mut v = vec![];
-    for i in 0..(1 << n_qubits) {
-        v.push(state[i]);
-    }
-    let s = DVector::<Complex<f64>>::from_column_slice(&v);
-    let s_adj = s.adjoint();
-    s * s_adj
-}
-
 /// Collapse a state vector into a value
 ///
 /// The sum of the squares of each item should equal to one
@@ -139,32 +126,9 @@ pub fn collapse(state: &[Complex<f64>]) -> usize {
     dist.sample(&mut rng)
 }
 
-/// Collapse a density matrix into a value
-///
-/// The trace of the matrix should equal to one
-pub fn collapse_matrix(state: &DMatrix<Complex<f64>>) -> usize {
-    let diag = state.diagonal();
-    let probs = diag.iter().map(|&c| c.re);
-
-    let dist = WeightedIndex::new(probs)
-        .expect("Failed to create probability distribution. Invalid or empty state vector?");
-    let mut rng = rand::rng();
-
-    dist.sample(&mut rng)
-}
-
-/// Collapse a probabillity distrobution into a value
-pub fn collapse_probs(probs: &Vec<f64>) -> usize {
-    let dist = WeightedIndex::new(probs)
-        .expect("Failed to create probability distribution. Invalid or empty state vector?");
-    let mut rng = rand::rng();
-
-    dist.sample(&mut rng)
-}
-
-/// # measure_and_observe_sv
+/// # measure_state_vector
 /// Returns a measurement and updates the state vector.
-pub fn measure_and_observe_sv(
+pub fn measure_state_vector(
     state: &mut DVector<Complex<f64>>,
     target: usize,
     n_qubits: usize,
@@ -337,145 +301,14 @@ pub fn expand_matrix(
     sum
 }
 
-/// # measure_and_observe_dm
-/// Returns the mesurement a probable density matrix after measurement.
-pub fn measure_and_observe_dm(
-    target: usize,
-    density: &DMatrix<Complex<f64>>,
-    n_qubits: usize,
-) -> (usize, DMatrix<Complex<f64>>) {
-    // Choose a collapsed state
-    let prob_target_eq_zero = density
-        .diagonal()
-        .iter()
-        .enumerate()
-        .filter(|&(idx, _)| (1 << target) & idx == 0) // Using |..q_1q_0> convetion
-        .map(|(_, c)| c.re) // Diagonal elements of density matrices should always be positive & real.
-        .sum::<f64>();
-
-    let mut rng = rand::rng();
-    let random_value = rng.random_range(0.0..1.0);
-    let mut result = 1;
-    let mut result_density = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
-    if random_value < prob_target_eq_zero {
-        // 0 was chosen as collapsed state.
-        result = 0;
-        result_density = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
-    }
-
-    // Calculate projection operator, M
-    let mut projection_operator_prod = identity_tensor_factors(n_qubits);
-    projection_operator_prod[target] = result_density;
-    let projection_operator = eval_tensor_product(projection_operator_prod);
-
-    /* Use formula for next state:
-     *
-     *               MpM'
-     *  p`  ==   ___________
-     *            tr(M'Mp)
-     *
-     * Note that M is always diagonal and has only elements 0 and 1. Such matricies
-     * must be Hermitian so: M' == M. and we can rewrite as:
-     *
-     *               MpM
-     *  p`  ==   ___________
-     *            tr(M^2p)
-     *
-     * Note that M always being diagonal and elements being 0 and 1 ==> M^2 == M.
-     * We can therefore rewrite the formula as:
-     *
-     *               MpM
-     *  p`  ==   ___________
-     *             tr(Mp)
-     *
-     * */
-
-    let proj_op_times_density = projection_operator.clone() * density; //Mp
-    let norm = proj_op_times_density.trace(); // tr(Mp)
-    (result, proj_op_times_density * projection_operator / norm)
-}
-
-/// # measure_no_observe_dm
-/// Returns the resulting density matrix after a mesurement that is not observed.
-pub fn measure_no_observe_dm(
-    target: usize,
-    density: &DMatrix<Complex<f64>>,
-    n_qubits: usize,
-) -> DMatrix<Complex<f64>> {
-    // Calculate projection operators, M_1 M_0
-    let mut projection_operator_prod = identity_tensor_factors(n_qubits);
-    projection_operator_prod[target] = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
-    let proj_0 = eval_tensor_product(projection_operator_prod.clone()); // M_0
-    projection_operator_prod[target] = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
-    let proj_1 = eval_tensor_product(projection_operator_prod); // M_1
-
-    // p` == M_0pM_0 + M_1pM_1
-    proj_0.clone() * density * proj_0 + proj_1.clone() * density * proj_1
-}
-
-/// # reduced_state
-/// Returns the reduced state of a density matrix,
-/// where `targets` specifies the subsystem of qubits.
-pub fn reduced_state(
-    density: &DMatrix<Complex<f64>>,
+/// # coefficent_matrix
+/// Finds the appropriate coefficent matrix
+/// used in schmitt decomposition.
+fn coefficent_matrix(
+    state: &impl Index<usize, Output = Complex<f64>>,
     targets: &[usize],
     n_qubits: usize,
 ) -> DMatrix<Complex<f64>> {
-    let non_targets = (0..n_qubits)
-        .filter(|idx| !targets.contains(idx))
-        .collect::<Vec<usize>>();
-
-    partial_trace(density, &non_targets, n_qubits)
-}
-
-/// # partial_trace
-/// Returns the partial trace of a density matrix
-/// over `targets`.
-pub fn partial_trace(
-    density: &DMatrix<Complex<f64>>,
-    targets: &[usize],
-    n_qubits: usize,
-) -> DMatrix<Complex<f64>> {
-    let bra = [
-        dmatrix![cart!(1.0), cart!(0.0)], // <0|
-        dmatrix![cart!(0.0), cart!(1.0)], // <1|
-    ];
-
-    let n_non_targets = n_qubits - targets.len();
-
-    let dim = 1 << n_non_targets;
-    let mut sum = DMatrix::<Complex<f64>>::zeros(dim, dim);
-
-    let n_terms = 1 << targets.len();
-    for i in 0..n_terms {
-        /* Example, targets = [0,1], n_qubits = 3:
-         *
-         * Tr_01 = (<0| * <0| * I)p(|0> * |0> * I) +
-         *       + (<0| * <1| * I)p(|0> * |1> * I) +
-         *       + (<1| * <0| * I)p(|1> * |0> * I) +
-         *       + (<1| * <1| * I)p(|1> * |1> * I) +
-         * */
-        let mut left_of_density_prod = identity_tensor_factors(n_qubits);
-        let mut j: usize = 0;
-        for target in targets.iter() {
-            left_of_density_prod[*target] = bra[(i >> j) & 1].clone();
-            j += 1;
-        }
-        let left_of_density = eval_tensor_product(left_of_density_prod);
-        let right_of_density = left_of_density.adjoint();
-        sum += left_of_density * density * right_of_density;
-    }
-    sum
-}
-
-/// # trace_with_schmitt
-/// Trace out a single qubit, that can be factored out, from a state.
-pub fn trace_with_schmitt(
-    state: &DVector<Complex<f64>>,
-    target: usize,
-    n_qubits: usize,
-) -> DVector<Complex<f64>> {
-    // Find the coefficent matrix for the state vector.
     let squash_by_mask = |bitstring: usize, mask: usize| {
         let mut res = 0;
         let mut i = 0;
@@ -493,9 +326,11 @@ pub fn trace_with_schmitt(
     };
 
     let n_elements = 1 << n_qubits;
+    let n_targets = targets.len();
 
-    let mut coeffs = DMatrix::<Complex<f64>>::zeros(n_elements >> 1, 2);
-    let target_mask = 1 << target;
+    let mut coeffs = DMatrix::<Complex<f64>>::zeros(n_elements >> n_targets, 1 << n_targets);
+
+    let target_mask = QBits::from_indices(targets).get_bitstring();
     let not_target_mask = (n_elements - 1) ^ target_mask;
 
     for i in 0..n_elements {
@@ -504,10 +339,43 @@ pub fn trace_with_schmitt(
         coeffs[(row, col)] = state[i];
     }
 
+    coeffs
+}
+
+/// # schmitt_trace
+/// Assuming state can be factored,
+/// returns the state with targets traced out.
+pub fn schmitt_trace(
+    state: &impl Index<usize, Output = Complex<f64>>,
+    targets: &[usize],
+    n_qubits: usize,
+) -> DVector<Complex<f64>> {
+    // Find the coefficent matrix for the state vector.
+    let coeffs = coefficent_matrix(state, targets, n_qubits);
+
     // Use Singular Value Decomposition to find the traced out vector.
     let svd = coeffs.svd(true, false);
 
     let res = DVector::<Complex<f64>>::from(svd.u.unwrap().column(0));
+    // SVD might mess with global phase.
+    res.scale(res[0].re.signum())
+}
+
+/// # schmitt_reduce
+/// Assuming state can be factored,
+/// returns the reduced state of targets.
+pub fn schmitt_reduce(
+    state: &impl Index<usize, Output = Complex<f64>>,
+    targets: &[usize],
+    n_qubits: usize,
+) -> DVector<Complex<f64>> {
+    // Find the coefficent matrix for the state vector.
+    let coeffs = coefficent_matrix(state, targets, n_qubits);
+
+    // Use Singular Value Decomposition to find the traced out vector.
+    let svd = coeffs.svd(false, true);
+
+    let res = DVector::<Complex<f64>>::from(svd.v_t.unwrap().transpose().column(0));
     // SVD might mess with global phase.
     res.scale(res[0].re.signum())
 }
@@ -600,7 +468,7 @@ impl<T: Ord> OrdByKey<T> for T {
 mod tests {
     use crate::ext::{
         convert_matrix, convert_vector, equal_state_c, expand_matrix_from_gate, get_gate_matrix,
-        measure_no_observe_dm, reduced_state, swap_matrix, trace_with_schmitt,
+        schmitt_reduce, schmitt_trace, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
@@ -624,18 +492,24 @@ mod tests {
                 * zero.clone();
 
         let tot_last = random_state.kronecker(&hcnot);
-        let tot_last_schmitt = trace_with_schmitt(&tot_last, 2, 3);
-        assert!(equal_state_c(&tot_last_schmitt, &hcnot, 2, 0.001));
+        let trace_tot_last = schmitt_trace(&tot_last, &[2], 3);
+        assert!(equal_state_c(&trace_tot_last, &hcnot, 2, 0.001));
+        let reduce_tot_last = schmitt_reduce(&tot_last, &[0, 1], 3);
+        assert!(equal_state_c(&reduce_tot_last, &hcnot, 2, 0.001));
 
         let tot_first = hcnot.kronecker(&random_state);
-        let tot_first_schmitt = trace_with_schmitt(&tot_first, 0, 3);
-        assert!(equal_state_c(&tot_first_schmitt, &hcnot, 2, 0.001));
+        let trace_tot_first = schmitt_trace(&tot_first, &[0], 3);
+        assert!(equal_state_c(&trace_tot_first, &hcnot, 2, 0.001));
+        let reduce_tot_first = schmitt_reduce(&tot_first, &[1, 2], 3);
+        assert!(equal_state_c(&reduce_tot_first, &hcnot, 2, 0.001));
 
         let tot_middle = expand_matrix_from_gate(&Gate::new(GateType::X, &[0], &[2]).unwrap(), 3)
             * expand_matrix_from_gate(&Gate::new(GateType::H, &[], &[0]).unwrap(), 3)
             * zero.kronecker(&random_state.kronecker(&zero));
-        let tot_middle_schmitt = trace_with_schmitt(&tot_middle, 1, 3);
-        assert!(equal_state_c(&tot_middle_schmitt, &hcnot, 2, 0.001));
+        let trace_tot_middle = schmitt_trace(&tot_middle, &[1], 3);
+        assert!(equal_state_c(&trace_tot_middle, &hcnot, 2, 0.001));
+        let reduce_tot_middle = schmitt_reduce(&tot_middle, &[0, 2], 3);
+        assert!(equal_state_c(&reduce_tot_middle, &hcnot, 2, 0.001));
     }
 
     #[test]
@@ -707,135 +581,6 @@ mod tests {
         assert!(equal_state_c(
             &convert_matrix(&textbook_ch),
             &sim_ch,
-            4,
-            0.001
-        ));
-    }
-
-    #[test]
-    fn reduced_state_test() {
-        let mat = dmatrix![
-            cart!(0.5),cart!(0.353553),cart!(0.0),cart!(0.25),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.25);
-            cart!(0.353553),cart!(0.25),cart!(0.0),cart!(0.176777),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.176777);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.25),cart!(0.176777),cart!(0.0),cart!(0.125),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.125);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.25),cart!(0.176777),cart!(0.0),cart!(0.125),cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.125);
-        ];
-        let red01 = dmatrix![
-          cart!(0.5),cart!(0.353553),cart!(0.0),cart!(0.25);
-          cart!(0.353553),cart!(0.25),cart!(0.0),cart!(0.176777);
-          cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-          cart!(0.25),cart!(0.176777),cart!(0.0),cart!(0.25);
-        ];
-        let red12 = dmatrix![
-          cart!(0.75),cart!(0.176777),cart!(0.0),cart!(0.176777);
-          cart!(0.176777),cart!(0.125),cart!(0.0),cart!(0.125);
-          cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-          cart!(0.176777),cart!(0.125),cart!(0.0),cart!(0.125);
-        ];
-        let red0 = dmatrix![
-            cart!(0.5),cart!(0.353553);
-            cart!(0.353553),cart!(0.5);
-        ];
-        let red1 = dmatrix![
-            cart!(0.75),cart!(0.176777);
-            cart!(0.176777),cart!(0.25);
-        ];
-        let red2 = dmatrix![
-            cart!(0.875),cart!(0.125);
-            cart!(0.125),cart!(0.125);
-        ];
-
-        assert!(equal_state_c(
-            &reduced_state(&mat, &[0, 1, 2], 3),
-            &mat,
-            6,
-            0.001
-        ));
-
-        assert!(equal_state_c(
-            &reduced_state(&mat, &[0, 1], 3),
-            &red01,
-            4,
-            0.001
-        ));
-        assert!(equal_state_c(
-            &reduced_state(&mat, &[1, 2], 3),
-            &red12,
-            4,
-            0.001
-        ));
-
-        assert!(equal_state_c(
-            &reduced_state(&mat, &[0], 3),
-            &red0,
-            2,
-            0.001
-        ));
-        assert!(equal_state_c(
-            &reduced_state(&mat, &[1], 3),
-            &red1,
-            2,
-            0.001
-        ));
-        assert!(equal_state_c(
-            &reduced_state(&mat, &[2], 3),
-            &red2,
-            2,
-            0.001
-        ));
-    }
-
-    #[test]
-    fn measure_no_obs_test() {
-        let pre_matrix = dmatrix![
-            cart!(0.5)     , cart!(0.353553), cart!(0.0), cart!(0.353553);
-            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
-            cart!(0.0)     , cart!(0.0)     , cart!(0.0), cart!(0.0);
-            cart!(0.353553), cart!(0.25)    , cart!(0.0), cart!(0.25);
-        ];
-        let measure_0 = dmatrix![
-            cart!(0.5),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.25),cart!(0.0),cart!(0.25);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.25),cart!(0.0),cart!(0.25);
-        ];
-        let measure_1 = dmatrix![
-            cart!(0.5),cart!(0.353553),cart!(0.0),cart!(0.0);
-            cart!(0.353553),cart!(0.25),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.25);
-        ];
-        let measure_all = dmatrix![
-            cart!(0.5),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.25),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.0);
-            cart!(0.0),cart!(0.0),cart!(0.0),cart!(0.25);
-        ];
-        assert!(equal_state_c(
-            &measure_no_observe_dm(0, &pre_matrix, 2),
-            &measure_0,
-            4,
-            0.001
-        ));
-        assert!(equal_state_c(
-            &measure_no_observe_dm(1, &pre_matrix, 2),
-            &measure_1,
-            4,
-            0.001
-        ));
-        assert!(equal_state_c(
-            &measure_no_observe_dm(1, &measure_0, 2),
-            &measure_all,
-            4,
-            0.001
-        ));
-        assert!(equal_state_c(
-            &measure_no_observe_dm(0, &measure_1, 2),
-            &measure_all,
             4,
             0.001
         ));

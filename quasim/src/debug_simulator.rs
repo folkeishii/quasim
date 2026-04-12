@@ -2,7 +2,7 @@ use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv},
+    ext::{collapse, expand_matrix_from_gate, measure_state_vector},
     instruction::Instruction,
     register_file::{RegisterError, RegisterFile},
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
@@ -146,7 +146,7 @@ impl DebuggableSimulator for DebugSimulator {
 impl DebugSimulator {
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
         let n_qubits = self.n_qubits();
-        let measurement = measure_and_observe_sv(&mut self.current_state, target, n_qubits);
+        let measurement = measure_state_vector(&mut self.current_state, target, n_qubits);
 
         self.registers[reg]
             .write_bit(bit_pos, measurement)
@@ -218,7 +218,7 @@ mod tests {
     use crate::common_test;
     use crate::ext::{
         collapse, equal_state_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
-        measure_and_observe_sv,
+        measure_state_vector,
     };
     use crate::{
         cart,
@@ -267,7 +267,7 @@ mod tests {
             cart!(0.0), // |110>
             cart!(0.5), // |111>
         ];
-        measure_and_observe_sv(&mut res, 0, 3);
+        measure_state_vector(&mut res, 0, 3);
         assert!(
             equal_state_c(&res, &plus_plus_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_plus_measure1, 3, 0.001)
@@ -312,14 +312,14 @@ mod tests {
             cart!(0.0),           // |110>
             cart!(FRAC_1_SQRT_2), // |111>
         ];
-        measure_and_observe_sv(&mut res, 1, 3);
+        measure_state_vector(&mut res, 1, 3);
         assert!(
             equal_state_c(&res, &plus_measure0_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_measure0_measure1, 3, 0.001)
                 || equal_state_c(&res, &plus_measure1_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_measure1_measure1, 3, 0.001)
         );
-        measure_and_observe_sv(&mut res, 2, 3);
+        measure_state_vector(&mut res, 2, 3);
         // Now collapsed to any 3-bit-string.
         assert!(state_is_collapsed(res));
     }
@@ -377,7 +377,7 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
         ];
-        measure_and_observe_sv(&mut res, 0, 3);
+        measure_state_vector(&mut res, 0, 3);
         println!("{}", res);
 
         assert!(
@@ -385,7 +385,7 @@ mod tests {
                 || equal_state_c(&res, &colapse_11, 3, 0.001)
         );
 
-        measure_and_observe_sv(&mut res, 1, 3);
+        measure_state_vector(&mut res, 1, 3);
         assert!(
             equal_state_c(&res, &colapse_00, 3, 0.001)
                 || equal_state_c(&res, &colapse_11, 3, 0.001)
