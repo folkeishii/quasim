@@ -1,16 +1,14 @@
-use nalgebra::{Complex, DVector, Matrix2};
+use nalgebra::{Complex, DVector};
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::circuit::{CircuitBehaviour, HybridCircuit};
 use crate::expr_dsl::{BitExpr, BoolExpr};
-use crate::ext::get_u_matrix2;
-use crate::gate::GateType;
+use crate::ext::apply_gate;
 use crate::register_file::RegisterError;
 use crate::simulator::{BuildSimulator, HybridSimulator};
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
-    gate::{Gate, QBits},
     instruction::Instruction,
     register_file::RegisterFile,
     simulator::{DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
@@ -62,125 +60,6 @@ impl SVExecutor {
     /// Get current state of the quantum system
     pub fn state_vector(&self) -> &DVector<Complex<f64>> {
         &self.state_vector
-    }
-
-    /// Checks that all control bits are 1
-    fn controls_active(i: usize, controls: QBits) -> bool {
-        let control_mask = controls.get_bitstring();
-        (i & control_mask) == control_mask
-    }
-
-    /// Checks that all target bits are 0
-    fn is_block_base(i: usize, targets: QBits) -> bool {
-        let target_mask = targets.get_bitstring();
-        (i & target_mask) == 0
-    }
-
-    // 0 1
-    // 1 0
-    #[inline(always)]
-    fn apply_x(&mut self, base_index: usize, target: QBits) {
-        self.state_vector
-            .as_mut_slice()
-            .swap(base_index, base_index | target.get_bitstring());
-    }
-
-    // 0 -i
-    // i  0
-    #[inline(always)]
-    fn apply_y(&mut self, base_index: usize, target: QBits) {
-        let flipped_index = base_index | target.get_bitstring();
-        let state = self.state_vector.as_mut_slice();
-        let a = state[base_index];
-        let b = state[flipped_index];
-
-        state[base_index] = cart!(b.im, -b.re);
-        state[flipped_index] = cart!(-a.im, a.re);
-    }
-
-    // 1  0
-    // 0 -1
-    #[inline(always)]
-    fn apply_z(&mut self, base_index: usize, target: QBits) {
-        let i = base_index | target.get_bitstring();
-        let amp = &mut self.state_vector[i];
-
-        amp.re = -amp.re;
-        amp.im = -amp.im;
-    }
-
-    #[inline(always)]
-    fn apply_h(&mut self, base_index: usize, target: QBits) {
-        let flipped_index = base_index | target.get_bitstring();
-        let state = self.state_vector.as_mut_slice();
-        let a = state[base_index];
-        let b = state[flipped_index];
-        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
-
-        state[base_index] = (a + b) * inv_sqrt2;
-        state[flipped_index] = (a - b) * inv_sqrt2;
-    }
-
-    #[inline(always)]
-    fn apply_s(&mut self, base_index: usize, target: QBits) {
-        let i = base_index | target.get_bitstring();
-        let amp = self.state_vector[i];
-
-        self.state_vector[i].re = -amp.im;
-        self.state_vector[i].im = amp.re;
-    }
-
-    #[inline(always)]
-    fn apply_swap(&mut self, base_index: usize, targets: QBits) {
-        let t0 = targets.get_indices()[0];
-        let t1 = targets.get_indices()[1];
-
-        let i01 = base_index | (1 << t0);
-        let i10 = base_index | (1 << t1);
-
-        self.state_vector.as_mut_slice().swap(i01, i10);
-    }
-
-    #[inline(always)]
-    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f64>>, target: QBits) {
-        let flipped_index = base_index | target.get_bitstring();
-        let a = self.state_vector[base_index];
-        let b = self.state_vector[flipped_index];
-
-        self.state_vector[base_index] = u[(0, 0)] * a + u[(0, 1)] * b;
-        self.state_vector[flipped_index] = u[(1, 0)] * a + u[(1, 1)] * b;
-    }
-
-    fn gate(&mut self, gate: &Gate) {
-        let controls = gate.get_control_bits();
-        let targets = gate.get_target_bits();
-        let n = self.state_vector.len();
-
-        // No parallelization
-        // State vector is length 2^n , n=num qubits
-        for i in 0..n {
-            if !Self::is_block_base(i, targets) {
-                continue;
-            }
-
-            if !Self::controls_active(i, controls) {
-                continue;
-            }
-
-            match gate.get_type() {
-                GateType::X => self.apply_x(i, targets),
-                GateType::Y => self.apply_y(i, targets),
-                GateType::Z => self.apply_z(i, targets),
-                GateType::H => self.apply_h(i, targets),
-                GateType::S => self.apply_s(i, targets),
-                GateType::SWAP => self.apply_swap(i, targets),
-                GateType::U(theta, phi, lambda) => {
-                    self.apply_unitary2(i, &get_u_matrix2(theta, phi, lambda), targets)
-                }
-            }
-        }
-
-        self.pc_mut().increment();
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
@@ -243,7 +122,10 @@ impl SVExecutor {
 
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
-            Instruction::Gate(gate) => self.gate(gate),
+            Instruction::Gate(gate) => {
+                apply_gate(&mut self.state_vector, gate);
+                self.pc_mut().increment();
+            }
             Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(*qbit, reg, *bit_pos),
             Instruction::MeasureAll(reg) => self.measure_all(reg),
             Instruction::Jump(pc) => self.jump(*pc),
