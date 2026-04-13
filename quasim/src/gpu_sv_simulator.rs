@@ -1,12 +1,13 @@
 use cubecl::Runtime;
-use nalgebra::{Complex, DVector};
+use nalgebra::Complex;
 
 use crate::circuit::{CircuitBehaviour, HybridCircuit};
 use crate::expr_dsl::{BitExpr, BoolExpr};
 use crate::gate::QBits;
 use crate::gpu_sv_simulator::batched_circuit::{BatchedCircuit, BatchedCircuitOp};
 use crate::gpu_sv_simulator::gpu_state_vector::GpuStateVector;
-use crate::simulator::RunnableSimulator;
+use crate::sampler::Sampler;
+use crate::simulator::{Sampleable, Simulator, StoredRegisters};
 use crate::{circuit::Circuit, instruction::Instruction, register_file::RegisterFile};
 
 pub mod batched_circuit;
@@ -24,8 +25,13 @@ pub struct GpuStateVectorSimulator<R: Runtime> {
 }
 
 impl<R: Runtime> GpuStateVectorSimulator<R> {
-    /// Run the entire circuit
-    pub fn step_all(&mut self) -> &Self {
+    /// Run the entire circuit on the gpu, don't sync state vector to cpu.
+    /// Use function `sync` to explicitly sync state vector to cpu.
+    /// Use this function if you don't need access to individual amplitudes in
+    /// the state vector after running circuit. For example when sampling.
+    pub fn run_gpu(&mut self) {
+        self.reset();
+
         while let Some(op) = self.batched_circuit.operation(self.pc) {
             match op {
                 BatchedCircuitOp::BatchCommands(commands) => {
@@ -39,19 +45,12 @@ impl<R: Runtime> GpuStateVectorSimulator<R> {
                 }
             }
         }
-
-        self
     }
 
-    /// Gets a collapsed result from the current state vector
-    pub fn get_collapsed_state(&self) -> usize {
-        self.gpu_state_vector.sample()
-    }
-
-    pub fn reset(&mut self) {
-        self.gpu_state_vector.reset();
-        self.registers.reset();
-        self.pc = 0;
+    /// Explicitly syncs the gpu side state vector to the cpu.
+    /// Expensive, avoid unless necessary.
+    pub fn sync(&mut self) {
+        self.gpu_state_vector.sync_state_to_cpu();
     }
 
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
@@ -68,7 +67,7 @@ impl<R: Runtime> GpuStateVectorSimulator<R> {
     }
 
     fn measure_all(&mut self, reg: &str) {
-        let measurement = self.gpu_state_vector.measure();
+        let measurement = self.gpu_state_vector.measure_all();
 
         self.registers[reg].write(measurement);
 
@@ -109,7 +108,7 @@ impl<R: Runtime> GpuStateVectorSimulator<R> {
 impl<B, R: Runtime> TryFrom<Circuit<B>> for GpuStateVectorSimulator<R>
 where
     B: CircuitBehaviour,
-    Circuit<B>: Clone + Into<Circuit<HybridCircuit>>,
+    Circuit<B>: Into<Circuit<HybridCircuit>>,
 {
     type Error = GPUSVError;
 
@@ -127,24 +126,63 @@ where
     }
 }
 
-impl<R: Runtime> RunnableSimulator for GpuStateVectorSimulator<R> {
-    type Storage = DVector<Complex<f64>>;
-    type State = Complex<f64>;
+impl<R: Runtime> Simulator for GpuStateVectorSimulator<R> {
+    type State = GpuStateVector<R>;
+    type BasisValue = Complex<f64>;
 
-    fn run(&self) -> usize {
-        let mut sim = self.clone();
-        sim.reset();
-        sim.step_all().get_collapsed_state()
+    /// Runs the entire circuit on the gpu and then syncs state to cpu.
+    /// Use function `run_gpu` to avoid syncing state vector to cpu.
+    ///
+    /// Use this function if you need to access individual amplitudes in the
+    /// state vector after running circuit.
+    fn run(&mut self) {
+        self.run_gpu();
+        self.sync();
     }
 
-    fn final_state(&self) -> Self::Storage {
-        let mut sim = self.clone();
-        sim.reset();
-        sim.step_all();
-        // This is extremely expensive, we should probably do something about this
-        // Will be able to be fixed after #193 is merged
-        sim.gpu_state_vector.sync_state_to_cpu();
-        DVector::from_row_slice(sim.gpu_state_vector.as_slice())
+    fn reset(&mut self) {
+        self.gpu_state_vector.reset();
+        self.registers.reset();
+        self.pc = 0;
+    }
+
+    fn state(&self) -> &Self::State {
+        &self.gpu_state_vector
+    }
+}
+
+impl<B, R> Sampleable<B> for GpuStateVectorSimulator<R>
+where
+    B: CircuitBehaviour,
+    R: Runtime,
+    Circuit<B>: Clone + Into<Circuit<HybridCircuit>>,
+{
+    fn sample_once<S: Sampler<Self>>(
+        circuit: Circuit<B>,
+        sampler: &S,
+    ) -> Result<S::Output, Self::E> {
+        let mut sim = Self::try_from(circuit)?;
+        sim.run_gpu();
+        Ok(sampler.sample(&sim))
+    }
+
+    fn sample<S: Sampler<Self>>(
+        circuit: Circuit<B>,
+        sampler: &S,
+        times: usize,
+    ) -> Result<impl Iterator<Item = <S as Sampler<Self>>::Output>, Self::E> {
+        let mut sim = Self::try_from(circuit)?;
+        let iter = (0..times).map(move |_| {
+            sim.run_gpu();
+            sampler.sample(&sim)
+        });
+        Ok(iter)
+    }
+}
+
+impl<R: Runtime> StoredRegisters for GpuStateVectorSimulator<R> {
+    fn registers(&self) -> &RegisterFile {
+        &self.registers
     }
 }
 
@@ -156,12 +194,7 @@ mod tests {
     use cubecl::wgpu::WgpuRuntime;
 
     use crate::{
-        circuit::{Circuit, PureCircuit},
-        expr_dsl::expr_helpers::{r, rb},
-        ext::equal_state_c,
-        gpu_sv_simulator::GpuStateVectorSimulator,
-        simulator::{BuildSimulator, RunnableSimulator},
-        sv_simulator::SVSimulator,
+        circuit::{Circuit, PureCircuit}, common_test, expr_dsl::expr_helpers::{r, rb}, ext::equal_state_c, gpu_sv_simulator::GpuStateVectorSimulator, sampler::{CircuitSampler, QubitsSampler}, simulator::{Buildable, Sampleable, Simulator}, sv_simulator::StateVectorSimulator
     };
 
     #[test]
@@ -169,54 +202,38 @@ mod tests {
         let n_qubits = 4;
         let circuit = Circuit::<PureCircuit>::new_qft(n_qubits);
 
-        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
-        let cpu = SVSimulator::build(circuit).unwrap();
+        let mut gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
+        let mut cpu = StateVectorSimulator::build(circuit).unwrap();
+        gpu.run();
+        cpu.run();
 
-        println!("{}", &gpu.final_state());
-        println!("{}", &cpu.final_state());
-        assert!(equal_state_c(
-            &gpu.final_state(),
-            &cpu.final_state(),
-            n_qubits,
-            0.001
-        ));
+        println!("{}", &gpu.state());
+        println!("{}", &cpu.state());
+        assert!(equal_state_c(gpu.state(), cpu.state(), n_qubits, 0.001));
     }
 
     #[test]
     fn test_sampling() {
         let circuit = Circuit::<PureCircuit>::new(15).x(0).x(7).x(14);
-        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit).unwrap();
+        let sample =
+            GpuStateVectorSimulator::<WgpuRuntime>::sample_once(circuit, &CircuitSampler).unwrap();
 
-        assert_eq!(gpu.run(), (1 << 14) | (1 << 7) | 1);
+        assert_eq!(sample, (1 << 14) | (1 << 7) | 1);
     }
 
     #[test]
-    fn test_hybrid() {
-        let circuit = Circuit::new(4)
-            .new_reg("rbits", 4)
-            // Init random state
-            .h(0)
-            .h(1)
-            .h(2)
-            .h(3)
-            .measure_bit(0, ("rbits", 0))
-            .measure_bit(1, ("rbits", 1))
-            .measure_bit(2, ("rbits", 2))
-            .measure_bit(3, ("rbits", 3))
-            .apply_if(rb("rbits", 0).eq(1))
-            .x(0)
-            .apply_if(rb("rbits", 1).eq(1))
-            .x(1)
-            .apply_if(rb("rbits", 2).eq(1))
-            .x(2)
-            .apply_if(rb("rbits", 3).eq(1))
-            .x(3);
+    fn hybrid_test() {
+        common_test::hybrid_test::<GpuStateVectorSimulator<WgpuRuntime>>();
+    }
 
-        let sim = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit).unwrap();
+    #[test]
+    fn register_test() {
+        common_test::register_test::<GpuStateVectorSimulator<WgpuRuntime>>();
+    }
 
-        for i in 0..20 {
-            assert_eq!(sim.run(), 0, "in iter {i}");
-        }
+    #[test]
+    fn test_measure_overwrites_with_zero() {
+        common_test::test_measure_overwrites_with_zero::<GpuStateVectorSimulator<WgpuRuntime>>();
     }
 
     #[test]
@@ -228,11 +245,14 @@ mod tests {
             .label("target")
             .x(2);
 
-        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
-        let cpu = SVSimulator::build(circuit).unwrap();
+        let qubits = QubitsSampler::new([0, 2]);
 
-        assert_eq!(cpu.run(), 0b101);
-        assert_eq!(gpu.run(), cpu.run());
+        let gpu =
+            GpuStateVectorSimulator::<WgpuRuntime>::sample_once(circuit.clone(), &qubits).unwrap();
+        let cpu = StateVectorSimulator::sample_once(circuit, &qubits).unwrap();
+
+        assert_eq!(cpu, [1, 1]);
+        assert_eq!(gpu, cpu);
     }
 
     #[test]
@@ -286,19 +306,22 @@ mod tests {
             .x(3)
             .label("done");
 
-        let gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
-        let cpu = SVSimulator::build(circuit).unwrap();
+        let mut gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
+        let mut cpu = StateVectorSimulator::build(circuit.clone()).unwrap();
+        gpu.run();
+        cpu.run();
 
-        assert!(equal_state_c(
-            &gpu.final_state(),
-            &cpu.final_state(),
-            4,
-            0.001
-        ));
+        assert!(equal_state_c(gpu.state(), cpu.state(), 4, 0.001));
 
-        for i in 0..10 {
-            assert_eq!(gpu.run(), 0, "gpu iter {i}");
-            assert_eq!(cpu.run(), 0, "cpu iter {i}");
-        }
+        assert!(
+            GpuStateVectorSimulator::<WgpuRuntime>::sample(circuit.clone(), &CircuitSampler, 10)
+                .unwrap()
+                .all(|sample| sample == 0)
+        );
+        assert!(
+            StateVectorSimulator::sample(circuit, &CircuitSampler, 10)
+                .unwrap()
+                .all(|sample| sample == 0)
+        );
     }
 }

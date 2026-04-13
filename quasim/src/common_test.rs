@@ -7,12 +7,13 @@ use crate::{
     circuit::{Circuit, HybridCircuit},
     expr_dsl::expr_helpers::r,
     ext::equal_state_c,
-    simulator::{Buildable, Debuggable, StoredCircuit, StoredRegisters},
+    sampler::RegisterSampler,
+    simulator::{Buildable, Debuggable, Sampleable, StoredRegisters},
 };
 
-pub fn double_sub<D: Buildable<HybridCircuit> + Debuggable + StoredCircuit>()
+pub fn double_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    D::State: Index<usize, Output = Complex<f64>>,
+    Sim::State: Index<usize, Output = Complex<f64>>,
 {
     // Keep for sub circuits
     const N: usize = 2;
@@ -41,7 +42,7 @@ where
         circuit = circuit.call("sub", 2);
     }
 
-    let mut sim = D::build(circuit.into()).expect("Could not build simulator");
+    let mut sim = Sim::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
     while sim.next() {
@@ -104,9 +105,9 @@ where
     }
 }
 
-pub fn deep_sub<D: Buildable<HybridCircuit> + Debuggable + StoredCircuit>()
+pub fn deep_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    D::State: Index<usize, Output = Complex<f64>>,
+    Sim::State: Index<usize, Output = Complex<f64>>,
 {
     // Keep for sub circuits
     const LEVELS: usize = 5;
@@ -128,7 +129,7 @@ where
         .new_sub_circuit("sub 5", subs5)
         .call("sub 5", 0);
 
-    let mut sim = D::build(circuit.into()).expect("Could not build simulator");
+    let mut sim = Sim::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
     while sim.next() {
@@ -154,9 +155,9 @@ where
     }
 }
 
-pub fn hybrid_test<D: Buildable<HybridCircuit> + StoredCircuit>()
+pub fn hybrid_test<Sim: Buildable<HybridCircuit>>()
 where
-    D::State: Index<usize, Output = Complex<f64>>,
+    Sim::State: Index<usize, Output = Complex<f64>>,
 {
     let circuit = Circuit::new(4)
         .new_reg("r0", 1)
@@ -181,28 +182,30 @@ where
         .apply_if(r("r3").eq(1))
         .x(3);
 
-    let mut sim = D::build(circuit).unwrap();
+    let mut sim = Sim::build(circuit).unwrap();
+    sim.run();
 
     let mut expected = DVector::<Complex<f64>>::zeros(16);
     expected[0] = cart!(1.0);
 
-    assert!(equal_state_c(sim.run().state(), &expected, 4, 0.001));
+    assert!(equal_state_c(sim.state(), &expected, 4, 0.001));
 }
 
-pub fn register_test<D: Buildable<HybridCircuit> + StoredCircuit + StoredRegisters>() {
+pub fn register_test<Sim: Sampleable<HybridCircuit> + StoredRegisters>() {
     let circuit = Circuit::new(2)
         .new_reg("r0", 1)
         .x(1)
         .measure_bit(1, ("r0", 0));
 
-    let mut sim = D::build(circuit).unwrap();
-
-    assert_eq!(sim.run().registers()["r0"].read(), 1);
+    assert_eq!(
+        Sim::sample_once(circuit, &RegisterSampler::new("r0")).unwrap(),
+        1
+    );
 }
 
-pub fn test_measure_overwrites_with_zero<T>()
+pub fn test_measure_overwrites_with_zero<Sim>()
 where
-    T: Buildable<HybridCircuit> + StoredCircuit + StoredRegisters,
+    Sim: Sampleable<HybridCircuit> + StoredRegisters,
 {
     let circuit = Circuit::new(2)
         .new_reg("tmp", 1)
@@ -210,14 +213,15 @@ where
         .measure_bit(0, ("tmp", 0))
         .measure_bit(1, ("tmp", 0));
 
-    let mut sim = T::build(circuit).unwrap();
-
-    assert_eq!(sim.run().register("tmp").read(), 0);
+    assert_eq!(
+        Sim::sample_once(circuit, &RegisterSampler::new("tmp")).unwrap(),
+        0
+    );
 }
 
-pub fn deep_ctrl_sub<D: Buildable<HybridCircuit> + Debuggable + StoredCircuit>()
+pub fn deep_ctrl_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    D::State: Index<usize, Output = Complex<f64>>,
+    Sim::State: Index<usize, Output = Complex<f64>>,
 {
     // Keep for sub circuits
     const LEVELS: usize = 5;
@@ -227,7 +231,7 @@ where
     let subs4 = Circuit::new(4).x(0).h(0).ccall_new("sub 3", subs3, 1, &[0]);
 
     let circuit = Circuit::new(LEVELS).h(0).ccall_new("sub 4", subs4, 1, &[0]);
-    let mut sim = D::build(circuit.into()).expect("Could not build simulator");
+    let mut sim = Sim::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
     while sim.next() {

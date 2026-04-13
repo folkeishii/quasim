@@ -1,7 +1,6 @@
 use quasim::{
-    circuit::Circuit,
-    simulator::{Buildable, QuantumState, Simulator},
-    sv_simulator::SVSimulator,
+    circuit::Circuit, sampler::CircuitSampler, simulator::Sampleable,
+    sv_simulator::StateVectorSimulator,
 };
 
 /// Sets up a quantum circuit with the specified state of the qubits at the start.
@@ -23,12 +22,8 @@ fn circuit_in_start_state(n: usize, mut starting_qubits_mask: usize) -> Circuit 
 fn run_one_quantum_oracle(input: usize, f: impl Fn(usize) -> bool) -> usize {
     let input_qubits: Vec<usize> = (0..N).collect();
     let circuit = circuit_in_start_state(N + 1, input).oracle(&input_qubits, N, f);
-    let mut sim = match SVSimulator::build(circuit) {
-        Ok(sim) => sim,
-        Err(e) => panic!("Error building simulator: {}", e),
-    };
 
-    sim.run().state().collapse()
+    StateVectorSimulator::sample_once(circuit, &CircuitSampler).unwrap()
 }
 
 /// Tests a quantum oracle against a classical function by comparing the results.

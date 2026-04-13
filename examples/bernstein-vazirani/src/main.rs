@@ -1,6 +1,6 @@
 use quasim::circuit::Circuit;
 use quasim::simulator::{Buildable, Simulator, StoredRegisters};
-use quasim::sv_simulator::SVSimulator;
+use quasim::sv_simulator::StateVectorSimulator;
 
 const N: usize = 5;
 
@@ -43,7 +43,7 @@ fn find_secret_string_quantum(secret: u8) -> u8 {
     }
 
     circuit = circuit.measure_bits(&[0, 1, 2, 3, 4], "res");
-    let mut sim = SVSimulator::build(circuit).unwrap();
+    let mut sim = StateVectorSimulator::build(circuit).unwrap();
     sim.run();
 
     let res = sim.register("res").read();

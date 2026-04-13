@@ -4,10 +4,10 @@ use quasim::circuit::{Circuit, HybridCircuit};
 use quasim::debug_simulator::DebugSimulator;
 use quasim::debug_terminal::DebugTerminal;
 use quasim::simulator::{Buildable, Simulator, StoredRegisters};
-use quasim::sv_simulator::SVSimulator;
+use quasim::sv_simulator::StateVectorSimulator;
 
 fn check_quantum(func: &[usize]) -> bool {
-    let mut sim = SVSimulator::build(circuit(func)).unwrap();
+    let mut sim = StateVectorSimulator::build(circuit(func)).unwrap();
     sim.run();
 
     let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();

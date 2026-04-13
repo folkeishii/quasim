@@ -5,7 +5,7 @@ use crate::{
     ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv},
     instruction::Instruction,
     register_file::{RegisterError, RegisterFile},
-    simulator::{Debuggable, Simulator, StoredCircuit, StoredRegisters},
+    simulator::{Debuggable, Sampleable, Simulator, StoredCircuit, StoredRegisters},
 };
 use nalgebra::{Complex, DVector};
 
@@ -53,18 +53,14 @@ impl Simulator for DebugSimulator {
     type State = DVector<Complex<f64>>;
     type BasisValue = Complex<f64>;
 
-    fn run(&mut self) -> &mut Self {
+    fn run(&mut self) {
         while self.next() {}
-
-        self
     }
 
-    fn reset(&mut self) -> &mut Self {
+    fn reset(&mut self) {
         self.current_state.fill(cart!(0.0));
         self.current_state[0] = cart!(1.0);
         self.pc = Default::default();
-
-        self
     }
 
     fn state(&self) -> &Self::State {
@@ -218,6 +214,9 @@ impl StoredCircuit for DebugSimulator {
         &mut self.circuit
     }
 }
+
+impl Sampleable<HybridCircuit> for DebugSimulator {}
+impl Sampleable<PureCircuit> for DebugSimulator {}
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum DebugSimulatorError {

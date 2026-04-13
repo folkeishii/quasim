@@ -92,14 +92,14 @@ mod tests {
         circuit::Circuit,
         sampler::{CircuitSampler, QubitSampler, QubitsSampler, RegisterSampler},
         simulator::Sampleable,
-        sv_simulator::SVSimulator,
+        sv_simulator::StateVectorSimulator,
     };
 
     #[test]
     fn sample_circuit() {
         let circuit = Circuit::new(5).x(1).x(3);
         assert!(
-            SVSimulator::sample(circuit, CircuitSampler, 10)
+            StateVectorSimulator::sample(circuit, &CircuitSampler, 10)
                 .unwrap()
                 .fold(true, |acc, it| { acc && (it ^ 0b01010 == 0) })
         )
@@ -109,7 +109,7 @@ mod tests {
     fn sample_qubit() {
         let circuit = Circuit::new(5).x(1).x(3);
         assert!(
-            SVSimulator::sample(circuit, QubitSampler::new(1), 10)
+            StateVectorSimulator::sample(circuit, &QubitSampler::new(1), 10)
                 .unwrap()
                 .fold(true, |acc, it| { acc && it == 1 })
         )
@@ -119,7 +119,7 @@ mod tests {
     fn sample_qubits() {
         let circuit = Circuit::new(5).x(1).x(3);
         assert!(
-            SVSimulator::sample(circuit, QubitsSampler::new([1, 3]), 10)
+            StateVectorSimulator::sample(circuit, &QubitsSampler::new([1, 3]), 10)
                 .unwrap()
                 .fold(true, |acc, it| { acc && it == [1, 1] })
         )
@@ -129,7 +129,7 @@ mod tests {
     fn sample_reg() {
         let circuit = Circuit::new(5).new_reg("res", 5).x(1).measure("res").x(3);
         assert!(
-            SVSimulator::sample(circuit, RegisterSampler::new("res"), 10)
+            StateVectorSimulator::sample(circuit, &RegisterSampler::new("res"), 10)
                 .unwrap()
                 .fold(true, |acc, it| { acc && it == 0b00010 })
         )

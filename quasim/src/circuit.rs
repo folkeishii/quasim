@@ -872,7 +872,7 @@ mod tests {
         ext::{equal_state_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{Buildable, Simulator},
-        sv_simulator::SVSimulator,
+        sv_simulator::StateVectorSimulator,
     };
     use nalgebra::{Complex, DMatrix, dvector};
     fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
@@ -910,12 +910,13 @@ mod tests {
     }
     #[test]
     fn qft_test() {
-        let mut sim = SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
+        let mut sim = StateVectorSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
             "QFT",
             Circuit::new_qft(4),
             0,
         ))
         .unwrap();
+        sim.run();
 
         let expected_vec = dvector![
             cart!(0.0, 0.35355),  // |0000>
@@ -935,7 +936,7 @@ mod tests {
             cart!(0.25, -0.25),   // |1110>
             cart!(0.0),           // |1111>
         ];
-        assert!(equal_state_c(&expected_vec, sim.run().state(), 4, 0.001));
+        assert!(equal_state_c(&expected_vec, sim.state(), 4, 0.001));
     }
 
     #[test]

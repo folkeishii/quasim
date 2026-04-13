@@ -1,7 +1,7 @@
 use nalgebra::{Complex, DVector};
 use quasim::circuit::Circuit;
 use quasim::simulator::{Buildable, Simulator};
-use quasim::sv_simulator::SVSimulator;
+use quasim::sv_simulator::StateVectorSimulator;
 use std::f64::consts::PI;
 
 #[derive(Debug)]
@@ -41,9 +41,10 @@ fn get_bloch_vector(state_vector: &DVector<Complex<f64>>) -> Point {
 fn before_phase_kickback() -> Point {
     let circuit = Circuit::new(2).h(0).x(1);
 
-    let mut sim = SVSimulator::build(circuit).unwrap();
+    let mut sim = StateVectorSimulator::build(circuit).unwrap();
+    sim.run();
 
-    get_bloch_vector(sim.run().state())
+    get_bloch_vector(sim.state())
 }
 
 #[allow(dead_code)]
@@ -54,9 +55,10 @@ fn after_phase_kickback() -> Point {
         .cu(0.0, 0.0, PI / 2.0, &[0], 1)
         .h(0);
 
-    let mut sim = SVSimulator::build(circuit).unwrap();
+    let mut sim = StateVectorSimulator::build(circuit).unwrap();
+    sim.run();
 
-    get_bloch_vector(sim.run().state())
+    get_bloch_vector(sim.state())
 }
 
 fn main() {
@@ -66,7 +68,7 @@ fn main() {
         .cu(0.0, 0.0, PI / 2.0, &[0], 1)
         .h(0);
 
-    let mut sim = SVSimulator::build(circuit).unwrap();
+    let mut sim = StateVectorSimulator::build(circuit).unwrap();
     sim.run();
 
     println!("{}", sim.state());

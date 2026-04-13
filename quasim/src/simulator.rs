@@ -43,8 +43,8 @@ pub trait Simulator {
     type State: QuantumState<BasisValue = Self::BasisValue>;
     type BasisValue;
 
-    fn run(&mut self) -> &mut Self;
-    fn reset(&mut self) -> &mut Self;
+    fn run(&mut self);
+    fn reset(&mut self);
     fn state(&self) -> &Self::State;
 }
 
@@ -137,20 +137,22 @@ pub trait StoredRegisters: Simulator {
 /// Simulators that implement this trait can be sampled using a Sampler.
 /// Is autoimplemented by all simulators, but requires the simulator to be buildable
 /// in order to use the sampling functions.
-pub trait Sampleable<B, S>: Simulator + Buildable<B>
+pub trait Sampleable<B>: Simulator + Buildable<B>
 where
     B: CircuitBehaviour,
-    S: Sampler<Self>,
 {
-    fn sample_once(circuit: Circuit<B>, sampler: S) -> Result<S::Output, Self::E> {
+    fn sample_once<S: Sampler<Self>>(
+        circuit: Circuit<B>,
+        sampler: &S,
+    ) -> Result<S::Output, Self::E> {
         let mut sim = Self::build(circuit)?;
         sim.run();
         Ok(sampler.sample(&sim))
     }
 
-    fn sample(
+    fn sample<S: Sampler<Self>>(
         circuit: Circuit<B>,
-        sampler: S,
+        sampler: &S,
         times: usize,
     ) -> Result<impl Iterator<Item = <S as Sampler<Self>>::Output>, Self::E> {
         let mut sim = Self::build(circuit)?;
@@ -161,13 +163,12 @@ where
         Ok(iter)
     }
 }
-impl<Sim, Samp, B> Sampleable<B, Samp> for Sim
-where
-    Sim: Simulator + Buildable<B>,
-    Samp: Sampler<Sim>,
-    B: CircuitBehaviour,
-{
-}
+// impl<Sim, B> Sampleable<B> for Sim
+// where
+//     Sim: Simulator + Buildable<B>,
+//     B: CircuitBehaviour,
+// {
+// }
 
 #[cfg(test)]
 mod tests {

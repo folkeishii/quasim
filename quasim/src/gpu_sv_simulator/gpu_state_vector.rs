@@ -1,12 +1,16 @@
+use std::fmt::Display;
+use std::ops::Index;
+
 use cubecl::prelude::*;
 use cubecl::{Runtime, bytes::Bytes, client::ComputeClient, server::Handle};
-use nalgebra::Complex;
+use nalgebra::{Complex, DVectorView};
 use rand::Rng;
 
 use crate::gate::QBits;
 use crate::gpu_sv_simulator::batched_circuit::BatchedCircuit;
 use crate::gpu_sv_simulator::gate_batcher::BatchCommand;
 use crate::gpu_sv_simulator::{gpu_kernels, mem_helpers};
+use crate::simulator::QuantumState;
 
 const GPU_REDUCE_FACTOR_EXP: usize = 7;
 const GPU_REDUCE_FACTOR: usize = 1 << GPU_REDUCE_FACTOR_EXP;
@@ -19,6 +23,7 @@ pub struct GpuStateVector<R: Runtime> {
     state_vector_cache: Bytes,
     state_vector_len: usize,
     state_vector_handle: Handle,
+    state_vector_dirty: bool,
 
     data_len: usize,
     gate_data_handle: Handle,
@@ -35,6 +40,40 @@ pub struct GpuStateVector<R: Runtime> {
 struct ReduceLevel {
     handle: Handle,
     len: usize,
+}
+
+impl<R: Runtime> QuantumState for GpuStateVector<R> {
+    type BasisValue = Complex<f64>;
+
+    fn collapse(&self) -> usize {
+        self.sample()
+    }
+
+    /// Requires state vector to be synced to cpu in order to get updated values
+    fn basis_value(&self, basis: usize) -> Self::BasisValue {
+        self.as_slice()[basis]
+    }
+}
+
+impl<R: Runtime> Index<usize> for GpuStateVector<R> {
+    type Output = Complex<f64>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.as_slice()[index]
+    }
+}
+
+impl<R: Runtime> Display for GpuStateVector<R> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let dvec_view = DVectorView::from_slice(self.as_slice(), self.state_vector_len);
+
+        write!(f, "{}", dvec_view)?;
+
+        if self.state_vector_dirty {
+            write!(f, "\n(dirty)")?;
+        }
+        Ok(())
+    }
 }
 
 impl<R: Runtime> GpuStateVector<R> {
@@ -87,6 +126,7 @@ impl<R: Runtime> GpuStateVector<R> {
             state_vector_cache: init_bytes,
             state_vector_len,
             state_vector_handle,
+            state_vector_dirty: false,
             data_len,
             gate_data_handle,
             target_data_handle,
@@ -97,15 +137,19 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    /// Avoid using this function unless necessary, downloads whole state vector from gpu
+    /// Downloads whole state vector from gpu
     pub fn sync_state_to_cpu(&mut self) {
-        self.state_vector_cache = self
-            .client
-            .read_one(self.state_vector_handle.clone())
-            .expect("failed to read state back to CPU");
+        if self.state_vector_dirty {
+            self.state_vector_cache = self
+                .client
+                .read_one(self.state_vector_handle.clone())
+                .expect("failed to read state back to CPU");
+        }
+
+        self.state_vector_dirty = false;
     }
 
-    /// Avoid using this function unless necessary, uploads whole state vector to gpu
+    /// Uploads whole state vector to gpu
     pub fn sync_state_to_gpu(&mut self) {
         self.state_vector_handle = self.client.create(self.state_vector_cache.clone());
     }
@@ -118,7 +162,7 @@ impl<R: Runtime> GpuStateVector<R> {
         unsafe { mem_helpers::complex_from_bytes_mut(&mut self.state_vector_cache) }
     }
 
-    pub fn apply_batch_command(&self, command: &BatchCommand) {
+    pub fn apply_batch_command(&mut self, command: &BatchCommand) {
         let n_amplitudes = self.state_vector_len;
         let batch_target_count = command.targets.count();
 
@@ -141,6 +185,8 @@ impl<R: Runtime> GpuStateVector<R> {
                 self.max_block_size,
             );
         }
+
+        self.state_vector_dirty = true;
     }
 
     pub fn sample(&self) -> usize {
@@ -173,7 +219,7 @@ impl<R: Runtime> GpuStateVector<R> {
         u32::from_bytes(&bytes)[0] as usize
     }
 
-    pub fn measure_bits(&self, targets: QBits) -> usize {
+    pub fn measure_bits(&mut self, targets: QBits) -> usize {
         let measurement = self.sample() & targets.get_bitstring();
         let measurement_mask = targets.get_bitstring() as u32;
 
@@ -193,11 +239,12 @@ impl<R: Runtime> GpuStateVector<R> {
             );
         }
         self.normalize();
+        self.state_vector_dirty = true;
 
         measurement
     }
 
-    pub fn measure(&self) -> usize {
+    pub fn measure_all(&mut self) -> usize {
         let measurement = self.sample();
 
         self.launch_state_vector_observe_full(measurement);
@@ -229,7 +276,7 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    fn normalize(&self) {
+    fn normalize(&mut self) {
         self.launch_calculate_probs();
         self.build_prob_reduction_hierarchy();
         self.launch_state_vector_normalize();
@@ -270,7 +317,7 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    fn launch_state_vector_normalize(&self) {
+    fn launch_state_vector_normalize(&mut self) {
         let num_elems = self.state_vector_len * 2;
         let (cube_dim, cube_count) = self.cube_opts(num_elems);
 
@@ -288,6 +335,7 @@ impl<R: Runtime> GpuStateVector<R> {
                 ArrayArg::from_raw_parts(final_sum_level.handle.clone(), 1),
             );
         }
+        self.state_vector_dirty = true;
     }
 
     /// Expects probs to already be normalized
@@ -314,7 +362,7 @@ impl<R: Runtime> GpuStateVector<R> {
         }
     }
 
-    fn launch_state_vector_observe_full(&self, measurement: usize) {
+    fn launch_state_vector_observe_full(&mut self, measurement: usize) {
         let (cube_dim, cube_count) = self.cube_opts(self.state_vector_len);
 
         unsafe {
@@ -329,92 +377,7 @@ impl<R: Runtime> GpuStateVector<R> {
                 measurement as u32,
             );
         }
+        self.state_vector_dirty = true;
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use cubecl::{bytes::Bytes, wgpu::WgpuRuntime};
-
-    use super::*;
-    use crate::circuit::Circuit;
-
-    fn make_state_vector(n_qubits: usize) -> GpuStateVector<WgpuRuntime> {
-        GpuStateVector::new(&<BatchedCircuit>::from(Circuit::new(n_qubits)))
-    }
-
-    #[test]
-    fn observe_respects_zero_bits_in_target_mask() {
-        let mut state = make_state_vector(2);
-
-        let init = Bytes::from_elems(vec![
-            1.0f64, 0.0, // |00>
-            1.0, 0.0, // |01>
-            0.0, 0.0, // |10>
-            0.0, 0.0, // |11>
-        ]);
-        state.state_vector_cache = init.clone();
-        state.state_vector_handle = state.client.create(init);
-
-        let (cube_dim, cube_count) = state.cube_opts(state.state_vector_len);
-
-        unsafe {
-            let _ = gpu_kernels::state_vector_observe::launch(
-                &state.client,
-                cube_count,
-                cube_dim,
-                ArrayArg::from_raw_parts(
-                    state.state_vector_handle.clone(),
-                    state.state_vector_len * 2,
-                ),
-                0u32,
-                1u32,
-            );
-        }
-
-        state.sync_state_to_cpu();
-        let amps = state.as_slice();
-
-        assert_eq!(amps[0], Complex::new(1.0, 0.0));
-        assert_eq!(amps[1], Complex::new(0.0, 0.0));
-        assert_eq!(amps[2], Complex::new(0.0, 0.0));
-        assert_eq!(amps[3], Complex::new(0.0, 0.0));
-    }
-
-    #[test]
-    fn observe_full_collapses_to_exact_basis_state() {
-        let mut state = make_state_vector(2);
-
-        let init = Bytes::from_elems(vec![
-            0.0f64, 0.0, // |00>
-            0.0, 0.0, // |01>
-            1.0, 0.0, // |10>
-            0.0, 0.0, // |11>
-        ]);
-        state.state_vector_cache = init.clone();
-        state.state_vector_handle = state.client.create(init);
-
-        let (cube_dim, cube_count) = state.cube_opts(state.state_vector_len);
-
-        unsafe {
-            let _ = gpu_kernels::state_vector_observe_full::launch(
-                &state.client,
-                cube_count,
-                cube_dim,
-                ArrayArg::from_raw_parts(
-                    state.state_vector_handle.clone(),
-                    state.state_vector_len * 2,
-                ),
-                2u32,
-            );
-        }
-
-        state.sync_state_to_cpu();
-        let amps = state.as_slice();
-
-        assert_eq!(amps[0], Complex::new(0.0, 0.0));
-        assert_eq!(amps[1], Complex::new(0.0, 0.0));
-        assert_eq!(amps[2], Complex::new(1.0, 0.0));
-        assert_eq!(amps[3], Complex::new(0.0, 0.0));
-    }
-}

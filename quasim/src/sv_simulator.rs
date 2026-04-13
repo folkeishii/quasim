@@ -6,7 +6,7 @@ use crate::expr_dsl::{BitExpr, BoolExpr};
 use crate::ext::get_u_matrix2;
 use crate::gate::GateType;
 use crate::register_file::RegisterError;
-use crate::simulator::{QuantumState, StoredRegisters};
+use crate::simulator::{QuantumState, Sampleable, StoredRegisters};
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
@@ -18,14 +18,14 @@ use crate::{
 
 // SVSimulator
 
-pub struct SVSimulator {
+pub struct StateVectorSimulator {
     state_vector: DVector<Complex<f64>>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile,
 }
 
-impl SVSimulator {
+impl StateVectorSimulator {
     /// Step forward one instruction in the circuit
     fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
@@ -259,7 +259,7 @@ impl SVSimulator {
     }
 }
 
-impl<B> TryFrom<Circuit<B>> for SVSimulator
+impl<B> TryFrom<Circuit<B>> for StateVectorSimulator
 where
     B: CircuitBehaviour,
     Circuit<B>: Into<Circuit<HybridCircuit>>,
@@ -300,23 +300,19 @@ impl QuantumState for DVector<Complex<f64>> {
     }
 }
 
-impl Simulator for SVSimulator {
+impl Simulator for StateVectorSimulator {
     type State = DVector<Complex<f64>>;
     type BasisValue = Complex<f64>;
 
-    fn run(&mut self) -> &mut Self {
+    fn run(&mut self) {
         self.reset();
         while let Some(_) = self.step() {}
-
-        self
     }
 
-    fn reset(&mut self) -> &mut Self {
+    fn reset(&mut self) {
         self.state_vector.fill(cart!(0.0));
         self.state_vector[0] = cart!(1.0);
         self.pc = Default::default();
-
-        self
     }
 
     fn state(&self) -> &Self::State {
@@ -324,7 +320,7 @@ impl Simulator for SVSimulator {
     }
 }
 
-impl Debuggable for SVSimulator {
+impl Debuggable for StateVectorSimulator {
     fn next(&mut self) -> bool {
         match self.step() {
             Some(_) => true,
@@ -346,7 +342,7 @@ impl Debuggable for SVSimulator {
     }
 }
 
-impl StoredCircuit for SVSimulator {
+impl StoredCircuit for StateVectorSimulator {
     type B = HybridCircuit;
 
     fn circuit(&self) -> &Circuit<HybridCircuit> {
@@ -358,10 +354,17 @@ impl StoredCircuit for SVSimulator {
     }
 }
 
-impl StoredRegisters for SVSimulator {
+impl StoredRegisters for StateVectorSimulator {
     fn registers(&self) -> &RegisterFile {
         &self.registers
     }
+}
+
+impl<B> Sampleable<B> for StateVectorSimulator
+where
+    B: CircuitBehaviour,
+    Circuit<B>: Into<Circuit<HybridCircuit>>,
+{
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -384,7 +387,7 @@ mod tests {
         circuit::Circuit,
         expr_dsl::expr_helpers::r,
         simulator::{Buildable, Simulator},
-        sv_simulator::SVSimulator,
+        sv_simulator::StateVectorSimulator,
     };
 
     #[test]
@@ -412,10 +415,11 @@ mod tests {
             .apply_if(r("r3").eq(1))
             .x(3);
 
-        let mut sim = SVSimulator::build(circuit.clone()).unwrap();
+        let mut sim = StateVectorSimulator::build(circuit.clone()).unwrap();
+        sim.run();
 
         assert!(equal_state_c(
-            sim.run().state(),
+            sim.state(),
             &dvector![
                 cart!(1), // |0000>
                 cart!(0), // |0001>
@@ -471,7 +475,7 @@ mod tests {
             .apply_if(r("tmp").gt(0))
             .x(3);
 
-        let mut sim = SVSimulator::build(circuit).unwrap();
+        let mut sim = StateVectorSimulator::build(circuit).unwrap();
         sim.cont();
 
         assert!(equal_state_c(
@@ -597,17 +601,17 @@ mod tests {
 
     #[test]
     fn hybrid_test() {
-        common_test::hybrid_test::<SVSimulator>();
+        common_test::hybrid_test::<StateVectorSimulator>();
     }
 
     #[test]
     fn register_test() {
-        common_test::register_test::<SVSimulator>();
+        common_test::register_test::<StateVectorSimulator>();
     }
 
     #[test]
     fn test_measure_overwrites_with_zero() {
-        common_test::test_measure_overwrites_with_zero::<SVSimulator>();
+        common_test::test_measure_overwrites_with_zero::<StateVectorSimulator>();
     }
 
     #[test]
@@ -622,11 +626,8 @@ mod tests {
             .reset(2)
             .reset(3);
 
-        for _ in 0..100 {
-            assert!(SVSimulator::sample_once(circuit.clone(), CircuitSampler).unwrap() == 0);
-        }
         assert!(
-            SVSimulator::sample(circuit, CircuitSampler, 100)
+            StateVectorSimulator::sample(circuit, &CircuitSampler, 100)
                 .unwrap()
                 .fold(true, |acc, it| acc && it == 0)
         )
@@ -634,16 +635,16 @@ mod tests {
 
     #[test]
     fn double_sub() {
-        common_test::double_sub::<SVSimulator>();
+        common_test::double_sub::<StateVectorSimulator>();
     }
 
     #[test]
     fn deep_sub() {
-        common_test::deep_sub::<SVSimulator>();
+        common_test::deep_sub::<StateVectorSimulator>();
     }
 
     #[test]
     fn deep_ctrl_sub() {
-        common_test::deep_ctrl_sub::<SVSimulator>();
+        common_test::deep_ctrl_sub::<StateVectorSimulator>();
     }
 }
