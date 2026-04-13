@@ -1,4 +1,6 @@
-use log::trace;
+use std::fmt::Debug;
+
+use log::debug;
 
 use crate::{
     gate::{Gate, GateType, QBits},
@@ -8,7 +10,7 @@ use crate::{
     },
 };
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct ScaledState(pub ExtendedBasis, pub Scalar);
 
 impl ScaledState {
@@ -23,6 +25,10 @@ impl ScaledState {
             .map(|substate| my_scalar * substate.clone())
             .collect()
     }
+
+    pub fn has_zero_coef(&self) -> bool {
+        self.1.is_zero()
+    }
 }
 
 impl From<(usize, Scalar)> for ScaledState {
@@ -30,6 +36,12 @@ impl From<(usize, Scalar)> for ScaledState {
         let basis = value.0;
         let scalar = value.1;
         ScaledState(ExtendedBasis::Binary(basis), scalar)
+    }
+}
+
+impl Debug for ScaledState {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}{:?}", self.1, self.0)
     }
 }
 
@@ -50,45 +62,55 @@ impl SumOfScaledStates {
         }
     }
 
-    /// Returns the probability distribution over all basis states
+    /// Returns the scaled states over all basis states
     /// that exist at this point. Extended bases (eg, |+⟩, |−⟩, |i⟩, |−i⟩)
     /// will not be expanded, so the resulting states may still contain extended bases.
     /// If you want to get the distribution over only binary states,
-    /// use `unsugared_probability_distribution` instead.
-    pub fn probability_distribution(&self) -> impl Iterator<Item = &ScaledState> {
+    /// use `all_states_unsugared` instead.
+    pub fn all_scaled_states(&self) -> impl Iterator<Item = &ScaledState> {
         self.sum.iter()
     }
 
     pub fn apply_gate(&mut self, gate: &Gate) {
         let controls = gate.get_control_bits();
-        let targets = gate.get_target_bits();
-        assert_eq!(targets.get_indices().len(), 1);
-        let target = targets.get_indices()[0];
+        let targets = gate.get_target_bits().get_indices();
 
-        trace!(
-            "Applying gate {:?} with controls {:?} and target {}",
+        debug!(
+            "Applying gate {:?} with controls {:?} and target {:?}",
             gate.get_type(),
             controls,
-            target
+            targets
         );
+
+        if matches!(gate.get_type(), GateType::SWAP) {
+            let lsb = [targets[0]];
+            let msb = [targets[1]];
+            self.apply_gate(&Gate::new(X, &msb, &lsb).unwrap());
+            self.apply_gate(&Gate::new(X, &lsb, &msb).unwrap());
+            self.apply_gate(&Gate::new(X, &msb, &lsb).unwrap());
+            return;
+        }
+
+        assert_eq!(targets.len(), 1);
+        let only_target = targets[0];
 
         use GateType::*;
         self.sum = match gate.get_type() {
-            X => self.apply_controlled_gate(ExtendedBasis::x, controls, target),
-            Y => self.apply_controlled_gate(ExtendedBasis::y, controls, target),
-            Z => self.apply_controlled_gate(ExtendedBasis::z, controls, target),
-            H => self.apply_controlled_gate(ExtendedBasis::h, controls, target),
-            S => self.apply_controlled_gate(ExtendedBasis::s, controls, target),
+            X => self.apply_controlled_gate(ExtendedBasis::x, controls, only_target),
+            Y => self.apply_controlled_gate(ExtendedBasis::y, controls, only_target),
+            Z => self.apply_controlled_gate(ExtendedBasis::z, controls, only_target),
+            H => self.apply_controlled_gate(ExtendedBasis::h, controls, only_target),
+            S => self.apply_controlled_gate(ExtendedBasis::s, controls, only_target),
             SWAP => {
-                panic!("SWAP gates should have been removed in the circuit preprocessing step!")
+                panic!("SWAP gates are handled separately and should not reach this point")
             }
-            U(theta, phi, lambda) => self.apply_u_gate(controls, target, theta, phi, lambda),
+            U(theta, phi, lambda) => self.apply_u_gate(controls, only_target, theta, phi, lambda),
         };
     }
 
     pub fn apply_controlled_gate(
         &self,
-        unconditional_single_qubit_gate: fn(&mut ExtendedBasis, usize),
+        unconditional_single_qubit_gate: fn(&mut ExtendedBasis, usize) -> Option<Scalar>,
         controls: QBits,
         target: usize,
     ) -> Sum {
@@ -110,11 +132,35 @@ impl SumOfScaledStates {
                     }
                 }
             })
-            .for_each(|ScaledState(basis, _)| {
-                unconditional_single_qubit_gate(basis, target);
+            .for_each(|ScaledState(basis, scalar)| {
+                let eigenvalue = unconditional_single_qubit_gate(basis, target);
+                if let Some(phase) = eigenvalue {
+                    *scalar = *scalar * phase;
+                }
             });
 
         result
+    }
+
+    fn apply_non_discrete_gate(
+        states: impl IntoIterator<Item = ScaledState>,
+        target: usize,
+        transform: impl Fn(ExtendedBasis, usize) -> [Option<ScaledState>; 2] + 'static,
+    ) -> impl Iterator<Item = ScaledState> {
+        states
+            .into_iter()
+            .flat_map(move |ScaledState(basis, scalar)| {
+                transform(basis.clone(), target)
+                    .iter()
+                    .filter_map(|s| {
+                        if let Some(actual_value) = s {
+                            Some(scalar.clone() * actual_value.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
     }
 
     pub fn apply_u_gate(
@@ -125,20 +171,21 @@ impl SumOfScaledStates {
         phi: f64,
         lambda: f64,
     ) -> Sum {
-        let is_just_phase_change = theta == 0f64;
-        let mut states_to_alter: Vec<ScaledState> = Vec::new();
-        let mut sum = self.expand_necessary_controls(controls);
+        let mut states_to_alter: Sum = Vec::new();
+        let mut sum: Sum = self.expand_necessary_controls(controls);
         sum.retain(|ss| {
             let ScaledState(basis, _) = ss;
             use ExtendedBasis::*;
             match basis {
-                Binary(bits) => bits & controls.get_bitstring() == controls.get_bitstring(),
-                Superposition(bases) => {
-                    if is_just_phase_change && matches!(bases[target], Zero | One) {
-                        // The zero and one states are unaffected by phase changes. Just retain the state.
+                Binary(bits) => {
+                    if bits & controls.get_bitstring() == controls.get_bitstring() {
+                        states_to_alter.push(ss.clone());
+                        return false;
+                    } else {
                         return true;
                     }
-
+                }
+                Superposition(bases) => {
                     use ExtendedQubitBasis::*;
                     let all_controls_set = controls
                         .get_indices()
@@ -155,27 +202,16 @@ impl SumOfScaledStates {
             }
         });
 
-        let new_states = states_to_alter
-            .iter()
-            .flat_map(|ScaledState(basis, _)| basis.clone().r_z(target, lambda as f32))
-            .flatten()
-            .map(|ss| ss.clone())
-            .collect::<Vec<_>>();
+        let r_z_lambda = move |b, t| ExtendedBasis::p(b, t, lambda as f32);
+        let r_y_theta = move |b, t| ExtendedBasis::r_y(b, t, theta as f32);
+        let r_z_phi = move |b, t| ExtendedBasis::p(b, t, phi as f32);
 
-        let new_states = new_states
-            .iter()
-            .flat_map(|ScaledState(basis, _)| basis.clone().r_y(target, theta as f32))
-            .map(|ss| ss.clone())
-            .collect::<Vec<_>>();
+        let new_state = Self::apply_non_discrete_gate(states_to_alter, target, r_z_lambda);
+        let new_state = Self::apply_non_discrete_gate(new_state, target, r_y_theta);
+        let new_state = Self::apply_non_discrete_gate(new_state, target, r_z_phi);
+        let new_state = new_state.filter(|s| !s.has_zero_coef());
 
-        let new_states = new_states
-            .iter()
-            .flat_map(|ScaledState(basis, _)| basis.clone().r_z(target, phi as f32))
-            .flatten()
-            .map(|ss| ss.clone())
-            .collect::<Vec<_>>();
-
-        sum.extend(new_states);
+        sum.extend(new_state);
         sum
     }
 
@@ -200,7 +236,18 @@ impl SumOfScaledStates {
                             return vec![ScaledState(Superposition(bases.clone()), *scalar)];
                         } else {
                             // A term where the controls are fulfilled is contained within `basis`
-                            basis.clone().expand_qubits(controls) // Probably expensive clone
+                            let mut substates = basis
+                                .clone() // Probably expensive clone
+                                .expand_qubits(controls);
+
+                            // Distribute the scalar to the expanded states
+                            substates
+                                .iter_mut()
+                                .for_each(|ScaledState(_, inner_scalar)| {
+                                    *inner_scalar = *scalar * *inner_scalar;
+                                });
+
+                            substates
                         }
                     }
                     Binary(bits) => vec![ScaledState(Binary(*bits), *scalar)],
