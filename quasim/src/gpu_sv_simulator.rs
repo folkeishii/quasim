@@ -194,7 +194,14 @@ mod tests {
     use cubecl::wgpu::WgpuRuntime;
 
     use crate::{
-        circuit::{Circuit, PureCircuit}, common_test, expr_dsl::expr_helpers::{r, rb}, ext::equal_state_c, gpu_sv_simulator::GpuStateVectorSimulator, sampler::{CircuitSampler, QubitsSampler}, simulator::{Buildable, Sampleable, Simulator}, sv_simulator::StateVectorSimulator
+        circuit::{Circuit, PureCircuit},
+        common_test,
+        expr_dsl::expr_helpers::{r, rb},
+        ext::equal_state_c,
+        gpu_sv_simulator::GpuStateVectorSimulator,
+        sampler::{CircuitSampler, QubitsSampler},
+        simulator::{Buildable, Sampleable, Simulator},
+        sv_simulator::StateVectorSimulator,
     };
 
     #[test]

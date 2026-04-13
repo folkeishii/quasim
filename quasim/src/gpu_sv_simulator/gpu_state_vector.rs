@@ -380,4 +380,3 @@ impl<R: Runtime> GpuStateVector<R> {
         self.state_vector_dirty = true;
     }
 }
-

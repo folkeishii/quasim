@@ -1,5 +1,6 @@
 use quasim::circuit::Circuit;
-use quasim::simulator::{Buildable, Simulator, StoredRegisters};
+use quasim::sampler::RegisterSampler;
+use quasim::simulator::{Buildable, Sampleable, Simulator, StoredRegisters};
 use quasim::sv_simulator::StateVectorSimulator;
 
 const N: usize = 5;
@@ -43,10 +44,8 @@ fn find_secret_string_quantum(secret: u8) -> u8 {
     }
 
     circuit = circuit.measure_bits(&[0, 1, 2, 3, 4], "res");
-    let mut sim = StateVectorSimulator::build(circuit).unwrap();
-    sim.run();
 
-    let res = sim.register("res").read();
+    let res = StateVectorSimulator::sample_once(circuit, &RegisterSampler::new("res")).unwrap();
     // Output is reversed
     (res as u8).reverse_bits() >> (8 - N)
 }

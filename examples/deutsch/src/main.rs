@@ -1,5 +1,6 @@
 use quasim::circuit::Circuit;
-use quasim::simulator::{Buildable, Simulator, StoredRegisters};
+use quasim::sampler::{QubitSampler, RegisterSampler};
+use quasim::simulator::{Buildable, Sampleable, Simulator, StoredRegisters};
 use quasim::sv_simulator::StateVectorSimulator;
 
 #[allow(dead_code)]
@@ -67,11 +68,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
 
     circuit = circuit.h(0).h(1);
 
-    circuit = circuit.measure_bits(&[0], "res");
-    let mut sim = StateVectorSimulator::build(circuit).unwrap();
-    sim.run();
-
-    sim.register("res").read() == 0
+    StateVectorSimulator::sample_once(circuit, &QubitSampler::new(0)).unwrap() == 0
 }
 
 fn main() {
