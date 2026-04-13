@@ -3,7 +3,7 @@ use crate::{
     ext::get_u_matrix2,
     gate::{Gate, GateType, QBits},
 };
-use nalgebra::{Complex, DVector, Matrix2};
+use nalgebra::{Complex, DMatrix, DVector, Matrix2};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 #[derive(Debug, Clone)]
@@ -136,6 +136,73 @@ impl StateVector {
                 }
             }
         }
+    }
+
+    /// # coefficent_matrix
+    /// Finds the appropriate coefficent matrix
+    /// used in schmitt decomposition.
+    fn coefficent_matrix(&self, targets: &[usize], n_qubits: usize) -> DMatrix<Complex<f64>> {
+        let squash_by_mask = |bitstring: usize, mask: usize| {
+            let mut res = 0;
+            let mut i = 0;
+            let mut j = 0;
+
+            while (mask >> i) != 0 {
+                if (mask >> i) & 1 != 0 {
+                    res |= ((bitstring >> i) & 1) << j;
+                    j += 1;
+                }
+                i += 1;
+            }
+
+            res
+        };
+
+        let n_elements = 1 << n_qubits;
+        let n_targets = targets.len();
+
+        let mut coeffs = DMatrix::<Complex<f64>>::zeros(n_elements >> n_targets, 1 << n_targets);
+
+        let target_mask = QBits::from_indices(targets).get_bitstring();
+        let not_target_mask = (n_elements - 1) ^ target_mask;
+
+        for i in 0..n_elements {
+            let col = squash_by_mask(i, target_mask);
+            let row = squash_by_mask(i, not_target_mask);
+            coeffs[(row, col)] = self[i];
+        }
+
+        coeffs
+    }
+
+    /// # schmitt_trace
+    /// Assuming state can be factored,
+    /// returns the state with targets traced out.
+    pub fn schmitt_trace(&self, targets: &[usize], n_qubits: usize) -> Self {
+        // Find the coefficent matrix for the state vector.
+        let coeffs = self.coefficent_matrix(targets, n_qubits);
+
+        // Use Singular Value Decomposition to find the traced out vector.
+        let svd = coeffs.svd(true, false);
+
+        let res = DVector::<Complex<f64>>::from(svd.u.unwrap().column(0));
+        // SVD might mess with global phase.
+        Self(res.scale(res[0].re.signum()))
+    }
+
+    /// # schmitt_reduce
+    /// Assuming state can be factored,
+    /// returns the reduced state of targets.
+    pub fn schmitt_reduce(&self, targets: &[usize], n_qubits: usize) -> Self {
+        // Find the coefficent matrix for the state vector.
+        let coeffs = self.coefficent_matrix(targets, n_qubits);
+
+        // Use Singular Value Decomposition to find the traced out vector.
+        let svd = coeffs.svd(false, true);
+
+        let res = DVector::<Complex<f64>>::from(svd.v_t.unwrap().transpose().column(0));
+        // SVD might mess with global phase.
+        Self(res.scale(res[0].re.signum()))
     }
 }
 
