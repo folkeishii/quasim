@@ -1,6 +1,6 @@
 use quasim::circuit::Circuit;
-use quasim::sampler::{QubitSampler, RegisterSampler};
-use quasim::simulator::{Buildable, Sampleable, Simulator, StoredRegisters};
+use quasim::sampler::QubitSampler;
+use quasim::simulator::Sampleable;
 use quasim::sv_simulator::StateVectorSimulator;
 
 #[allow(dead_code)]

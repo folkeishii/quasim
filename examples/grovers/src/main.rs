@@ -4,7 +4,7 @@ use quasim::circuit::{Circuit, HybridCircuit};
 use quasim::debug_simulator::DebugSimulator;
 use quasim::debug_terminal::DebugTerminal;
 use quasim::sampler::RegisterSampler;
-use quasim::simulator::{Buildable, Sampleable, Simulator, StoredRegisters};
+use quasim::simulator::{Buildable, Sampleable};
 use quasim::sv_simulator::StateVectorSimulator;
 
 fn check_quantum(func: &[usize]) -> bool {

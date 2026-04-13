@@ -1,6 +1,6 @@
 use quasim::circuit::Circuit;
 use quasim::sampler::RegisterSampler;
-use quasim::simulator::{Buildable, Sampleable, Simulator, StoredRegisters};
+use quasim::simulator::Sampleable;
 use quasim::sv_simulator::StateVectorSimulator;
 
 const N: usize = 5;
