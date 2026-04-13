@@ -1,15 +1,21 @@
 use std::{
     mem,
+    ops::Index,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
-use nalgebra::Complex;
+use nalgebra::{Complex, Matrix2, Vector2};
 
-use crate::{cart, ext::BitSet};
+use crate::{
+    cart,
+    circuit::{Circuit, CircuitBehaviour, HybridCircuit, pc::CircuitPc},
+    expr_dsl::{BitExpr, BoolExpr},
+    ext::{BitSet, TargetIter},
+    gate::{Gate, GateType, QBits},
+    register_file::RegisterFile,
+    simulator::{DebuggableSimulator, StoredCircuitSimulator},
+};
 
-
-type Locker<T> = Arc<RwLock<T>>;
-type V = Complex<f64>;
 macro_rules! read {
     ($x:expr) => {
         $x.read().unwrap_or_else(|e| e.into_inner())
@@ -20,6 +26,233 @@ macro_rules! write {
         $x.write().unwrap_or_else(|e| e.into_inner())
     };
 }
+
+pub struct CubeSimulator {
+    circuit: Circuit<HybridCircuit>,
+    pc: CircuitPc,
+    state_vector: CubeVector,
+    register_file: RegisterFile,
+}
+
+impl CubeSimulator {
+    pub fn collapse_peek(&self) -> usize {
+        let ri = Arc::new(RwLock::new(rand::random_range(0.0..1.0)));
+        let collapsed = Arc::new(RwLock::new(None));
+        self.state_vector.for_each(|state, val| {
+            let prob = val.norm_sqr();
+            let mut ri_guard = write!(ri);
+            *ri_guard -= prob;
+            if *ri_guard <= 0.0 {
+                write!(collapsed).get_or_insert(state);
+            }
+        });
+
+        read!(collapsed).unwrap_or(0)
+    }
+
+    fn handle_gate(&mut self, gate: Gate) {
+        self.pc.increment();
+        self.state_vector.apply_gate(gate);
+    }
+
+    fn handle_measure_bit(&mut self, target: usize, (reg, c_target): (&str, usize)) {
+        self.pc.increment();
+        let collapsed = self.collapse_peek();
+        let q_mask = 1 << target;
+        let c_mask = 1 << c_target;
+        let q_masked = collapsed & q_mask;
+        let c_masked = (q_masked >> target) << c_target;
+
+        let mut val = self.register_file[reg].read();
+        val &= !c_mask;
+        val |= c_masked;
+        self.register_file[reg].write(val);
+
+        let total_prob = Arc::new(RwLock::new(0.0));
+        self.state_vector.map(|state, val| {
+            let s_masked = state & q_mask;
+            if s_masked ^ q_masked == 0 {
+                *write!(total_prob) += val.norm_sqr();
+            } else {
+                *val = cart!(0);
+            }
+        });
+        let total_prob = read!(total_prob).sqrt();
+        self.state_vector.map(|state, val| {
+            *val /= total_prob;
+        });
+    }
+
+    fn handle_measure_all(&mut self, reg: &str) {
+        self.pc.increment();
+        let collapsed = self.collapse_peek();
+        self.register_file[reg].write(collapsed);
+        self.state_vector.map(|i, val| {
+            if i == collapsed {
+                *val = cart!(1)
+            } else {
+                *val = cart!(0)
+            }
+        });
+    }
+
+    fn handle_jump(&mut self, pc: usize) {
+        self.pc.jump(pc);
+    }
+
+    fn handle_jump_if(&mut self, expr: &BoolExpr, pc: usize) {
+        match expr.eval(&self.register_file) {
+            true => self.handle_jump(pc),
+            false => self.pc.increment(),
+        }
+    }
+
+    fn handle_assign(&mut self, expr: &BitExpr, reg: &str) {
+        self.pc.increment();
+        let val = expr.eval(&self.register_file);
+        self.register_file[reg].write(val);
+    }
+
+    fn handle_call(&mut self, name: String, lsq: usize, ctrl: QBits) {
+        self.pc.jump_and_link(name, lsq, ctrl);
+    }
+}
+
+impl DebuggableSimulator for CubeSimulator {
+    type Storage = CubeVector;
+    type State = Complex<f64>;
+
+    fn next(&mut self) -> bool {
+        let Some(inst) = self.circuit.instruction(&self.pc) else {
+            // End of (sub) circuit: Try to return
+            if self.pc.ret() {
+                return true;
+            }
+
+            // Could not return: End of circuit
+            return false;
+        };
+
+        match inst {
+            crate::instruction::Instruction::Gate(gate) => self.handle_gate(gate),
+            crate::instruction::Instruction::MeasureBit(target, (reg, bit)) => {
+                self.handle_measure_bit(target, (&reg, bit))
+            }
+            crate::instruction::Instruction::MeasureAll(reg) => self.handle_measure_all(&reg),
+            crate::instruction::Instruction::Jump(pc) => self.handle_jump(pc),
+            crate::instruction::Instruction::JumpIf(bool_expr, pc) => self.handle_jump_if(&bool_expr, pc),
+            crate::instruction::Instruction::Assign(bit_expr, reg) => self.handle_assign(&bit_expr, &reg),
+            crate::instruction::Instruction::Call(sc, lsq, ctrl) => self.handle_call(sc, lsq, ctrl),
+        }
+
+        true
+    }
+
+    fn double_ended(&self) -> bool {
+        false
+    }
+
+    fn current_instruction(&self) -> (&CircuitPc, Option<crate::instruction::Instruction>) {
+        (&self.pc, self.circuit.instruction(&self.pc))
+    }
+
+    fn current_state(&self) -> &Self::Storage {
+        &self.state_vector
+    }
+
+    fn collapse_peek(&self) -> usize {
+        self.collapse_peek()
+    }
+}
+
+impl<B> TryFrom<Circuit<B>> for CubeSimulator
+where
+    B: CircuitBehaviour,
+    Circuit<B>: Into<Circuit<HybridCircuit>>,
+{
+    type Error = ();
+
+    fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
+        Ok(Self {
+            state_vector: CubeVector::new(value.n_qubits()),
+            register_file: RegisterFile::from(value.registers()),
+            circuit: value.into(),
+            pc: CircuitPc::default(),
+        })
+    }
+}
+
+impl StoredCircuitSimulator for CubeSimulator {
+    type B = HybridCircuit;
+
+    fn circuit(&self) -> &Circuit<Self::B> {
+        &self.circuit
+    }
+
+    fn circuit_mut(&mut self) -> &mut Circuit<Self::B> {
+        &mut self.circuit
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CubeVector {
+    zero: Vertex,
+}
+
+impl CubeVector {
+    pub fn new(n: usize) -> Self {
+        let mut zero = Vertex::new(n);
+        zero.amplitude = cart!(1);
+        Self {
+            zero,
+        }
+    }
+
+    pub fn apply_gate(&mut self, gate: Gate) {
+        let filter: BitSet = BitSet::from(*(gate.get_control_bits()));
+        let mut axii = TargetIter::from(gate.get_target_bits());
+        let ty = gate.get_type();
+
+        match ty {
+            GateType::SWAP => {
+                self.zero.filter_swap(
+                    axii.next().expect("SWAP expects two target bits"),
+                    axii.next().expect("SWAP expects two target bits"),
+                    filter,
+                    0,
+                );
+            }
+            ty2x2 => {
+                while let Some(axis) = axii.next() {
+                    self.apply_2x2(axis, filter, ty2x2.unchecked_matrix2x2());
+                }
+            }
+        }
+    }
+
+    pub fn for_each<F: FnMut(usize, V)>(&self, mut f: F) {
+        self.zero.for_each(0.into(), 0, 0, &mut f);
+    }
+
+    pub fn map<F: FnMut(usize, &mut V)>(&mut self, mut f: F) {
+        self.zero.map(0.into(), 0, 0, &mut f);
+    }
+
+    pub fn dim(&self) -> usize {
+        self.zero.dim()
+    }
+
+    fn apply_2x2(&mut self, axis: usize, filter: BitSet, matrix: Matrix2<Complex<f64>>) {
+        self.zero.filter_propagate(axis, filter, 0, |low, high| {
+            let uv: Vector2<_> = matrix * Vector2::new(*low, *high);
+            *low = uv[0];
+            *high = uv[1];
+        });
+    }
+}
+
+type Locker<T> = Arc<RwLock<T>>;
+type V = Complex<f64>;
 
 #[derive(Debug, Clone)]
 pub struct Vertex {
@@ -193,6 +426,19 @@ impl Vertex {
         }
         drop(cube_guard);
         self.next_vertex.push(cube);
+    }
+
+    fn at(&self, path: BitSet, path_offset: usize) -> Complex<f64> {
+        let mut path = path;
+        let mut path_offset = path_offset;
+        while !path.is_empty() {
+            if path[path_offset] {
+                path.erase(path_offset);
+                return Self::vertex(&self.next_vertex, path_offset).at(path, path_offset);
+            }
+            path_offset += 1;
+        }
+        self.amplitude
     }
 }
 
