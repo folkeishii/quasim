@@ -1,0 +1,191 @@
+use crate::{
+    cart,
+    ext::get_u_matrix2,
+    gate::{Gate, GateType, QBits},
+};
+use nalgebra::{Complex, DVector, Matrix2};
+use std::ops::{Deref, DerefMut, Index, IndexMut};
+
+#[derive(Debug, Clone)]
+pub struct StateVector(DVector<Complex<f64>>);
+
+impl StateVector {
+    pub fn zeros(n_qubits: usize) -> Self {
+        Self::from_bitstring(0, n_qubits)
+    }
+
+    /// The system |b> where b is any bitstring.
+    pub fn from_bitstring(bitstring: usize, n_qubits: usize) -> Self {
+        let mut v = Self(DVector::<Complex<f64>>::zeros(1 << n_qubits));
+        v[bitstring] = cart!(1.0);
+        v
+    }
+
+    /// Checks that all control bits are 1
+    fn controls_active(i: usize, controls: QBits) -> bool {
+        let control_mask = controls.get_bitstring();
+        (i & control_mask) == control_mask
+    }
+
+    /// Checks that all target bits are 0
+    fn is_block_base(i: usize, targets: QBits) -> bool {
+        let target_mask = targets.get_bitstring();
+        (i & target_mask) == 0
+    }
+
+    // 0 1
+    // 1 0
+    #[inline(always)]
+    fn apply_x(&mut self, base_index: usize, target: QBits) {
+        self.0
+            .as_mut_slice()
+            .swap(base_index, base_index | target.get_bitstring());
+    }
+
+    // 0 -i
+    // i  0
+    #[inline(always)]
+    fn apply_y(&mut self, base_index: usize, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let state = self.0.as_mut_slice();
+        let a = state[base_index];
+        let b = state[flipped_index];
+
+        state[base_index] = cart!(b.im, -b.re);
+        state[flipped_index] = cart!(-a.im, a.re);
+    }
+
+    // 1  0
+    // 0 -1
+    #[inline(always)]
+    fn apply_z(&mut self, base_index: usize, target: QBits) {
+        let i = base_index | target.get_bitstring();
+        let amp = &mut self.0[i];
+
+        amp.re = -amp.re;
+        amp.im = -amp.im;
+    }
+
+    #[inline(always)]
+    fn apply_h(&mut self, base_index: usize, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let state = self.0.as_mut_slice();
+        let a = state[base_index];
+        let b = state[flipped_index];
+        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
+
+        state[base_index] = (a + b) * inv_sqrt2;
+        state[flipped_index] = (a - b) * inv_sqrt2;
+    }
+
+    #[inline(always)]
+    fn apply_s(&mut self, base_index: usize, target: QBits) {
+        let i = base_index | target.get_bitstring();
+        let amp = self.0[i];
+
+        self.0[i].re = -amp.im;
+        self.0[i].im = amp.re;
+    }
+
+    #[inline(always)]
+    fn apply_swap(&mut self, base_index: usize, targets: QBits) {
+        let t0 = targets.get_indices()[0];
+        let t1 = targets.get_indices()[1];
+
+        let i01 = base_index | (1 << t0);
+        let i10 = base_index | (1 << t1);
+
+        self.0.as_mut_slice().swap(i01, i10);
+    }
+
+    #[inline(always)]
+    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f64>>, target: QBits) {
+        let flipped_index = base_index | target.get_bitstring();
+        let a = self.0[base_index];
+        let b = self.0[flipped_index];
+
+        self.0[base_index] = u[(0, 0)] * a + u[(0, 1)] * b;
+        self.0[flipped_index] = u[(1, 0)] * a + u[(1, 1)] * b;
+    }
+
+    pub fn apply_gate(&mut self, gate: &Gate) {
+        let controls = gate.get_control_bits();
+        let targets = gate.get_target_bits();
+        let n = self.0.len();
+
+        // No parallelization
+        // State vector is length 2^n , n=num qubits
+        for i in 0..n {
+            if !Self::is_block_base(i, targets) {
+                continue;
+            }
+
+            if !Self::controls_active(i, controls) {
+                continue;
+            }
+
+            match gate.get_type() {
+                GateType::X => Self::apply_x(self, i, targets),
+                GateType::Y => Self::apply_y(self, i, targets),
+                GateType::Z => Self::apply_z(self, i, targets),
+                GateType::H => Self::apply_h(self, i, targets),
+                GateType::S => Self::apply_s(self, i, targets),
+                GateType::SWAP => Self::apply_swap(self, i, targets),
+                GateType::U(theta, phi, lambda) => {
+                    Self::apply_unitary2(self, i, &get_u_matrix2(theta, phi, lambda), targets)
+                }
+            }
+        }
+    }
+}
+
+impl Index<usize> for StateVector {
+    type Output = Complex<f64>;
+    fn index(&self, index: usize) -> &Self::Output {
+        &self.0[index]
+    }
+}
+
+impl IndexMut<usize> for StateVector {
+    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
+        &mut self.0[index]
+    }
+}
+impl Deref for StateVector {
+    type Target = DVector<Complex<f64>>;
+    fn deref(&self) -> &DVector<Complex<f64>> {
+        &self.0
+    }
+}
+impl DerefMut for StateVector {
+    fn deref_mut(&mut self) -> &mut DVector<Complex<f64>> {
+        &mut self.0
+    }
+}
+
+impl From<DVector<Complex<f64>>> for StateVector {
+    fn from(v: DVector<Complex<f64>>) -> Self {
+        StateVector(v)
+    }
+}
+impl From<StateVector> for DVector<Complex<f64>> {
+    fn from(m: StateVector) -> DVector<Complex<f64>> {
+        m.0
+    }
+}
+
+impl AsRef<DVector<Complex<f64>>> for StateVector {
+    fn as_ref(&self) -> &DVector<Complex<f64>> {
+        &self.0
+    }
+}
+impl AsMut<DVector<Complex<f64>>> for StateVector {
+    fn as_mut(&mut self) -> &mut DVector<Complex<f64>> {
+        &mut self.0
+    }
+}
+impl std::fmt::Display for StateVector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}

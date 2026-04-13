@@ -15,4 +15,5 @@ pub mod product_state;
 pub mod register_file;
 pub mod simple_simulator;
 pub mod simulator;
+pub mod state_vector;
 pub mod sv_simulator;

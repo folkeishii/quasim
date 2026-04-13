@@ -1,12 +1,13 @@
 use crate::{
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{apply_gate, collapse, measure_state_vector, schmitt_trace},
+    ext::{collapse, measure_state_vector, schmitt_trace},
     gate::{Gate, GateType},
     instruction::Instruction,
     product_state::{ProductState, SubSystem},
     register_file::RegisterFile,
     simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
+    state_vector::StateVector,
 };
 use nalgebra::{Complex, DVector};
 
@@ -16,7 +17,7 @@ pub struct ProdSimulator {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile,
-    state_vector_cache: DVector<Complex<f64>>,
+    state_vector_cache: StateVector,
 }
 
 impl ProdSimulator {
@@ -127,7 +128,7 @@ impl ProdSimulator {
         let local_gate = Gate::new(gate.get_type(), &local_controls, &local_targets).unwrap();
 
         // Apply the gate to the system's state vector.
-        apply_gate(sys.state_vector_mut(), &local_gate);
+        sys.state_vector_mut().apply_gate(&local_gate);
 
         if gate_acts_on_several_systems {
             // Remove systems that were combined.
@@ -173,8 +174,11 @@ impl ProdSimulator {
 
         // "Split" state.
         sys.qubits_mut().remove(local_target);
-        *sys.state_vector_mut() =
-            schmitt_trace(sys.state_vector(), &[local_target], local_n_qubits);
+        *sys.state_vector_mut() = StateVector::from(schmitt_trace(
+            sys.state_vector(),
+            &[local_target],
+            local_n_qubits,
+        ));
 
         self.product_state[target_system] = sys;
 

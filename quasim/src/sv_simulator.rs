@@ -1,11 +1,11 @@
-use nalgebra::{Complex, DVector};
+use nalgebra::Complex;
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::circuit::{CircuitBehaviour, HybridCircuit};
 use crate::expr_dsl::{BitExpr, BoolExpr};
-use crate::ext::apply_gate;
 use crate::register_file::RegisterError;
 use crate::simulator::{BuildSimulator, HybridSimulator};
+use crate::state_vector::StateVector;
 use crate::{
     cart,
     circuit::{Circuit, pc::CircuitPc},
@@ -16,7 +16,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct SVExecutor {
-    state_vector: DVector<Complex<f64>>,
+    state_vector: StateVector,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile,
@@ -24,7 +24,7 @@ pub struct SVExecutor {
 
 impl SVExecutor {
     /// Step forward one instruction in the circuit
-    pub fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
+    pub fn step(&mut self) -> Option<&StateVector> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
             if self.pc_mut().ret() {
@@ -58,7 +58,7 @@ impl SVExecutor {
     }
 
     /// Get current state of the quantum system
-    pub fn state_vector(&self) -> &DVector<Complex<f64>> {
+    pub fn state_vector(&self) -> &StateVector {
         &self.state_vector
     }
 
@@ -123,7 +123,7 @@ impl SVExecutor {
     fn apply_instruction(&mut self, inst: &Instruction) {
         match inst {
             Instruction::Gate(gate) => {
-                apply_gate(&mut self.state_vector, gate);
+                self.state_vector.apply_gate(gate);
                 self.pc_mut().increment();
             }
             Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(*qbit, reg, *bit_pos),
@@ -154,9 +154,7 @@ where
     type Error = SVError;
 
     fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
-        let size = 1 << value.n_qubits();
-        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
-        init_state_vector[0] = cart![1.0];
+        let init_state_vector = StateVector::zeros(value.n_qubits());
 
         let registers = RegisterFile::from(value.registers());
 
@@ -202,7 +200,7 @@ where
 }
 
 impl RunnableSimulator for SVSimulator {
-    type Storage = DVector<Complex<f64>>;
+    type Storage = StateVector;
     type State = Complex<f64>;
 
     fn run(&self) -> usize {
@@ -212,7 +210,7 @@ impl RunnableSimulator for SVSimulator {
             .get_collapsed_state()
     }
 
-    fn final_state(&self) -> DVector<Complex<f64>> {
+    fn final_state(&self) -> StateVector {
         SVExecutor::build(self.circuit.clone())
             .unwrap()
             .step_all()
@@ -243,7 +241,7 @@ where
 }
 
 impl DebuggableSimulator for SVSimulatorDebugger {
-    type Storage = DVector<Complex<f64>>;
+    type Storage = StateVector;
     type State = Complex<f64>;
 
     fn next(&mut self) -> bool {
@@ -258,7 +256,7 @@ impl DebuggableSimulator for SVSimulatorDebugger {
         (pc, self.executor.circuit.instruction(pc))
     }
 
-    fn current_state(&self) -> &DVector<Complex<f64>> {
+    fn current_state(&self) -> &StateVector {
         &self.executor.state_vector
     }
 

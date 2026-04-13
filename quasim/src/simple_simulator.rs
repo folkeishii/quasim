@@ -1,14 +1,15 @@
-use nalgebra::{Complex, DVector};
+use nalgebra::Complex;
 use rand::distr::{Distribution, weighted::WeightedIndex};
 
 use crate::{
     circuit::Circuit,
     simulator::{BuildSimulator, RunnableSimulator},
+    state_vector::StateVector,
     sv_simulator::{SVError, SVSimulator},
 };
 
 struct SimpleSimulator {
-    state_vector: DVector<Complex<f64>>,
+    state_vector: StateVector,
     dist: WeightedIndex<f64>,
 }
 
@@ -32,7 +33,7 @@ impl TryFrom<Circuit> for SimpleSimulator {
 }
 
 impl RunnableSimulator for SimpleSimulator {
-    type Storage = DVector<Complex<f64>>;
+    type Storage = StateVector;
     type State = Complex<f64>;
 
     fn run(&self) -> usize {
@@ -40,7 +41,7 @@ impl RunnableSimulator for SimpleSimulator {
         self.dist.sample(&mut rng)
     }
 
-    fn final_state(&self) -> DVector<Complex<f64>> {
+    fn final_state(&self) -> StateVector {
         self.state_vector.clone()
     }
 }

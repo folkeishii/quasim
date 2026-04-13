@@ -1,15 +1,16 @@
 use crate::{
     cart,
-    ext::{apply_gate, collapse},
+    ext::collapse,
     gate::{Gate, GateType, QBits},
+    state_vector::StateVector,
 };
-use nalgebra::{Complex, DVector, dvector};
+use nalgebra::{Complex, dvector};
 use std::ops::{Deref, DerefMut, Mul};
 
 /// A system of potentially entangled qubits.
 #[derive(Debug, Clone)]
 pub struct SubSystem {
-    state_vector: DVector<Complex<f64>>,
+    state_vector: StateVector,
     qubits: Vec<usize>,
 }
 impl Mul for SubSystem {
@@ -20,7 +21,7 @@ impl Mul for SubSystem {
         let mut qubits = self.qubits.clone();
         qubits.extend(rhs.qubits.clone());
         Self {
-            state_vector: rhs.state_vector.kronecker(&self.state_vector),
+            state_vector: StateVector::from(rhs.state_vector.kronecker(&self.state_vector)),
             qubits: qubits,
         }
     }
@@ -30,7 +31,7 @@ impl SubSystem {
     /// The system, I, that satisfies: I * x == x * I == x
     fn identity() -> Self {
         Self {
-            state_vector: dvector![cart!(1.0)],
+            state_vector: StateVector::from(dvector![cart!(1.0)]),
             qubits: vec![],
         }
     }
@@ -38,7 +39,7 @@ impl SubSystem {
     /// The system |0>.
     pub fn zero(qubit: usize) -> Self {
         Self {
-            state_vector: dvector![cart!(1.0), cart!(0.0)],
+            state_vector: StateVector::from(dvector![cart!(1.0), cart!(0.0)]),
             qubits: vec![qubit],
         }
     }
@@ -46,7 +47,7 @@ impl SubSystem {
     /// The system |1>.
     pub fn one(qubit: usize) -> Self {
         Self {
-            state_vector: dvector![cart!(0.0), cart!(1.0)],
+            state_vector: StateVector::from(dvector![cart!(0.0), cart!(1.0)]),
             qubits: vec![qubit],
         }
     }
@@ -59,11 +60,11 @@ impl SubSystem {
         &mut self.qubits
     }
 
-    pub fn state_vector(&self) -> &DVector<Complex<f64>> {
+    pub fn state_vector(&self) -> &StateVector {
         &self.state_vector
     }
 
-    pub fn state_vector_mut(&mut self) -> &mut DVector<Complex<f64>> {
+    pub fn state_vector_mut(&mut self) -> &mut StateVector {
         &mut self.state_vector
     }
 
@@ -90,21 +91,13 @@ impl SubSystem {
                 self.qubits.swap(j, j - 1);
 
                 // Sort the state vector.
-                apply_gate(
-                    &mut self.state_vector,
-                    &Gate::new(GateType::SWAP, &[], &[j, j - 1]).unwrap(),
-                );
+                self.state_vector
+                    .apply_gate(&Gate::new(GateType::SWAP, &[], &[j, j - 1]).unwrap());
 
                 j -= 1;
             }
             i += 1;
         }
-    }
-}
-
-impl std::fmt::Display for SubSystem {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "QUBITS: {:?}, STATE: {}", self.qubits, self.state_vector)
     }
 }
 
@@ -164,7 +157,7 @@ impl ProductState {
 
     /// The state vector of the whole system.
     /// Only works for pure states
-    pub fn vector(&self) -> DVector<Complex<f64>> {
+    pub fn vector(&self) -> StateVector {
         let mut tot_sys = self.product();
 
         tot_sys.sort();
@@ -216,13 +209,6 @@ impl ProductState {
             .concat();
 
         QBits::from_indices(&indicies).get_bitstring()
-    }
-}
-
-impl std::fmt::Display for ProductState {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let parts: Vec<String> = self.iter().map(|s| format!("{}", s)).collect();
-        write!(f, "{}", parts.join(", "))
     }
 }
 
