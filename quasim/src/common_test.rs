@@ -7,8 +7,8 @@ use crate::{
     circuit::{Circuit, HybridCircuit},
     expr_dsl::expr_helpers::r,
     ext::equal_state_c,
-    sampler::RegisterSampler,
-    simulator::{Buildable, Debuggable, Sampleable, StoredRegisters},
+    sampler::{CircuitSampler, RegisterSampler},
+    simulator::{Buildable, Debuggable, QuantumState, Sampleable, StoredRegisters},
 };
 
 pub fn double_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
@@ -217,6 +217,51 @@ where
         Sim::sample_once(circuit, &RegisterSampler::new("tmp")).unwrap(),
         0
     );
+}
+
+pub fn test_reset<Sim>()
+where
+    Sim: Buildable<HybridCircuit> + StoredRegisters,
+{
+    let circuit = Circuit::new(4)
+        .new_reg("r0", 2)
+        .new_reg("r1", 2)
+        .x(0)
+        .x(3)
+        .measure_bits(&[0, 1], "r0")
+        .measure_bits(&[2, 3], "r1");
+
+    let mut sim = Sim::build(circuit).unwrap();
+
+    sim.run();
+    assert_eq!(sim.register("r0").read(), 0b01);
+    assert_eq!(sim.register("r1").read(), 0b10);
+    assert_eq!(sim.state().collapse(), 0b1001);
+    sim.reset();
+    assert_eq!(sim.register("r0").read(), 0);
+    assert_eq!(sim.register("r1").read(), 0);
+    assert_eq!(sim.state().collapse(), 0);
+}
+
+pub fn test_reset_with_shared_scratch_register<Sim>()
+where
+    Sim: Sampleable<HybridCircuit>,
+{
+    let circuit = Circuit::new(4)
+        .h(0)
+        .h(1)
+        .h(2)
+        .h(3)
+        .reset(0)
+        .reset(1)
+        .reset(2)
+        .reset(3);
+
+    assert!(
+        Sim::sample(circuit, &CircuitSampler, 100)
+            .unwrap()
+            .fold(true, |acc, it| acc && it == 0)
+    )
 }
 
 pub fn deep_ctrl_sub<Sim: Buildable<HybridCircuit> + Debuggable>()

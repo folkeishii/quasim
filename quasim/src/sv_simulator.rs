@@ -313,6 +313,7 @@ impl Simulator for StateVectorSimulator {
         self.state_vector.fill(cart!(0.0));
         self.state_vector[0] = cart!(1.0);
         self.pc = Default::default();
+        self.registers.reset();
     }
 
     fn state(&self) -> &Self::State {
@@ -380,8 +381,7 @@ mod tests {
     use nalgebra::dvector;
 
     use crate::ext::equal_state_c;
-    use crate::sampler::CircuitSampler;
-    use crate::simulator::{Debuggable, Sampleable};
+    use crate::simulator::{Debuggable};
     use crate::{cart, common_test};
     use crate::{
         circuit::Circuit,
@@ -615,22 +615,13 @@ mod tests {
     }
 
     #[test]
-    fn test_reset_with_shared_scratch_register() {
-        let circuit = Circuit::new(4)
-            .h(0)
-            .h(1)
-            .h(2)
-            .h(3)
-            .reset(0)
-            .reset(1)
-            .reset(2)
-            .reset(3);
+    fn test_reset() {
+        common_test::test_reset::<StateVectorSimulator>();
+    }
 
-        assert!(
-            StateVectorSimulator::sample(circuit, &CircuitSampler, 100)
-                .unwrap()
-                .fold(true, |acc, it| acc && it == 0)
-        )
+    #[test]
+    fn test_reset_with_shared_scratch_register() {
+        common_test::test_reset_with_shared_scratch_register::<StateVectorSimulator>();
     }
 
     #[test]

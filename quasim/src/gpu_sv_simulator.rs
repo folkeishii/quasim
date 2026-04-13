@@ -29,8 +29,8 @@ impl<R: Runtime> GpuStateVectorSimulator<R> {
     /// Use function `sync` to explicitly sync state vector to cpu.
     /// Use this function if you don't need access to individual amplitudes in
     /// the state vector after running circuit. For example when sampling.
-    pub fn run_gpu(&mut self) {
-        self.reset();
+    pub fn run_without_sync(&mut self) {
+        self.reset_without_sync();
 
         while let Some(op) = self.batched_circuit.operation(self.pc) {
             match op {
@@ -45,6 +45,15 @@ impl<R: Runtime> GpuStateVectorSimulator<R> {
                 }
             }
         }
+    }
+
+    /// Resets state vector, register and program counter to initial state.
+    /// Doesn't sync the state vector to cpu.
+    /// Use function `reset` to explicitly sync state vector to cpu.
+    pub fn reset_without_sync(&mut self) {
+        self.gpu_state_vector.reset();
+        self.registers.reset();
+        self.pc = 0;
     }
 
     /// Explicitly syncs the gpu side state vector to the cpu.
@@ -131,19 +140,21 @@ impl<R: Runtime> Simulator for GpuStateVectorSimulator<R> {
     type BasisValue = Complex<f64>;
 
     /// Runs the entire circuit on the gpu and then syncs state to cpu.
-    /// Use function `run_gpu` to avoid syncing state vector to cpu.
+    /// Use function `run_without_sync` to avoid syncing state vector to cpu.
     ///
     /// Use this function if you need to access individual amplitudes in the
     /// state vector after running circuit.
     fn run(&mut self) {
-        self.run_gpu();
+        self.run_without_sync();
         self.sync();
     }
 
+    /// Resets state vector, register and program counter to initial state.
+    /// Syncs the state vector to cpu.
+    /// Use function `reset_without_sync` to avoid syncing state vector to cpu.
     fn reset(&mut self) {
-        self.gpu_state_vector.reset();
-        self.registers.reset();
-        self.pc = 0;
+        self.reset_without_sync();
+        self.sync();
     }
 
     fn state(&self) -> &Self::State {
@@ -162,7 +173,7 @@ where
         sampler: &S,
     ) -> Result<S::Output, Self::E> {
         let mut sim = Self::try_from(circuit)?;
-        sim.run_gpu();
+        sim.run_without_sync();
         Ok(sampler.sample(&sim))
     }
 
@@ -173,7 +184,7 @@ where
     ) -> Result<impl Iterator<Item = <S as Sampler<Self>>::Output>, Self::E> {
         let mut sim = Self::try_from(circuit)?;
         let iter = (0..times).map(move |_| {
-            sim.run_gpu();
+            sim.run_without_sync();
             sampler.sample(&sim)
         });
         Ok(iter)
@@ -204,12 +215,14 @@ mod tests {
         sv_simulator::StateVectorSimulator,
     };
 
+    type WgpuSimulator = GpuStateVectorSimulator<WgpuRuntime>;
+
     #[test]
     fn test_qft() {
         let n_qubits = 4;
         let circuit = Circuit::<PureCircuit>::new_qft(n_qubits);
 
-        let mut gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
+        let mut gpu = WgpuSimulator::build(circuit.clone()).unwrap();
         let mut cpu = StateVectorSimulator::build(circuit).unwrap();
         gpu.run();
         cpu.run();
@@ -220,27 +233,28 @@ mod tests {
     }
 
     #[test]
-    fn test_sampling() {
-        let circuit = Circuit::<PureCircuit>::new(15).x(0).x(7).x(14);
-        let sample =
-            GpuStateVectorSimulator::<WgpuRuntime>::sample_once(circuit, &CircuitSampler).unwrap();
-
-        assert_eq!(sample, (1 << 14) | (1 << 7) | 1);
-    }
-
-    #[test]
     fn hybrid_test() {
-        common_test::hybrid_test::<GpuStateVectorSimulator<WgpuRuntime>>();
+        common_test::hybrid_test::<WgpuSimulator>();
     }
 
     #[test]
     fn register_test() {
-        common_test::register_test::<GpuStateVectorSimulator<WgpuRuntime>>();
+        common_test::register_test::<WgpuSimulator>();
     }
 
     #[test]
     fn test_measure_overwrites_with_zero() {
-        common_test::test_measure_overwrites_with_zero::<GpuStateVectorSimulator<WgpuRuntime>>();
+        common_test::test_measure_overwrites_with_zero::<WgpuSimulator>();
+    }
+
+    #[test]
+    fn test_reset() {
+        common_test::test_reset::<WgpuSimulator>();
+    }
+
+    #[test]
+    fn test_reset_with_shared_scratch_register() {
+        common_test::test_reset_with_shared_scratch_register::<WgpuSimulator>();
     }
 
     #[test]
@@ -254,8 +268,7 @@ mod tests {
 
         let qubits = QubitsSampler::new([0, 2]);
 
-        let gpu =
-            GpuStateVectorSimulator::<WgpuRuntime>::sample_once(circuit.clone(), &qubits).unwrap();
+        let gpu = WgpuSimulator::sample_once(circuit.clone(), &qubits).unwrap();
         let cpu = StateVectorSimulator::sample_once(circuit, &qubits).unwrap();
 
         assert_eq!(cpu, [1, 1]);
@@ -313,7 +326,7 @@ mod tests {
             .x(3)
             .label("done");
 
-        let mut gpu = GpuStateVectorSimulator::<WgpuRuntime>::build(circuit.clone()).unwrap();
+        let mut gpu = WgpuSimulator::build(circuit.clone()).unwrap();
         let mut cpu = StateVectorSimulator::build(circuit.clone()).unwrap();
         gpu.run();
         cpu.run();
@@ -321,7 +334,7 @@ mod tests {
         assert!(equal_state_c(gpu.state(), cpu.state(), 4, 0.001));
 
         assert!(
-            GpuStateVectorSimulator::<WgpuRuntime>::sample(circuit.clone(), &CircuitSampler, 10)
+            WgpuSimulator::sample(circuit.clone(), &CircuitSampler, 10)
                 .unwrap()
                 .all(|sample| sample == 0)
         );

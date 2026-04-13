@@ -61,6 +61,7 @@ impl Simulator for DebugSimulator {
         self.current_state.fill(cart!(0.0));
         self.current_state[0] = cart!(1.0);
         self.pc = Default::default();
+        self.registers.reset();
     }
 
     fn state(&self) -> &Self::State {
@@ -653,6 +654,16 @@ mod tests {
     #[test]
     fn test_measure_overwrites_with_zero() {
         common_test::test_measure_overwrites_with_zero::<DebugSimulator>();
+    }
+
+    #[test]
+    fn test_reset() {
+        common_test::test_reset::<DebugSimulator>();
+    }
+
+    #[test]
+    fn test_reset_with_shared_scratch_register() {
+        common_test::test_reset_with_shared_scratch_register::<DebugSimulator>();
     }
 
     #[test]
