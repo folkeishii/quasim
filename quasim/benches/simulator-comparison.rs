@@ -1,7 +1,6 @@
 use cubecl::wgpu::WgpuRuntime;
 use quasim::{
     circuit::{Circuit, HybridCircuit, PureCircuit},
-    debug_simulator::DebugSimulator,
     gpu_sv_simulator::GpuStateVectorSimulator,
     prod_simulator::ProdSimulator,
     simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
@@ -10,13 +9,15 @@ use quasim::{
 
 extern crate quasim;
 
+const QUBITS_UPPER_BOUND: usize = 22;
+
 fn main() {
     divan::main();
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator, DebugSimulator],
-    args = [2,3,4,5,6,7,8,9,10,11,12],
+    types = [SVSimulatorDebugger, ProdSimulator],
+    args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
 fn circuit_size_debug<S>(n_qubits: usize)
@@ -33,7 +34,7 @@ where
     while sim.next() {}
 }
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator, DebugSimulator],
+    types = [SVSimulatorDebugger, ProdSimulator],
     args = [1000,2000,4000,8000,16000,32000],
     sample_count = 10,
 )]
@@ -51,8 +52,8 @@ where
     while sim.next() {}
 }
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator, DebugSimulator],
-    args = [2,3,4,5,6,7,8],
+    types = [SVSimulatorDebugger, ProdSimulator],
+    args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
 fn circuit_size_full_entagnlement<S>(n_qubits: usize)
@@ -71,29 +72,79 @@ where
     while sim.next() {}
 }
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator, DebugSimulator],
-    args = [
-        (6,2), (6,3), (6,4), (6,5),
-        (7,2), (7,3), (7,4), (7,5), (7,6),
-        (8,2), (8,3), (8,4), (8,5), (8,6), (8,7),
-    ],
+    types = [SVSimulatorDebugger, ProdSimulator],
+    args = [1, 2, 4, 8, 16, 20, 22],
     sample_count = 10,
 )]
-fn entanglement_size<S>(inp: (usize, usize))
+fn entanglement_size<S>(entangle_size: usize)
 where
     S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
 {
-    let (n_qubits, entangle_size) = inp;
+    let n_systems = QUBITS_UPPER_BOUND / entangle_size;
 
-    let n_systems = n_qubits / entangle_size;
+    let mut circuit = Circuit::new(QUBITS_UPPER_BOUND);
 
-    let mut circuit = Circuit::new(n_qubits);
+    for q in 0..QUBITS_UPPER_BOUND {
+        circuit = circuit.h(q);
+    }
 
     for s in 0..n_systems {
-        circuit = circuit.ch(
+        circuit = circuit.cx(
             &Vec::from_iter((s * entangle_size..(s + 1) * entangle_size).skip(1)),
             s,
         );
+    }
+
+    let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
+    while sim.next() {}
+}
+
+#[divan::bench(
+    types = [SVSimulatorDebugger, ProdSimulator],
+    args = [1, 2, 4, 8, 16, 20, 22],
+    sample_count = 10,
+)]
+fn mid_measure_bits<S>(n_measurements: usize)
+where
+    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
+{
+    let mut circuit = Circuit::new(QUBITS_UPPER_BOUND).new_reg("dummy", n_measurements);
+
+    for q in 0..QUBITS_UPPER_BOUND {
+        circuit = circuit.h(q).cx(&[q], (q + 1) % QUBITS_UPPER_BOUND);
+    }
+
+    for m in 0..n_measurements {
+        circuit = circuit.measure_bit(m, ("dummy", m));
+    }
+
+    for q in 0..QUBITS_UPPER_BOUND {
+        circuit = circuit.h(q).cx(&[q], (q + 1) % QUBITS_UPPER_BOUND);
+    }
+
+    let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");
+    while sim.next() {}
+}
+
+#[divan::bench(
+    types = [SVSimulatorDebugger, ProdSimulator],
+    args = [15,16,17,18,19,20,21,22],
+    sample_count = 10,
+)]
+fn mid_measure_all<S>(n_qubits: usize)
+where
+    S: DebuggableSimulator + BuildSimulator<HybridCircuit> + StoredCircuitSimulator,
+{
+    let mut circuit = Circuit::new(n_qubits).new_reg("dummy", n_qubits);
+
+    for q in 0..n_qubits {
+        circuit = circuit.h(q).cx(&[q], (q + 1) % n_qubits);
+    }
+
+    circuit = circuit.measure("dummy");
+
+    for q in 0..n_qubits {
+        circuit = circuit.h(q).cx(&[q], (q + 1) % n_qubits);
     }
 
     let mut sim = S::build(circuit.into()).expect("Couldnt build circuit...");

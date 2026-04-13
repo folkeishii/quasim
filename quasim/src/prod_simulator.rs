@@ -2,7 +2,7 @@ use crate::{
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
     ext::{apply_gate, collapse, measure_state_vector, schmitt_trace},
-    gate::{Gate, GateType, QBits},
+    gate::{Gate, GateType},
     instruction::Instruction,
     product_state::{ProductState, SubSystem},
     register_file::RegisterFile,
@@ -33,9 +33,23 @@ impl ProdSimulator {
         }
     }
 
-    pub fn get_state(&self) -> &ProductState {
+    pub fn run(&mut self) -> &mut Self {
+        while self.next() {}
+        self
+    }
+
+    pub fn reset(&mut self) -> &mut Self {
+        // reset? resets state & registers?
+        self.registers.reset(); //?
+        self.product_state = ProductState::zeros(self.n_qubits());
+        self.pc = Default::default();
+        self
+    }
+
+    pub fn state(&self) -> &ProductState {
         &self.product_state
     }
+
     fn apply_gate(&mut self, gate: Gate) {
         /* Overview:
          *
@@ -110,7 +124,6 @@ impl ProdSimulator {
 
         // Continue to translate global qubit indexing to the system's local indexing.
         let local_controls: Vec<usize> = controls.iter().map(|&c| sys.local_index(c)).collect();
-        //let local_n_qubits = sys.n_qubits();
         let local_gate = Gate::new(gate.get_type(), &local_controls, &local_targets).unwrap();
 
         // Apply the gate to the system's state vector.
@@ -118,14 +131,13 @@ impl ProdSimulator {
 
         if gate_acts_on_several_systems {
             // Remove systems that were combined.
-            self.product_state = ProductState::from(
-                self.product_state
-                    .iter()
-                    .enumerate()
-                    .filter(|(i, _)| !gate_systems.contains(i))
-                    .map(|(_, s)| s.clone())
-                    .collect::<Vec<SubSystem>>(),
-            );
+            self.product_state = self
+                .product_state
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !gate_systems.contains(i))
+                .map(|(_, s)| s.clone())
+                .collect::<ProductState>();
 
             // Add combined system.
             self.product_state.push(sys);
@@ -179,20 +191,7 @@ impl ProdSimulator {
     }
 
     fn measure_all(&mut self, reg: &str) {
-        let indicies = self
-            .product_state
-            .iter()
-            .map(|sys| {
-                QBits::from_bitstring(collapse(sys.state_vector().as_slice()))
-                    .get_indices()
-                    .iter()
-                    .map(|&b| sys.qubits()[b])
-                    .collect::<Vec<usize>>()
-            })
-            .collect::<Vec<Vec<usize>>>()
-            .concat();
-
-        let measurement_bitstring = QBits::from_indices(&indicies).get_bitstring();
+        let measurement_bitstring = self.product_state.collapse();
 
         self.registers[reg].write(measurement_bitstring);
 
@@ -228,14 +227,6 @@ impl ProdSimulator {
     }
 }
 
-impl TryFrom<Circuit<PureCircuit>> for ProdSimulator {
-    type Error = ProdSimulatorError;
-
-    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
-        Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
-    }
-}
-
 impl TryFrom<Circuit<HybridCircuit>> for ProdSimulator {
     type Error = ProdSimulatorError;
 
@@ -248,9 +239,11 @@ impl TryFrom<Circuit<HybridCircuit>> for ProdSimulator {
     }
 }
 
-impl HybridSimulator for ProdSimulator {
-    fn registers(&self) -> &RegisterFile {
-        &self.registers
+impl TryFrom<Circuit<PureCircuit>> for ProdSimulator {
+    type Error = ProdSimulatorError;
+
+    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
+        Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
     }
 }
 
@@ -294,6 +287,13 @@ impl DebuggableSimulator for ProdSimulator {
         false
     }
 }
+
+impl HybridSimulator for ProdSimulator {
+    fn registers(&self) -> &RegisterFile {
+        &self.registers
+    }
+}
+
 impl StoredCircuitSimulator for ProdSimulator {
     type B = HybridCircuit;
     fn circuit(&self) -> &Circuit<HybridCircuit> {
