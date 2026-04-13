@@ -2,7 +2,7 @@ use cubecl::wgpu::WgpuRuntime;
 use quasim::{
     circuit::{Circuit, HybridCircuit, PureCircuit},
     gpu_sv_simulator::GpuStateVectorSimulator,
-    prod_simulator::ProdSimulator,
+    product_state_simulator::ProductStateSimulator,
     simulator::{BuildSimulator, DebuggableSimulator, RunnableSimulator, StoredCircuitSimulator},
     sv_simulator::{SVSimulator, SVSimulatorDebugger},
 };
@@ -16,7 +16,7 @@ fn main() {
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator],
+    types = [SVSimulatorDebugger, ProductStateSimulator],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
@@ -34,7 +34,7 @@ where
     while sim.next() {}
 }
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator],
+    types = [SVSimulatorDebugger, ProductStateSimulator],
     args = [1000,2000,4000,8000,16000,32000],
     sample_count = 10,
 )]
@@ -52,7 +52,7 @@ where
     while sim.next() {}
 }
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator],
+    types = [SVSimulatorDebugger, ProductStateSimulator],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
@@ -72,7 +72,7 @@ where
     while sim.next() {}
 }
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator],
+    types = [SVSimulatorDebugger, ProductStateSimulator],
     args = [1, 2, 4, 8, 16, 20, 22],
     sample_count = 10,
 )]
@@ -100,7 +100,7 @@ where
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator],
+    types = [SVSimulatorDebugger, ProductStateSimulator],
     args = [1, 2, 4, 8, 16, 20, 22],
     sample_count = 10,
 )]
@@ -127,7 +127,7 @@ where
 }
 
 #[divan::bench(
-    types = [SVSimulatorDebugger, ProdSimulator],
+    types = [SVSimulatorDebugger, ProductStateSimulator],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
