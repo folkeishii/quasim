@@ -1,11 +1,12 @@
 use std::marker::PhantomData;
 use std::mem::replace;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut, Index};
 use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, DVector, Dim, Matrix, Matrix2, RawStorage, dmatrix};
 use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
+use serde::{Deserialize, Serialize};
 
 use crate::gate::{Gate, GateType, QBits};
 
@@ -496,6 +497,72 @@ impl Iterator for BitMaskIter {
         }
         self.next += 1;
         Some(ret)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub struct BitSet(pub usize);
+
+impl BitSet {
+    pub fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+
+    pub fn set(&mut self, bit: usize) {
+        self.0 |= 1usize << bit;
+    }
+
+    pub fn nul(&mut self, bit: usize) {
+        self.0 &= !(1usize << bit);
+    }
+
+    /// inserts a `1` on bit offset `bit`
+    pub fn insert(&mut self, bit: usize) {
+        let tmp = self.0 & !(usize::MAX << bit);
+        self.0 <<= 1;
+        self.0 &= usize::MAX << bit;
+        self.0 |= tmp;
+        self.0 |= 1usize << bit;
+    }
+
+    /// removes the bit on bit offset `bit`
+    pub fn erase(&mut self, bit: usize) {
+        let tmp = self.0 & !(usize::MAX << bit);
+        self.0 >>= 1;
+        self.0 &= usize::MAX << bit;
+        self.0 |= tmp;
+    }
+}
+
+impl Index<usize> for BitSet {
+    type Output = bool;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        if (self.0 >> index) & 1 != 0 {
+            &true
+        } else {
+            &false
+        }
+    }
+}
+
+impl Deref for BitSet {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for BitSet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<usize> for BitSet {
+    fn from(value: usize) -> Self {
+        Self(value)
     }
 }
 
