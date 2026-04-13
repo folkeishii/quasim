@@ -78,7 +78,7 @@ impl CubeSimulator {
             }
         });
         let total_prob = read!(total_prob).sqrt();
-        self.state_vector.map(|state, val| {
+        self.state_vector.map(|_, val| {
             *val /= total_prob;
         });
     }
@@ -170,7 +170,7 @@ where
     B: CircuitBehaviour,
     Circuit<B>: Into<Circuit<HybridCircuit>>,
 {
-    type Error = ();
+    type Error = CubeError;
 
     fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -582,3 +582,6 @@ mod tests {
         }
     }
 }
+
+#[derive(Debug, thiserror::Error)]
+pub enum CubeError {}
