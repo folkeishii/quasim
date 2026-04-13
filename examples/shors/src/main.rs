@@ -511,7 +511,7 @@ mod tests {
 
         sim.cont();
 
-        let x_tot = x.iter().enumerate().map(|(i, &b)| b << i).sum();
+        let x_tot: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
 
         let top = sim.register("top").read();
         let bott = sim.register("bott").read();
