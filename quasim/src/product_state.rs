@@ -279,8 +279,8 @@ mod tests {
     use crate::{
         circuit::Circuit,
         ext::equal_state_c,
-        product_state_simulator::ProductStateSimulator,
         product_state::ProductState,
+        product_state_simulator::ProductStateSimulator,
         simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
     };
     use nalgebra::{Complex, DVector};
