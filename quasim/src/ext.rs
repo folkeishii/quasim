@@ -511,7 +511,7 @@ impl BitSet {
     pub fn insert(&mut self, bit: usize) {
         let tmp = self.0 & !(usize::MAX << bit);
         self.0 <<= 1;
-        self.0 &= usize::MAX << bit;
+        self.0 &= usize::MAX << (bit+1);
         self.0 |= tmp;
         self.0 |= 1usize << bit;
     }

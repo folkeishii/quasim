@@ -35,7 +35,7 @@ pub struct Node<const N: usize, L: Locker> {
 }
 impl<const N: usize, L> Node<N, L>
 where
-    L: Locker<Inner = Node<N, L>>,
+    L: Locker<Inner = Node<{N - 1}, L>>,
 {
     fn node(&self, path: BitSet, offset: usize) -> Option<L> {
         let mut path = path;
@@ -201,6 +201,8 @@ impl Iterator for NCrIter {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Arc, RwLock};
+
     use crate::cube_map::NCrIter;
 
     #[test]
@@ -220,4 +222,8 @@ mod tests {
             assert_eq!(it.next(), None)
         }
     }
+}
+
+trait NCube {
+    type Storage;
 }
