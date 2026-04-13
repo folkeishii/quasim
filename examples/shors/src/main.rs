@@ -3,10 +3,17 @@ use quasim::expr_dsl::expr_helpers::{rb};
 use std::f64::consts::PI;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
 use quasim::sv_simulator::{ SVSimulatorDebugger};
-//use rand::RngExt;
-use num_integer::{Integer};
+use rand::RngExt;
+use num_integer::{Integer, Roots, gcd};
 
-// Computes the modular inverse of a mod n
+/// Computes the modular inverse of `a` mod `n`.
+/// 
+/// # Arguments
+/// * `a` - Number to compute modular inverse of
+/// * `n` -  Number Modulo
+/// 
+/// # Returns
+/// * `isize`, representing the inverse of `a` mod `n`
 pub fn mod_inv(a: isize, n: isize) -> isize {
     let egcd = a.extended_gcd(&n);
 
@@ -18,28 +25,77 @@ pub fn mod_inv(a: isize, n: isize) -> isize {
     inv
 }
 
-pub fn modpow(mut base: usize, mut exp: usize, modulus: usize) -> usize {
+/// Computes the exponential power of a number modulo.
+/// 
+/// # Arguments
+/// * `b` - The base of the exponential
+/// * `ex` -  The power to raise the `base` to
+/// * `m` - The modulo number
+/// 
+/// # Returns
+/// * `isize`, representing (`b`^`ex`) mod `m`
+pub fn modpow(mut b: usize, mut ex: usize, m: usize) -> usize {
     let mut result = 1;
-    base %= modulus;
-    while exp > 0 {
-        if exp % 2 == 1 {
-            result = (result * base) % modulus;
+    b %= m;
+    while ex > 0 {
+        if ex % 2 == 1 {
+            result = (result * b) % m;
         }
-        base = (base * base) % modulus;
-        exp /= 2;
+        b = (b * b) % m;
+        ex /= 2;
     }
     result
 }
 
-// Adds a to the second n bits of the register
-fn create_adder(n: usize, a: usize) -> Circuit {
+/// Refines a candidate period `r` by finding the smallest divisor `d`
+/// such that `a^d ≡ 1 (mod n)`.
+/// 
+/// # Arguments
+/// * `a` - The base used in modular exponentiation
+/// * `n` -  The modulo number
+/// * `r` - Candidate period 
+/// 
+/// # Returns
+/// * `Some(d)` - smallest valid period dividing `r`
+/// * `None` - if no valid refinement is found
+pub fn refine_period(a: usize, n: usize, r: usize) -> Option<usize> {
+    if r == 0 {
+        return None;
+    }
+
+    for d in 1..=r.sqrt() {
+        if r % d == 0 && modpow(a, d, n) == 1 {
+            return Some(d); // smallest valid period  
+        }
+    }
+    None
+}
+
+/// Constructs an adder gate that sums two numbers and stores the
+/// result in `n_bits` qubits.
+/// 
+/// The gate is intended to operate on a circuit that has already been
+/// transformed by a Quantum Fourier Transform (QFT). The input state
+/// is therefore assumed to be in the QFT basis.
+/// 
+/// The gate performs the transformation:
+/// 
+/// `|ϕ(b)⟩ --> |ϕ(a+b)⟩`
+/// 
+/// # Arguments
+/// * `a` - First number to add
+/// * `b` - Second number to add
+/// 
+/// # Returns
+/// * `PureCircuit` representing the adder operation
+fn create_adder(a: usize, b: usize) -> Circuit {
 
     // Number of bits needed to represent n and one overflow bit
-    let n_bits = 1 + ((n as f64)+1.0).log2().ceil() as usize;
+    let n_bits = 1 + ((a as f64)+1.0).log2().ceil() as usize;
 
     // Bitwise representation of a
     let a_bit_array = (0..n_bits)
-    .map(|i| a & (1 << i) != 0)
+    .map(|i| b & (1 << i) != 0)
     .collect::<Vec<bool>>();
 
     let mut circuit = Circuit::new(n_bits);
@@ -58,7 +114,22 @@ fn create_adder(n: usize, a: usize) -> Circuit {
     circuit
 }
 
-// Adds a to the second n bits of the register mod n
+/// Constructs a modular adder gate that adds the value `a` to the circuit mod `n`.
+/// 
+/// The gate is intended to operate on a circuit that has already been
+/// transformed by a Quantum Fourier Transform (QFT). The input state
+/// is therefore assumed to be in the QFT basis.
+/// 
+/// The gate performs the transformation:
+/// 
+/// `|ϕ(b)⟩ --> |ϕ((a+b) mod n)⟩`
+/// 
+/// # Arguments
+/// * `n` - Modulo number
+/// * `a` - Number to add
+/// 
+/// # Returns
+/// * `PureCircuit` representing the modular adder operation
 fn create_mod_adder(n: usize, a: usize) -> Circuit {
 
     // n-bits to represent the number being added to
@@ -95,8 +166,20 @@ fn create_mod_adder(n: usize, a: usize) -> Circuit {
 }
 
 
-// Multiplies a and the first n_bits (x), stores the value in the second n_bits
-// Disallows values a = n
+/// Constructs a controlled multiplier gate that multiplies `a`
+/// with the value of the first set of `n_bits` qubits and adds it
+/// to the value of the second set of `n_bits` qubits, everything mod `n`.
+/// 
+/// The gate performs the transformation:
+/// 
+/// `|x|b⟩ --> |x|(b+a*x) mod n⟩`
+/// 
+/// # Arguments
+/// * `n` - Modulo number
+/// * `a` - Number to multiply with
+/// 
+/// # Returns
+/// * `PureCircuit` representing the controlled multiplier operation
 fn create_cmult(n: usize, a: usize) -> Circuit {
     let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
@@ -114,6 +197,18 @@ fn create_cmult(n: usize, a: usize) -> Circuit {
     circuit
 }
 
+/// Constructs a swap gate that swaps the first set of
+/// `n_bits` qubits with the second set of `n_bits` qubits.
+/// 
+/// The gate performs the transformation:
+/// 
+/// `|x|b⟩ --> |b|x⟩`
+/// 
+/// # Arguments
+/// * `n` - Number with size `n_bits`, determines what qubits to target
+/// 
+/// # Returns
+/// * `PureCircuit` representing the swap operation
 fn create_swap(n: usize) -> Circuit {
     let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
     
@@ -126,7 +221,19 @@ fn create_swap(n: usize) -> Circuit {
     circuit
 }
 
-
+/// Constructs a controlled unitary gate that multiplies `a`
+/// with the first set of `n_bits` qubits mod `n`.
+/// 
+/// The gate performs the transformation:
+/// 
+/// `|x⟩ --> |(a*x) mod n⟩`
+/// 
+/// # Arguments
+/// * `n` - Modulo number
+/// * `a` - Number to multiply with
+/// 
+/// # Returns
+/// * `PureCircuit` representing the controlled multiplier operation
 fn create_u_a(n: usize, a: usize) -> Circuit {
     let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
@@ -142,6 +249,24 @@ fn create_u_a(n: usize, a: usize) -> Circuit {
     circuit
 }
 
+/// Runs the Quantum Phase Estimation (QPE) algorithm used for period finding.
+/// 
+/// The circuit estimates the phase associated with the unitary operator
+/// defined by modular multiplication, which is used to extract the order of `a` modulo `n`.
+/// 
+/// It can be expressed that the circuit estimates the eigenphase of the unitary operator U defined by:
+/// 
+/// `U|x⟩ = |(a*x) mod n⟩`
+/// 
+/// **NOTE: This algorithm is probalistic and may therefore fail to return a valid period although
+/// one may exist for the chosen `a`.**
+/// 
+/// # Arguments
+/// * `n` - Modulo number
+/// * `a` - Base used in modular exponentiation
+/// 
+/// # Returns
+/// * `usize`, representing the estimated period 
 pub fn quantum(n: usize, a: usize) -> usize {
     let n_bits: usize = ((n as f64)+1.0).log2().ceil() as usize;
 
@@ -178,100 +303,102 @@ pub fn quantum(n: usize, a: usize) -> usize {
     sim.register("res").read()
 }
 
-/* 
-fn shors(n: usize, init_a: usize) -> Vec<usize> {
-    let mut a = init_a;
-    loop {
-        if n % 2 == 0 {
-            return vec![2, n / 2];
-        }
+/// Runs Shor's algorithm to attempt to factor `n`.
+/// 
+/// # Arguments
+/// * `n` - Number to factor
+/// * `a` - Randomly chosen coprime to `n` in range [2, n-1] used for modular exponentation 
+/// 
+/// **NOTE: This algorithm is probalistic and may therefore not return valid factors although
+/// they may exist for the chosen `a`.**
+/// 
+/// # Returns
+/// * `Some(Vec![f1,f2]` if non-trivial factors are found
+/// * `None` if the attempt fails (due to an invalid period or quantum failure)
+pub fn shors(n: usize, a: usize) -> Option<Vec<usize>> {
+    if n % 2 == 0 {
+        return Some(vec![2, n / 2]);
+    }
 
-        if a.gcd(n) > 1 {
-            return vec![n, a];
-        }
+    let g = gcd(a, n);
+    if g > 1 {
+        return Some(vec![g, n / g]);
+    }
 
-        let l = quantum(n, a);
+    let r = quantum(n, a);
 
-        if l == 0 {
+    if r == 0 || r % 2 != 0 {
+        return None;
+    }
+
+    let a_pow = modpow(a, r / 2, n);
+
+    // 4. reject bad cases
+    if a_pow == 1 || a_pow == n - 1 {
+        return None;
+    }
+
+    let factor1 = gcd(a_pow - 1, n);
+    let factor2 = n / factor1;
+
+    if factor1 != 1 && factor1 != n {
+        return Some(vec![factor1, factor2]);
+    }
+    None
+}
+
+/// Runs Shor's algorithm to attempt to factor `n` with a randomized base
+/// 
+/// # Arguments
+/// * `n` - Number to factor
+/// * `start` - Lower bound for `a` (inclusive, minimum 2)
+/// * `stop` - Upper bound for `a` (inclusive, maximum n - 1)
+/// 
+/// **NOTE: This algorithm is probalistic and may therefore not return valid factors although
+/// they may exist in the chosen range. The function runs the algorithm 20 times but may still
+/// fail to find valid factors.**
+/// 
+/// # Returns
+/// * `Some(Vec![f1,f2]` if non-trivial factors are found
+/// * `None` if the attempt fails (due to an invalid period or quantum failure)
+pub fn shors_random(n: usize, start: usize, stop: usize) -> Option<Vec<usize>> {
+
+    assert!(n > 1, "n must be > 1");
+    assert!(start >= 2, "start must be >= 2");
+    assert!(stop < n, "stop must be < n");
+    assert!(start <= stop, "invalid range: start > stop");
+
+    let mut rng = rand::rng();
+
+    for _ in 0..20 {
+        let a = rng.random_range(start..=stop);
+
+        if gcd(a, n) != 1 {
             continue;
         }
 
-        let b = l/n.pow(2);
-
-        // Fractions
-
-        let r = 1;
-
-        if r % 2 != 0{
-            let mut rng = rand::rng();
-            a = rng.random_range(2..n);
-            continue;
-        }
-
-        let n1 = (b.pow(r/2) + 1).gcd(n);
-
-        if 1 < n1 && n1 < n {
-            return vec![n1, n / n1];
-        } else {
-            let mut rng = rand::rng();
-            a = rng.random_range(2..n);
-            continue;
+        if let Some(factors) = shors(n, a){
+            return Some(factors);
         }
     }
+    None
 }
 
-fn shors_random(n: usize) -> Vec<usize> {
-    let a = n/2; // Randomly chosen coprime to n
-    return shors(n, a);
-}
-*/
 
 fn main() {
-
     let a = 4;
     let n = 5;
-    let n_bits = ((n as f64)+1.0).log2().ceil() as usize;
 
-    let c_array = (n_bits..=2*n_bits).collect::<Vec<usize>>();
-
-    let mut c = Circuit::new(2*n_bits+2).x(1).new_reg("res",n_bits+1);
-    c=c.breakpoint();
-    c=c.call_new("cmult", create_cmult(n, a), 0);
-    c=c.breakpoint();
-    c=c.measure_bits(&c_array,"res");
-    let mut sim = SVSimulatorDebugger::build(c).unwrap();
-
-    sim.cont();
-    println!("Initial state: {}", sim.current_state());
-
-    sim.cont();
-    
-    for i in 0..n_bits{
-        println!("State before {}: {}", i, sim.current_state());
-        sim.cont();
-    }
-
-    println!("Before reverse QFT: {}", sim.current_state());
-
-    sim.cont();
-    
-    println!("After cmult: {}", sim.current_state());
-
-    sim.cont();
-
-    println!("After measurement: {}", sim.current_state());
-
-    println!("Result: {}", sim.register("res").read())
+    println!("a: {}, n: {}",a,n);
 }
 
 #[cfg(test)]
 mod tests{
-    use num_integer::{gcd};
     use quasim::{circuit::{Circuit}, 
         simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, RunnableSimulator},
         sv_simulator::{SVSimulator, SVSimulatorDebugger}};
 
-    use crate::{create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, modpow, quantum};
+    use crate::{create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, modpow, quantum, refine_period, shors, shors_random};
 
     #[test]
     fn test_adder(){
@@ -465,20 +592,67 @@ mod tests{
 
     #[test]
     fn test_quantum(){
-        let n = 49;
-        let a = 11;
+        let n = 15;
+        let a = 2;
 
-        let r = quantum(n, a);
+        let mut successes = 0;
         
-        let a_pow = modpow(a, r/2, n);
-        if a_pow == 0 || a_pow == 1 || a_pow == n-1{
-            println!("No valid period found.")
+        for _ in 0..10 {
+            let r_cand = quantum(n, a);
+            if let Some(r) = refine_period(a, n, r_cand) {
+                if modpow(a, r, n) == 1 {
+                    successes += 1;
+                }
+            }
+            
         }
+        assert!(successes > 0, "No successful period found in 100 runs");
+    }
 
-        else {
-            let factor1 = gcd(a_pow -1, n);
-            let factor2 = n/factor1;
-            println!("Factor 1: {}, Factor 2: {}", factor1,factor2);
+    #[test]
+    fn test_shors() {
+        let n = 15;
+        let a = 2;
+        let attempts = 20;
+
+        let mut success = false;
+
+        for _ in 0..attempts {
+            if let Some(res) = shors(n, a) {
+                let f1 = res[0];
+                let f2 = res[1];
+
+                assert_eq!(f1*f2,n);
+                assert!(f1 > 1 && f2 > 1);
+
+                success = true;
+                break;
+            }
         }
+        assert!(success, "Shor failed to find factors after {} attempts", attempts);
+    }
+
+    #[test]
+    fn test_random_shors(){
+        let n = 15;
+        let start: usize = 2;
+        let stop: usize = 10;
+        let attempts: usize = 20;
+
+        let mut success = false;
+
+        for _ in 0..20 {
+            if let Some(res) = shors_random(n, start, stop) {
+                let f1 = res[0];
+                let f2 = res[1];
+
+                assert_eq!(f1*f2,n);
+                assert!(f1 > 1 && f2 > 1);
+
+                success = true;
+                break;
+            }
+        }
+        assert!(success, "Shor failed to find factors after {} attempts", attempts);
     }
 }
