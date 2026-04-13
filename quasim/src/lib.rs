@@ -10,8 +10,8 @@ pub mod gate;
 #[cfg(feature = "gpu")]
 pub mod gpu_sv_simulator;
 pub mod instruction;
-pub mod prod_simulator;
 pub mod product_state;
+pub mod product_state_simulator;
 pub mod register_file;
 pub mod simple_simulator;
 pub mod simulator;

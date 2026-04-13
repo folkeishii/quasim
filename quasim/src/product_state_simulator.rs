@@ -12,7 +12,7 @@ use crate::{
 use nalgebra::{Complex, DVector};
 
 #[derive(Debug, Clone)]
-pub struct ProdSimulator {
+pub struct ProductStateSimulator {
     product_state: ProductState,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
@@ -20,12 +20,12 @@ pub struct ProdSimulator {
     state_vector_cache: StateVector,
 }
 
-impl ProdSimulator {
+impl ProductStateSimulator {
     fn init(circuit: Circuit<HybridCircuit>) -> Self {
         let registers = RegisterFile::from(circuit.registers());
         let init_state = ProductState::zeros(circuit.n_qubits());
 
-        ProdSimulator {
+        ProductStateSimulator {
             circuit: circuit,
             pc: Default::default(),
             registers: registers,
@@ -174,10 +174,9 @@ impl ProdSimulator {
 
         // "Split" state.
         sys.qubits_mut().remove(local_target);
-        *sys.state_vector_mut() = sys.state_vector().schmitt_trace(
-            &[local_target],
-            local_n_qubits,
-        );
+        *sys.state_vector_mut() = sys
+            .state_vector()
+            .schmitt_trace(&[local_target], local_n_qubits);
 
         self.product_state[target_system] = sys;
 
@@ -230,8 +229,8 @@ impl ProdSimulator {
     }
 }
 
-impl TryFrom<Circuit<HybridCircuit>> for ProdSimulator {
-    type Error = ProdSimulatorError;
+impl TryFrom<Circuit<HybridCircuit>> for ProductStateSimulator {
+    type Error = ProductStateSimulatorError;
 
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         let circuit = value;
@@ -242,15 +241,15 @@ impl TryFrom<Circuit<HybridCircuit>> for ProdSimulator {
     }
 }
 
-impl TryFrom<Circuit<PureCircuit>> for ProdSimulator {
-    type Error = ProdSimulatorError;
+impl TryFrom<Circuit<PureCircuit>> for ProductStateSimulator {
+    type Error = ProductStateSimulatorError;
 
     fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
         Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
     }
 }
 
-impl DebuggableSimulator for ProdSimulator {
+impl DebuggableSimulator for ProductStateSimulator {
     type Storage = DVector<Complex<f64>>;
     type State = Complex<f64>;
 
@@ -291,13 +290,13 @@ impl DebuggableSimulator for ProdSimulator {
     }
 }
 
-impl HybridSimulator for ProdSimulator {
+impl HybridSimulator for ProductStateSimulator {
     fn registers(&self) -> &RegisterFile {
         &self.registers
     }
 }
 
-impl StoredCircuitSimulator for ProdSimulator {
+impl StoredCircuitSimulator for ProductStateSimulator {
     type B = HybridCircuit;
     fn circuit(&self) -> &Circuit<HybridCircuit> {
         &self.circuit
@@ -309,50 +308,50 @@ impl StoredCircuitSimulator for ProdSimulator {
 }
 
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum ProdSimulatorError {}
+pub enum ProductStateSimulatorError {}
 
 #[cfg(test)]
 mod tests {
     use crate::common_test;
-    use crate::prod_simulator::ProdSimulator;
+    use crate::product_state_simulator::ProductStateSimulator;
 
     #[test]
     fn hybrid_test() {
-        common_test::hybrid_test::<ProdSimulator>();
+        common_test::hybrid_test::<ProductStateSimulator>();
     }
 
     #[test]
     fn register_test() {
-        common_test::register_test::<ProdSimulator>();
+        common_test::register_test::<ProductStateSimulator>();
     }
 
     #[test]
     fn double_sub() {
-        common_test::double_sub::<ProdSimulator>();
+        common_test::double_sub::<ProductStateSimulator>();
     }
 
     #[test]
     fn deep_sub() {
-        common_test::deep_sub::<ProdSimulator>();
+        common_test::deep_sub::<ProductStateSimulator>();
     }
 
     #[test]
     fn deep_ctrl_sub() {
-        common_test::deep_ctrl_sub::<ProdSimulator>();
+        common_test::deep_ctrl_sub::<ProductStateSimulator>();
     }
 
     #[test]
     fn interleaved() {
-        common_test::interleaved::<ProdSimulator>();
+        common_test::interleaved::<ProductStateSimulator>();
     }
 
     #[test]
     fn mid_measure_all() {
-        common_test::mid_measure_all::<ProdSimulator>();
+        common_test::mid_measure_all::<ProductStateSimulator>();
     }
 
     #[test]
     fn mid_measure_bit() {
-        common_test::mid_measure_bit::<ProdSimulator>();
+        common_test::mid_measure_bit::<ProductStateSimulator>();
     }
 }

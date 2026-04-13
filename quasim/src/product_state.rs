@@ -279,7 +279,7 @@ mod tests {
     use crate::{
         circuit::Circuit,
         ext::equal_state_c,
-        prod_simulator::ProdSimulator,
+        product_state_simulator::ProductStateSimulator,
         product_state::ProductState,
         simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
     };
@@ -295,7 +295,7 @@ mod tests {
 
     #[test]
     fn interleaved_amp_test() {
-        let mut sim = ProdSimulator::build(
+        let mut sim = ProductStateSimulator::build(
             Circuit::new(4)
                 .h(0)
                 .ch(&[0], 2)
