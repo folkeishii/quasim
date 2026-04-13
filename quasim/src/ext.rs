@@ -495,20 +495,24 @@ impl Iterator for BitMaskIter {
 pub struct BitSet(pub usize);
 
 impl BitSet {
-    pub fn is_empty(&self) -> bool {
+    #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
         self.0 == 0
     }
 
-    pub fn set(&mut self, bit: usize) {
+    #[inline(always)]
+    pub const fn set(&mut self, bit: usize) {
         self.0 |= 1usize << bit;
     }
 
-    pub fn nul(&mut self, bit: usize) {
+    #[inline(always)]
+    pub const fn nul(&mut self, bit: usize) {
         self.0 &= !(1usize << bit);
     }
 
+    #[inline(always)]
     /// inserts a `1` on bit offset `bit`
-    pub fn insert(&mut self, bit: usize) {
+    pub const fn insert(&mut self, bit: usize) {
         let tmp = self.0 & !(usize::MAX << bit);
         self.0 <<= 1;
         self.0 &= usize::MAX << (bit+1);
@@ -516,12 +520,25 @@ impl BitSet {
         self.0 |= 1usize << bit;
     }
 
+    #[inline(always)]
     /// removes the bit on bit offset `bit`
-    pub fn erase(&mut self, bit: usize) {
+    pub const fn erase(&mut self, bit: usize) {
         let tmp = self.0 & !(usize::MAX << bit);
         self.0 >>= 1;
         self.0 &= usize::MAX << bit;
         self.0 |= tmp;
+    }
+
+    #[inline(always)]
+    /// Swaps bit `bit1` and bit `bit2`
+    pub const fn swap(&mut self, bit1: usize, bit2: usize) {
+        let org_combined = (1 << bit1) | (1 << bit2);
+        let moved1 = ((self.0 >> bit1) & 1) << bit2;
+        let moved2 = ((self.0 >> bit2) & 1) << bit1;
+        let moved_combined = moved1 | moved2;
+
+        self.0 &= !org_combined;
+        self.0 |= moved_combined;
     }
 }
 
