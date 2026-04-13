@@ -4,7 +4,7 @@ use crate::register_file::{Register, RegisterFile};
 use crate::sampler::Sampler;
 use crate::{circuit::Circuit, instruction::Instruction};
 
-/// # BuildSimulator
+/// # Buildable
 /// Any simulator that is able to be built from a
 /// circuit should implement this trait.
 ///
@@ -163,12 +163,6 @@ where
         Ok(iter)
     }
 }
-// impl<Sim, B> Sampleable<B> for Sim
-// where
-//     Sim: Simulator + Buildable<B>,
-//     B: CircuitBehaviour,
-// {
-// }
 
 #[cfg(test)]
 mod tests {

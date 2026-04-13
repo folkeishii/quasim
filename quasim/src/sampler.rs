@@ -3,7 +3,6 @@ use crate::simulator::{QuantumState, Simulator, StoredRegisters};
 pub trait Sampler<S: Simulator> {
     type Output;
 
-    // fn circuit(&self) -> &Circuit<Self::CircuitBehaviour>;
     fn sample(&self, simulator: &S) -> Self::Output;
 }
 
