@@ -50,8 +50,8 @@ impl SyntaxSimulator {
                     );
                 }
             }
-            PureInstruction::Call(_, _, _) => {
-                todo!();
+            PureInstruction::Call(name, lsq, ctrl) => {
+                self.pc.jump_and_link(name.clone(), lsq, ctrl);
             }
         }
         Some(&self.state)
