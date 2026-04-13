@@ -1,6 +1,6 @@
+use core::panic;
 use std::{collections::VecDeque, fmt::Debug};
 
-use log::trace;
 use nalgebra::Complex;
 
 use crate::{
@@ -261,9 +261,14 @@ impl ExtendedBasis {
         match self {
             ExtendedBasis::Binary(mut bitstring) => {
                 let mut bases = Vec::new();
-                while bitstring > 0 {
-                    bases.push(ExtendedQubitBasis::One);
-                    bitstring -= 1;
+                while bitstring != 0 {
+                    let bit_is_one = (bitstring & 1) == 1;
+                    bases.push(if bit_is_one {
+                        ExtendedQubitBasis::One
+                    } else {
+                        ExtendedQubitBasis::Zero
+                    });
+                    bitstring = bitstring >> 1;
                 }
                 bases
             }
@@ -273,7 +278,9 @@ impl ExtendedBasis {
 
     fn vec_form_padded_to_len(self, n: usize) -> Vec<ExtendedQubitBasis> {
         let mut vec_form = self.vec_form();
-        vec_form.resize(n, ExtendedQubitBasis::Zero);
+        if vec_form.len() < n {
+            vec_form.resize(n, ExtendedQubitBasis::Zero);
+        }
         vec_form
     }
 
@@ -327,7 +334,6 @@ impl ExtendedBasis {
                         };
                         let basis = (msb.0 as usize) << extended_basis.len() | lsb_state;
                         let scalar_product = msb.1 * lsb.1;
-                        trace!("Basis: {}, Scalar: {}", basis, scalar_product);
                         ScaledState(ExtendedBasis::Binary(basis), scalar_product)
                     })
                     .collect::<Vec<_>>()
@@ -342,40 +348,58 @@ impl ExtendedBasis {
 
     // Gates
 
-    pub fn x(&mut self, target: usize) {
+    pub fn x(&mut self, target: usize) -> Option<Scalar> {
+        let mut eigenvalue = None;
+
         use ExtendedBasis::*;
         match self {
             Binary(bits) => *bits = *bits ^ (1 << target),
             Superposition(bases) => {
                 Self::pad_to_length(bases, target + 1);
+                if bases[target] == ExtendedQubitBasis::Minus {
+                    eigenvalue = Some(-Scalar::ONE);
+                }
                 bases[target] = bases[target].x();
             }
         }
+        eigenvalue
     }
 
-    pub fn y(&mut self, target: usize) {
+    pub fn y(&mut self, target: usize) -> Option<Scalar> {
+        let mut eigenvalue = None;
+
         use ExtendedBasis::*;
         match self {
             Binary(bits) => *bits = *bits ^ (1 << target),
             Superposition(bases) => {
                 Self::pad_to_length(bases, target + 1);
+                if bases[target] == ExtendedQubitBasis::MinusI {
+                    eigenvalue = Some(-Scalar::ONE);
+                }
                 bases[target] = bases[target].y();
             }
         }
+        eigenvalue
     }
 
-    pub fn z(&mut self, target: usize) {
+    pub fn z(&mut self, target: usize) -> Option<Scalar> {
+        let mut eigenvalue = None;
+
         use ExtendedBasis::*;
         match self {
             Binary(_) => (),
             Superposition(bases) => {
                 Self::pad_to_length(bases, target + 1);
+                if bases[target] == ExtendedQubitBasis::One {
+                    eigenvalue = Some(-Scalar::ONE);
+                }
                 bases[target] = bases[target].z();
             }
         }
+        eigenvalue
     }
 
-    pub fn h(&mut self, target: usize) {
+    pub fn h(&mut self, target: usize) -> Option<Scalar> {
         use ExtendedBasis::*;
         match self {
             Binary(bits) => {
@@ -395,23 +419,34 @@ impl ExtendedBasis {
                 bases[target] = bases[target].h();
             }
         }
+        None // This simulator does not have syntax for representing the eigenvector of the H gate
     }
 
-    pub fn s(&mut self, target: usize) {
+    pub fn s(&mut self, target: usize) -> Option<Scalar> {
+        let mut eigenvalue = None;
+
         use ExtendedBasis::*;
         match self {
             Binary(_) => (),
             Superposition(bases) => {
                 Self::pad_to_length(bases, target + 1);
+                if bases[target] == ExtendedQubitBasis::One {
+                    eigenvalue = Some(Scalar::I);
+                }
                 bases[target] = bases[target].s();
             }
         }
+        eigenvalue
     }
 
-    pub fn r_y(self, target: usize, angle: f32) -> [ScaledState; 2] {
+    pub fn r_y(self, target: usize, angle: f32) -> [Option<ScaledState>; 2] {
         use ExtendedBasis::*;
         match self {
-            Binary(_) => Self::r_y(Superposition(self.vec_form()), target, angle),
+            Binary(_) => Self::r_y(
+                Superposition(self.vec_form_padded_to_len(target + 1)),
+                target,
+                angle,
+            ),
             Superposition(_) => {
                 let angle = Complex::from(angle / 2f32);
                 let expanded = self.expand_qubit(target);
@@ -423,19 +458,24 @@ impl ExtendedBasis {
                 let top_left = Scalar::from(angle.cos()) * *zero_scalar;
                 let bottom_left = Scalar::from(angle.sin()) * *zero_scalar;
 
-                let r: [ScaledState; 2] =
-                    if let Some(ScaledState(ref one_basis, ref one_scalar)) = expanded[0] {
+                let r: [Option<ScaledState>; 2] =
+                    if let Some(ScaledState(ref one_basis, ref one_scalar)) = expanded[1] {
                         let top_right = Scalar::from(-angle.sin()) * *one_scalar;
                         let bottom_right = Scalar::from(angle.cos()) * *one_scalar;
 
                         [
-                            ScaledState(zero_basis.clone(), top_left + top_right),
-                            ScaledState(one_basis.clone(), bottom_left + bottom_right),
+                            Some(ScaledState(zero_basis.clone(), top_left + top_right)),
+                            Some(ScaledState(one_basis.clone(), bottom_left + bottom_right)),
                         ]
                     } else {
+                        // Zero case only expands into one state, so the target is already binary
+                        let mut one_basis = zero_basis.clone();
+                        one_basis.x(target);
+
                         [
-                            ScaledState(zero_basis.clone(), top_left),
-                            ScaledState(zero_basis.clone(), bottom_left),
+                            // Top right and bottom right are zero because there is no one case
+                            Some(ScaledState(zero_basis.clone(), top_left)),
+                            Some(ScaledState(one_basis.clone(), bottom_left)),
                         ]
                     };
 
@@ -444,20 +484,36 @@ impl ExtendedBasis {
         }
     }
 
-    pub fn r_z(self, target: usize, angle: f32) -> [Option<ScaledState>; 2] {
+    pub fn p(self, target: usize, angle: f32) -> [Option<ScaledState>; 2] {
         use ExtendedBasis::*;
         match self {
             Binary(_) => [Some(ScaledState(self, Scalar::ONE)), None],
             Superposition(_) => {
                 let mut result = self.expand_qubit(target);
-
-                let Some(Some(ScaledState(_, one_case_scalar))) = result.get_mut(1) else {
-                    // If the qubit was already in a binary state, the phase cannot be altered.
-                    return result;
-                };
-
                 let phase_change: Scalar = Complex::exp(Complex::I * angle).into();
-                *one_case_scalar = phase_change * *one_case_scalar;
+
+                result.iter_mut().flatten().for_each(|ScaledState(basis, scalar)| {
+                    use ExtendedBasis::*;
+                    match basis {
+                        Binary(bits) => {
+                            if (*bits & (1 << target)) != 0 {
+                                *scalar = *scalar * phase_change;
+                            }
+                        }
+                        Superposition(bases) => {
+                            if let Some(qubit_basis) = bases.get(target) {
+                                use ExtendedQubitBasis::*;
+                                match qubit_basis {
+                                    One => *scalar = *scalar * phase_change,
+                                    Zero => (),
+                                    _ => panic!("Target qubit should have already been expanded into binary!"),
+                                }
+                            } else {
+                                // If the target qubit is out of bounds, it is effectively in the |0⟩ state, so no phase change should be applied.
+                            }
+                        }
+                    }
+                });
 
                 result
             }
@@ -481,7 +537,7 @@ impl Debug for ExtendedBasis {
             ExtendedBasis::Binary(bitstring) => write!(f, "|{}⟩", bitstring),
             ExtendedBasis::Superposition(bases) => {
                 write!(f, "|")?;
-                for basis in bases {
+                for basis in bases.iter().rev() {
                     write!(f, "{:?}", basis)?;
                 }
                 write!(f, "⟩")?;

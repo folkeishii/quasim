@@ -40,7 +40,7 @@ impl Scalar {
     }
 
     pub fn is_zero(&self) -> bool {
-        self == &Scalar::ZERO
+        self.number == Complex::new(0.0, 0.0)
     }
 
     pub fn probability(&self) -> f32 {

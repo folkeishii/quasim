@@ -4,12 +4,18 @@ mod state;
 #[cfg(test)]
 mod tests;
 
+use std::collections::HashMap;
+
+use log::{debug, trace};
 use rand::random;
 
 use crate::{
     circuit::{Circuit, PureCircuit, pc::CircuitPc},
     instruction::PureInstruction,
-    syntax_simulator::state::{ScaledState, SumOfScaledStates},
+    syntax_simulator::{
+        scalar::Scalar,
+        state::{ScaledState, SumOfScaledStates},
+    },
 };
 
 pub struct SyntaxSimulator {
@@ -33,6 +39,15 @@ impl SyntaxSimulator {
             PureInstruction::Gate(gate) => {
                 self.state.apply_gate(&gate);
                 self.pc.increment();
+                #[cfg(debug_assertions)]
+                {
+                    // In debug mode, we can afford to compute state between every step, so we do it
+                    // at every step to check for consistency and correctness.
+                    debug!(
+                        "All scaled states: {:?}",
+                        self.state.all_scaled_states().collect::<Vec<_>>()
+                    );
+                }
             }
             PureInstruction::Call(_, _, _) => {
                 todo!();
@@ -46,16 +61,58 @@ impl SyntaxSimulator {
         &self.state
     }
 
-    /// Returns the probability distribution over binary states,
-    /// all states containing an extended basis (eg, |+⟩, |−⟩, |i⟩, |−i⟩),
+    /// Returns the all expanded states of the current state,
+    /// where any state that contains an extended basis is expanded into the binary states it represents.
+    /// All states containing an extended basis (eg, |+⟩, |−⟩, |i⟩, |−i⟩),
     /// will be expanded into the binary states they represent.
     ///
     /// **CAUTION**: There is no deduplication or simplification of the resulting states,
-    /// so the same binary state may appear multiple times with different scalars, and these scalars should be summed to get the actual probability of that binary state.
-    fn unsugared_probability_distribution(&self) -> impl Iterator<Item = ScaledState> {
+    /// so the same binary state may appear multiple times with different scalars,
+    /// and these scalars should be summed to get the actual probability of that binary state.
+    fn all_states_unsugared(&self) -> impl Iterator<Item = ScaledState> {
+        debug!(
+            "All states unsugared: {:?}",
+            self.state
+                .all_scaled_states()
+                .flat_map(|s| s.all_inherent_states())
+                .collect::<Vec<_>>()
+        );
+
         self.state
-            .probability_distribution()
+            .all_scaled_states()
             .flat_map(|s| s.all_inherent_states())
+    }
+
+    fn probability_distribution(&self) -> HashMap<usize, Scalar> {
+        let mut summed_scalars: HashMap<usize, Scalar> = HashMap::new();
+        let non_zero_states = self.all_states_unsugared().filter(|s| !s.has_zero_coef());
+        for ScaledState(basis, scalar) in non_zero_states {
+            let basis = basis.into_binary(); // Unsugaring guarantees binary state here
+
+            debug_assert!(
+                basis < (1 << self.circuit.n_qubits()),
+                "Basis {} is too large for {} qubits",
+                basis,
+                self.circuit.n_qubits()
+            );
+
+            if let Some(old_scalar) = summed_scalars.get(&basis) {
+                // There already was a scalar for this basis
+                let new_scalar = *old_scalar + scalar;
+                if new_scalar.probability() == 0f32 {
+                    summed_scalars.remove(&basis);
+                } else {
+                    summed_scalars.insert(basis, new_scalar);
+                }
+            } else {
+                // This basis has no previous terms
+                summed_scalars.insert(basis, scalar);
+            }
+        }
+
+        debug!("Probability distribution: {:?}", summed_scalars);
+
+        summed_scalars
     }
 
     pub fn run(&mut self) -> usize {
@@ -63,10 +120,11 @@ impl SyntaxSimulator {
 
         let mut probability_so_far = 0f32;
         let guess = random::<f32>();
-        for ScaledState(state, scalar) in self.unsugared_probability_distribution() {
+        for (state, scalar) in self.probability_distribution() {
             probability_so_far += scalar.probability();
             if probability_so_far >= guess {
-                return state.into_binary();
+                trace!("Ran to completion! Measured state: {}", state);
+                return state;
             }
         }
 
@@ -82,9 +140,6 @@ impl TryFrom<Circuit<PureCircuit>> for SyntaxSimulator {
 
     fn try_from(circuit: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
         let n_qubits = circuit.n_qubits();
-
-        // Turn SWAP gates into 3 CX gates
-        let circuit = circuit.swaps_to_cxs();
 
         Ok(Self {
             circuit,
