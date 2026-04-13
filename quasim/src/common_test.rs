@@ -6,7 +6,7 @@ use crate::{
     cart,
     circuit::{Circuit, HybridCircuit},
     expr_dsl::expr_helpers::r,
-    ext::{equal_state_c, schmitt_reduce},
+    ext::equal_state_c,
     simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 
@@ -270,7 +270,7 @@ where
 }
 
 pub fn mid_measure_all<
-    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator + HybridSimulator,
 >()
 where
     D::Storage: Index<usize, Output = Complex<f64>>,
@@ -290,21 +290,17 @@ where
             .x(3)
             .measure("~a")
             .apply_if((r("a") + r("~a")).eq(0b1111))
-            .x(4),
+            .x(4)
+            .new_reg("res", 1)
+            .measure_bit(4, ("res", 0)),
     )
     .unwrap();
     while sim.next() {}
-    let q4 = schmitt_reduce(sim.current_state(), &[4], 5);
-    assert!(equal_state_c(
-        &q4,
-        &dvector![cart!(0.0), cart!(1.0)],
-        1,
-        0.001
-    ));
+    assert!(sim.register("res").read() & 1 == 1);
 }
 
 pub fn mid_measure_bit<
-    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
+    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator + HybridSimulator,
 >()
 where
     D::Storage: Index<usize, Output = Complex<f64>>,
@@ -330,17 +326,13 @@ where
             .measure_bit(2, ("~a", 2))
             .measure_bit(3, ("~a", 3))
             .apply_if((r("a") + r("~a")).eq(0b1111))
-            .x(4),
+            .x(4)
+            .new_reg("res", 1)
+            .measure_bit(4, ("res", 0)),
     )
     .unwrap();
     while sim.next() {}
-    let q4 = schmitt_reduce(sim.current_state(), &[4], 5);
-    assert!(equal_state_c(
-        &q4,
-        &dvector![cart!(0.0), cart!(1.0)],
-        1,
-        0.001
-    ));
+    assert!(sim.register("res").read() & 1 == 1);
 }
 
 pub fn interleaved<

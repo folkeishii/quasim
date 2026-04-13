@@ -7,7 +7,7 @@ use nalgebra::{Complex, DMatrix, DVector, Matrix2, dmatrix};
 use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
 
-use crate::gate::{Gate, GateType, QBits};
+use crate::gate::{Gate, GateType};
 
 #[macro_export]
 macro_rules! cart {
@@ -405,49 +405,11 @@ impl<T: Ord> OrdByKey<T> for T {
 mod tests {
     use crate::ext::{
         convert_matrix, convert_vector, equal_state_c, expand_matrix_from_gate, get_gate_matrix,
-        schmitt_reduce, schmitt_trace, swap_matrix,
+        swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
-    use std::f64::consts::{FRAC_1_SQRT_2, PI};
-
-    #[test]
-    fn schmitt_test() {
-        let hcnot = dvector![
-            cart!(FRAC_1_SQRT_2),
-            cart!(0.0),
-            cart!(0.0),
-            cart!(FRAC_1_SQRT_2)
-        ];
-
-        let rand0 = rand::random_range(-2.0 * PI..2.0 * PI);
-        let rand1 = rand::random_range(-2.0 * PI..2.0 * PI);
-        let rand2 = rand::random_range(-2.0 * PI..2.0 * PI);
-        let zero = dvector![cart!(1.0), cart!(0.0)];
-        let random_state =
-            get_gate_matrix(&Gate::new(GateType::U(rand0, rand1, rand2), &[0], &[0]).unwrap())
-                * zero.clone();
-
-        let tot_last = random_state.kronecker(&hcnot);
-        let trace_tot_last = schmitt_trace(&tot_last, &[2], 3);
-        assert!(equal_state_c(&trace_tot_last, &hcnot, 2, 0.001));
-        let reduce_tot_last = schmitt_reduce(&tot_last, &[0, 1], 3);
-        assert!(equal_state_c(&reduce_tot_last, &hcnot, 2, 0.001));
-
-        let tot_first = hcnot.kronecker(&random_state);
-        let trace_tot_first = schmitt_trace(&tot_first, &[0], 3);
-        assert!(equal_state_c(&trace_tot_first, &hcnot, 2, 0.001));
-        let reduce_tot_first = schmitt_reduce(&tot_first, &[1, 2], 3);
-        assert!(equal_state_c(&reduce_tot_first, &hcnot, 2, 0.001));
-
-        let tot_middle = expand_matrix_from_gate(&Gate::new(GateType::X, &[0], &[2]).unwrap(), 3)
-            * expand_matrix_from_gate(&Gate::new(GateType::H, &[], &[0]).unwrap(), 3)
-            * zero.kronecker(&random_state.kronecker(&zero));
-        let trace_tot_middle = schmitt_trace(&tot_middle, &[1], 3);
-        assert!(equal_state_c(&trace_tot_middle, &hcnot, 2, 0.001));
-        let reduce_tot_middle = schmitt_reduce(&tot_middle, &[0, 2], 3);
-        assert!(equal_state_c(&reduce_tot_middle, &hcnot, 2, 0.001));
-    }
+    use std::f64::consts::FRAC_1_SQRT_2;
 
     #[test]
     fn swap_test() {
