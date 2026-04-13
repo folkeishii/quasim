@@ -381,7 +381,7 @@ mod tests {
     use nalgebra::dvector;
 
     use crate::ext::equal_state_c;
-    use crate::simulator::{Debuggable};
+    use crate::simulator::Debuggable;
     use crate::{cart, common_test};
     use crate::{
         circuit::Circuit,
