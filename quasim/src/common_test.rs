@@ -1,4 +1,4 @@
-use std::f64::consts::FRAC_1_SQRT_2;
+use std::{f64::consts::FRAC_1_SQRT_2, ops::Index};
 
 use nalgebra::{Complex, DVector, dvector};
 
@@ -6,11 +6,15 @@ use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit},
     expr_dsl::expr_helpers::r,
-    ext::equal_to_matrix_c,
+    ext::equal_state_c,
     simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
 
-pub fn apply_gates<D: BuildSimulator<PureCircuit> + DebuggableSimulator>() {
+pub fn apply_gates<D>()
+where
+    D: BuildSimulator<PureCircuit> + DebuggableSimulator,
+    D::Storage: Index<usize, Output = Complex<f64>>,
+{
     let mut circuit = Circuit::new(3);
     circuit = circuit.h(0);
     let s1 = dvector![
@@ -84,24 +88,28 @@ pub fn apply_gates<D: BuildSimulator<PureCircuit> + DebuggableSimulator>() {
     let mut sim = D::build(circuit).expect("Could not build simulator");
 
     #[rustfmt::skip]
-    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s1, 0.000001));
+    assert!(equal_state_c({sim.next();sim.current_state()}, &s1, 3, 0.000001));
     #[rustfmt::skip]
-    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s2, 0.000001));
+    assert!(equal_state_c({sim.next();sim.current_state()}, &s2, 3, 0.000001));
     #[rustfmt::skip]
-    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s3, 0.000001));
+    assert!(equal_state_c({sim.next();sim.current_state()}, &s3, 3, 0.000001));
     #[rustfmt::skip]
-    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s4, 0.000001));
+    assert!(equal_state_c({sim.next();sim.current_state()}, &s4, 3, 0.000001));
     #[rustfmt::skip]
-    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s5, 0.000001));
+    assert!(equal_state_c({sim.next();sim.current_state()}, &s5, 3, 0.000001));
     #[rustfmt::skip]
-    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s6, 0.000001));
+    assert!(equal_state_c({sim.next();sim.current_state()}, &s6, 3, 0.000001));
     #[rustfmt::skip]
-    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s7, 0.000001));
+    assert!(equal_state_c({sim.next();sim.current_state()}, &s7, 3, 0.000001));
 
     apply_cswap::<D>();
 }
 
-fn apply_cswap<D: BuildSimulator<PureCircuit> + DebuggableSimulator>() {
+fn apply_cswap<D>()
+where
+    D: BuildSimulator<PureCircuit> + DebuggableSimulator,
+    D::Storage: Index<usize, Output = Complex<f64>>,
+{
     let mut circuit = Circuit::new(4);
     circuit = circuit.h(0).h(1).h(2);
     let s1 = dvector![
@@ -145,14 +153,15 @@ fn apply_cswap<D: BuildSimulator<PureCircuit> + DebuggableSimulator>() {
     sim.next();
     sim.next();
     #[rustfmt::skip]
-    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s1, 0.00001));
+    assert!(equal_state_c({sim.next();sim.current_state()}, &s1, 4, 0.00001));
     #[rustfmt::skip]
-    assert!(equal_to_matrix_c({sim.next();sim.current_state()}, &s2, 0.00001));
+    assert!(equal_state_c({sim.next();sim.current_state()}, &s2, 4, 0.00001));
 }
 
-pub fn double_sub<
-    D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
->() {
+pub fn double_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator>()
+where
+    D::Storage: Index<usize, Output = Complex<f64>>,
+{
     // Keep for sub circuits
     const N: usize = 2;
     let sub = Circuit::new(N)
@@ -187,7 +196,7 @@ pub fn double_sub<
         forward_steps += 1;
     }
 
-    assert!(equal_to_matrix_c(
+    assert!(equal_state_c(
         sim.current_state(),
         &dvector![
             cart!(0.25),
@@ -207,6 +216,7 @@ pub fn double_sub<
             cart!(0.25),
             cart!(0.25),
         ],
+        N,
         0.001
     ));
 
@@ -216,7 +226,7 @@ pub fn double_sub<
             backward_steps += 1;
         }
         assert_eq!(forward_steps, backward_steps);
-        assert!(equal_to_matrix_c(
+        assert!(equal_state_c(
             sim.current_state(),
             &dvector![
                 cart!(1),
@@ -236,12 +246,16 @@ pub fn double_sub<
                 cart!(0),
                 cart!(0),
             ],
+            N,
             0.001
         ));
     }
 }
 
-pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator>() {
+pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator>()
+where
+    D::Storage: Index<usize, Output = Complex<f64>>,
+{
     // Keep for sub circuits
     const LEVELS: usize = 5;
     let subs1 = Circuit::new(1).h(0);
@@ -273,7 +287,7 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
     correct[0] = cart!(FRAC_1_SQRT_2);
     correct[1 << (LEVELS - 1)] = cart!(FRAC_1_SQRT_2);
 
-    assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
+    assert!(equal_state_c(sim.current_state(), &correct, LEVELS, 0.001));
 
     if sim.double_ended() {
         let mut backward_steps = 0;
@@ -284,13 +298,16 @@ pub fn deep_sub<D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredC
 
         let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
         correct[0] = cart!(1);
-        assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
+        assert!(equal_state_c(sim.current_state(), &correct, LEVELS, 0.001));
     }
 }
 
 pub fn hybrid_test<
     D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
->() {
+>()
+where
+    D::Storage: Index<usize, Output = Complex<f64>>,
+{
     let circuit = Circuit::new(4)
         .new_reg("r0", 1)
         .new_reg("r1", 1)
@@ -320,7 +337,7 @@ pub fn hybrid_test<
     let mut expected = DVector::<Complex<f64>>::zeros(16);
     expected[0] = cart!(1.0);
 
-    assert!(equal_to_matrix_c(&sim.current_state(), &expected, 0.001));
+    assert!(equal_state_c(sim.current_state(), &expected, 4, 0.001));
 }
 
 pub fn register_test<
@@ -358,7 +375,10 @@ where
 
 pub fn deep_ctrl_sub<
     D: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator,
->() {
+>()
+where
+    D::Storage: Index<usize, Output = Complex<f64>>,
+{
     // Keep for sub circuits
     const LEVELS: usize = 5;
     let subs1 = Circuit::new(1).x(0).h(0);
@@ -382,8 +402,7 @@ pub fn deep_ctrl_sub<
     correct[0b01111] = cart!(-0.17678);
     correct[0b11111] = cart!(0.17678);
 
-    println!("{}", sim.current_state());
-    assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
+    assert!(equal_state_c(sim.current_state(), &correct, 5, 0.001));
 
     if sim.double_ended() {
         let mut backward_steps = 0;
@@ -394,6 +413,6 @@ pub fn deep_ctrl_sub<
 
         let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
         correct[0] = cart!(1);
-        assert!(equal_to_matrix_c(sim.current_state(), &correct, 0.001));
+        assert!(equal_state_c(sim.current_state(), &correct, LEVELS, 0.001));
     }
 }

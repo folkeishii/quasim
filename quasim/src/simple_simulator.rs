@@ -32,6 +32,9 @@ impl TryFrom<Circuit> for SimpleSimulator {
 }
 
 impl RunnableSimulator for SimpleSimulator {
+    type Storage = DVector<Complex<f64>>;
+    type State = Complex<f64>;
+
     fn run(&self) -> usize {
         let mut rng = rand::rng();
         self.dist.sample(&mut rng)

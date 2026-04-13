@@ -4,8 +4,7 @@ use crate::{
     debug_terminal::parse::{ParseError, ParseResult, TokenIterator},
     parse_usize,
 };
-use nalgebra::{Complex, DVector};
-use std::ops::RangeInclusive;
+use std::ops::{Index, RangeInclusive};
 
 #[derive(Debug, Clone, Copy)]
 pub enum HelpArgs {
@@ -231,42 +230,44 @@ impl StateArgs {
         ))
     }
 
-    pub fn from_state(
-        current_state: &DVector<Complex<f64>>,
+    pub fn from_state<I, It>(
+        current_state: &I,
         state_args: &StateArgs,
-    ) -> Result<Vec<IndexedState>, StateError> {
-        let state_size = current_state.len() - 1;
-
+        n_qubits: usize,
+    ) -> Result<Vec<IndexedState>, StateError>
+    where
+        I: Index<usize, Output = It>,
+        It: ToString,
+    {
+        let mx = 1 << n_qubits;
         match &state_args {
             StateArgs::All => {}
             StateArgs::Range(r) => {
-                if *r.start() > state_size {
-                    return Err(StateError::IllegalState(*r.start(), state_size));
-                } else if *r.end() > state_size {
-                    return Err(StateError::IllegalState(*r.end(), state_size));
+                if *r.start() >= mx {
+                    return Err(StateError::IllegalState(*r.start(), mx));
+                } else if *r.end() >= mx {
+                    return Err(StateError::IllegalState(*r.end(), mx));
                 }
             }
             StateArgs::Multiple(ms) => {
                 for m in ms {
-                    if *m > state_size {
-                        return Err(StateError::IllegalState(*m, state_size));
+                    if *m >= mx {
+                        return Err(StateError::IllegalState(*m, mx));
                     }
                 }
             }
             StateArgs::Single(s) => {
-                if *s > state_size {
-                    return Err(StateError::IllegalState(*s, state_size));
+                if *s >= mx {
+                    return Err(StateError::IllegalState(*s, mx));
                 }
             }
         }
 
         let to_show = match state_args {
-            StateArgs::All => current_state
-                .into_iter()
-                .enumerate()
-                .map(|(i, f)| IndexedState {
+            StateArgs::All => (0..mx)
+                .map(|i| IndexedState {
                     index: i,
-                    state: f.to_string(),
+                    state: current_state[i].to_string(),
                 })
                 .collect(),
             StateArgs::Range(r) => r

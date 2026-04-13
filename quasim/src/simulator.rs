@@ -2,7 +2,6 @@ use crate::circuit::CircuitBehaviour;
 use crate::circuit::pc::CircuitPc;
 use crate::register_file::{Register, RegisterFile};
 use crate::{circuit::Circuit, instruction::Instruction};
-use nalgebra::{Complex, DVector};
 
 /// # BuildSimulator
 /// Any simulator that is able to be built from a
@@ -33,14 +32,20 @@ where
 /// final state without changing internal state
 /// should implement this trait
 pub trait RunnableSimulator {
+    type Storage;
+    type State;
+
     fn run(&self) -> usize;
-    fn final_state(&self) -> DVector<Complex<f64>>;
+    fn final_state(&self) -> Self::Storage;
 }
 
 /// # DebuggableSimulator
 /// Any simulator that can step through a circuit
 /// one gate at a time should implement this trait
 pub trait DebuggableSimulator {
+    type Storage;
+    type State;
+
     fn next(&mut self) -> bool;
     /// Unlike `next`, `next_over` will execute all instructions
     /// inside a sub circuit
@@ -69,7 +74,7 @@ pub trait DebuggableSimulator {
     /// `prev` should be implemented if `fn double_ended(&self)`
     /// returns true
     fn prev(&mut self) -> bool {
-        todo!()
+        false
     }
     fn double_ended(&self) -> bool;
     /// Returns current pc and instruction
@@ -77,19 +82,20 @@ pub trait DebuggableSimulator {
     /// If returned value is (pc, None)
     /// then we have reached the end of (sub) circuit
     fn current_instruction(&self) -> (&CircuitPc, Option<Instruction>);
-    fn current_state(&self) -> &DVector<Complex<f64>>;
+    fn current_state(&self) -> &Self::Storage;
+    fn collapse_peek(&self) -> usize;
 
-    fn cont(&mut self) -> &DVector<Complex<f64>>
+    fn cont(&mut self) -> bool
     where
         Self: StoredCircuitSimulator,
     {
         while self.next() {
             let (pc, _) = self.current_instruction();
             if self.circuit().enabled_breakpoint_at(pc) {
-                break;
+                return true;
             }
         }
-        self.current_state()
+        false
     }
 }
 
@@ -129,7 +135,7 @@ mod tests {
     use crate::{
         circuit::Circuit,
         debug_simulator::DebugSimulator,
-        ext::equal_to_matrix_c,
+        ext::equal_state_c,
         simulator::{BuildSimulator, DebuggableSimulator},
     };
 
@@ -142,6 +148,12 @@ mod tests {
         sim1.next();
         sim1.next();
         sim1.next();
-        assert!(equal_to_matrix_c(sim1.current_state(), sim2.cont(), 0.001))
+        sim2.cont();
+        assert!(equal_state_c(
+            sim1.current_state(),
+            sim2.current_state(),
+            3,
+            0.001
+        ))
     }
 }
