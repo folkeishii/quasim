@@ -12,6 +12,7 @@ use rand::random;
 use crate::{
     circuit::{Circuit, PureCircuit, pc::CircuitPc},
     instruction::PureInstruction,
+    simulator::{BuildSimulator, RunnableSimulator},
     syntax_simulator::{
         scalar::Scalar,
         state::{ScaledState, SumOfScaledStates},
@@ -115,7 +116,7 @@ impl SyntaxSimulator {
         summed_scalars
     }
 
-    pub fn run(&mut self) -> usize {
+    pub fn run_and_measure_all(&mut self) -> usize {
         self.step_all();
 
         let mut probability_so_far = 0f32;
@@ -146,5 +147,23 @@ impl TryFrom<Circuit<PureCircuit>> for SyntaxSimulator {
             pc: CircuitPc::default(),
             state: SumOfScaledStates::guaranteed_full_zero(n_qubits),
         })
+    }
+}
+
+impl RunnableSimulator for SyntaxSimulator {
+    type Storage = SumOfScaledStates;
+    type State = SumOfScaledStates;
+
+    fn run(&self) -> usize {
+        SyntaxSimulator::build(self.circuit.clone())
+            .unwrap()
+            .run_and_measure_all()
+    }
+
+    fn final_state(&self) -> Self::Storage {
+        SyntaxSimulator::build(self.circuit.clone())
+            .unwrap()
+            .step_all()
+            .clone()
     }
 }
