@@ -224,49 +224,70 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
     pub fn cx(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::X, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::X, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn y(mut self, target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::Y, &[], &[target]).unwrap().into(),
+            Gate::new(GateType::Y, &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn cy(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::Y, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::Y, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn z(mut self, target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::Z, &[], &[target]).unwrap().into(),
+            Gate::new(GateType::Z, &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn cz(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::Z, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::Z, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn h(mut self, target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::H, &[], &[target]).unwrap().into(),
+            Gate::new(GateType::H, &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn ch(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::H, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::H, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
@@ -274,6 +295,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn swap(mut self, target1: usize, target2: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::SWAP, &[], &[target1, target2])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -283,6 +305,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn cswap(mut self, controls: &[usize], target1: usize, target2: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::SWAP, controls, &[target1, target2])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -292,6 +315,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn u(mut self, theta: f64, phi: f64, lambda: f64, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, phi, lambda), &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -308,6 +332,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     ) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, phi, lambda), controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -316,14 +341,20 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
     pub fn s(mut self, target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::S, &[], &[target]).unwrap().into(),
+            Gate::new(GateType::S, &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn cs(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::S, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::S, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
@@ -331,6 +362,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn rx(mut self, theta: f64, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -340,6 +372,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn crx(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -349,6 +382,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn ry(mut self, theta: f64, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, 0.0, 0.0), &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -358,6 +392,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn cry(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, 0.0, 0.0), controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -367,6 +402,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn rz(mut self, theta: f64, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(0.0, 0.0, theta), &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -376,6 +412,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn crz(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(0.0, 0.0, theta), controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -875,11 +912,23 @@ mod tests {
         sv_simulator::StateVectorSimulator,
     };
     use nalgebra::{Complex, DMatrix, dvector};
+    use std::panic::catch_unwind;
     fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
         let mut circuit_tot = Circuit::new(std::cmp::max(circuit1.n_qubits(), circuit2.n_qubits()));
         circuit_tot.instructions =
             [circuit1.instructions.clone(), circuit2.instructions.clone()].concat();
         circuit_tot
+    }
+    #[test]
+    fn error_test() {
+        let c = Circuit::new(5);
+        assert!(catch_unwind(|| c.clone().h(0)).is_ok());
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 2], 0)).is_ok());
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 3], 0)).is_ok());
+
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 0], 0)).is_err()); // Overlap
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 0], 5)).is_err()); // Target out of bounds
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 5], 2)).is_err()); // Control out of bounds
     }
     #[test]
     fn inverse_test() {
