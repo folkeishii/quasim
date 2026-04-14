@@ -19,7 +19,7 @@ use crate::{
 // SVSimulator
 
 pub struct StateVectorSimulator {
-    state_vector: DVector<Complex<f64>>,
+    state_vector: DVector<Complex<f32>>,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile,
@@ -27,7 +27,7 @@ pub struct StateVectorSimulator {
 
 impl StateVectorSimulator {
     /// Step forward one instruction in the circuit
-    fn step(&mut self) -> Option<&DVector<Complex<f64>>> {
+    fn step(&mut self) -> Option<&DVector<Complex<f32>>> {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
             if self.pc_mut().ret() {
@@ -55,7 +55,7 @@ impl StateVectorSimulator {
     }
 
     /// Get current state of the quantum system
-    pub fn state_vector(&self) -> &DVector<Complex<f64>> {
+    pub fn state_vector(&self) -> &DVector<Complex<f32>> {
         &self.state_vector
     }
 
@@ -110,7 +110,7 @@ impl StateVectorSimulator {
         let state = self.state_vector.as_mut_slice();
         let a = state[base_index];
         let b = state[flipped_index];
-        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
+        let inv_sqrt2 = 1.0 / std::f32::consts::SQRT_2;
 
         state[base_index] = (a + b) * inv_sqrt2;
         state[flipped_index] = (a - b) * inv_sqrt2;
@@ -137,7 +137,7 @@ impl StateVectorSimulator {
     }
 
     #[inline(always)]
-    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f64>>, target: QBits) {
+    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f32>>, target: QBits) {
         let flipped_index = base_index | target.get_bitstring();
         let a = self.state_vector[base_index];
         let b = self.state_vector[flipped_index];
@@ -199,7 +199,7 @@ impl StateVectorSimulator {
             .state_vector
             .iter()
             .map(|x| x.norm_sqr())
-            .sum::<f64>()
+            .sum::<f32>()
             .sqrt();
         self.state_vector.iter_mut().for_each(|x| *x /= norm);
 
@@ -268,7 +268,7 @@ where
 
     fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
         let size = 1 << value.n_qubits();
-        let mut init_state_vector: DVector<Complex<f64>> = DVector::from_element(size, cart![0.0]);
+        let mut init_state_vector: DVector<Complex<f32>> = DVector::from_element(size, cart![0.0]);
         init_state_vector[0] = cart![1.0];
 
         let registers = RegisterFile::from(value.registers());
@@ -282,8 +282,8 @@ where
     }
 }
 
-impl QuantumState for DVector<Complex<f64>> {
-    type BasisValue = Complex<f64>;
+impl QuantumState for DVector<Complex<f32>> {
+    type BasisValue = Complex<f32>;
 
     fn collapse(&self) -> usize {
         let probs = self.iter().map(|&c| c.norm_sqr());
@@ -301,8 +301,8 @@ impl QuantumState for DVector<Complex<f64>> {
 }
 
 impl Simulator for StateVectorSimulator {
-    type State = DVector<Complex<f64>>;
-    type BasisValue = Complex<f64>;
+    type State = DVector<Complex<f32>>;
+    type BasisValue = Complex<f32>;
 
     fn run(&mut self) {
         self.reset();
@@ -376,7 +376,7 @@ pub enum SVError {
 
 #[cfg(test)]
 mod tests {
-    use std::f64::consts::FRAC_1_SQRT_2;
+    use std::f32::consts::FRAC_1_SQRT_2;
 
     use nalgebra::dvector;
 
