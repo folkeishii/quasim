@@ -1,7 +1,9 @@
+use rayon::prelude::*;
 use std::{
     mem,
     ops::Index,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
+    thread,
 };
 
 use nalgebra::{Complex, Matrix2, Vector2};
@@ -140,8 +142,12 @@ impl DebuggableSimulator for CubeSimulator {
             }
             crate::instruction::Instruction::MeasureAll(reg) => self.handle_measure_all(&reg),
             crate::instruction::Instruction::Jump(pc) => self.handle_jump(pc),
-            crate::instruction::Instruction::JumpIf(bool_expr, pc) => self.handle_jump_if(&bool_expr, pc),
-            crate::instruction::Instruction::Assign(bit_expr, reg) => self.handle_assign(&bit_expr, &reg),
+            crate::instruction::Instruction::JumpIf(bool_expr, pc) => {
+                self.handle_jump_if(&bool_expr, pc)
+            }
+            crate::instruction::Instruction::Assign(bit_expr, reg) => {
+                self.handle_assign(&bit_expr, &reg)
+            }
             crate::instruction::Instruction::Call(sc, lsq, ctrl) => self.handle_call(sc, lsq, ctrl),
         }
 
@@ -203,9 +209,7 @@ impl CubeVector {
     pub fn new(n: usize) -> Self {
         let mut zero = Vertex::new(n);
         zero.amplitude = cart!(1);
-        Self {
-            zero,
-        }
+        Self { zero }
     }
 
     pub fn apply_gate(&mut self, gate: Gate) {
@@ -230,12 +234,12 @@ impl CubeVector {
         }
     }
 
-    pub fn for_each<F: FnMut(usize, V)>(&self, mut f: F) {
-        self.zero.for_each(0.into(), 0, 0, &mut f);
+    pub fn for_each<F: Fn(usize, V) + std::marker::Send + std::marker::Sync>(&self, f: F) {
+        self.zero.for_each(0.into(), 0, 0, &f);
     }
 
-    pub fn map<F: FnMut(usize, &mut V)>(&mut self, mut f: F) {
-        self.zero.map(0.into(), 0, 0, &mut f);
+    pub fn map<F: Fn(usize, &mut V) + std::marker::Send + std::marker::Sync>(&mut self, f: F) {
+        self.zero.map(0.into(), 0, 0, &f);
     }
 
     pub fn dim(&self) -> usize {
@@ -243,7 +247,7 @@ impl CubeVector {
     }
 
     fn apply_2x2(&mut self, axis: usize, filter: BitSet, matrix: Matrix2<Complex<f64>>) {
-        self.zero.filter_propagate(axis, filter, 0, |low, high| {
+        self.zero.filter_propagate(axis, filter, 0, &|low, high| {
             let uv: Vector2<_> = matrix * Vector2::new(*low, *high);
             *low = uv[0];
             *high = uv[1];
@@ -274,69 +278,81 @@ impl Vertex {
         }
     }
 
-    fn for_each<F: FnMut(usize, V)>(
+    fn for_each<F: Fn(usize, V) + std::marker::Send + std::marker::Sync>(
         &self,
         path: BitSet,
         path_offset: usize,
         start_axis: usize,
-        f: &mut F,
+        f: &F,
     ) {
-        let mut path_offset = path_offset;
         f(*path, self.amplitude);
-        for i in start_axis..self.dim() {
+        (start_axis..self.dim()).into_par_iter().for_each(move |i| {
             let mut next = path;
+            let path_offset = path_offset + i - start_axis;
             next.set(path_offset);
             Self::vertex_mut(&self.next_vertex, i).for_each(next, path_offset + 1, i, f);
-            path_offset += 1;
-        }
+        });
     }
 
-    fn map<F: FnMut(usize, &mut V)>(
+    fn map<F: Fn(usize, &mut V) + std::marker::Send + std::marker::Sync>(
         &mut self,
         path: BitSet,
         path_offset: usize,
         start_axis: usize,
-        f: &mut F,
+        f: &F,
     ) {
-        let mut path_offset = path_offset;
         f(*path, &mut self.amplitude);
-        for i in start_axis..self.dim() {
+        (start_axis..self.dim()).into_par_iter().for_each(move |i| {
             let mut next = path;
+            let path_offset = path_offset + i - start_axis;
             next.set(path_offset);
             Self::vertex_mut(&self.next_vertex, i).map(next, path_offset + 1, i, f);
-            path_offset += 1;
-        }
+        });
     }
 
-    fn propagate<F: FnMut(&mut V, &mut V)>(&mut self, axis: usize, start_axis: usize, f: &mut F) {
+    fn propagate<F: Fn(&mut V, &mut V) + std::marker::Send + std::marker::Sync>(
+        &mut self,
+        axis: usize,
+        start_axis: usize,
+        f: &F,
+    ) {
         f(
             &mut self.amplitude,
             &mut Self::vertex_mut(&self.next_vertex, axis).amplitude,
         );
-        for i in start_axis..axis {
-            Self::vertex_mut(&self.next_vertex, i).propagate(axis - 1, i, f);
-        }
-        for i in (axis + 1).max(start_axis)..self.dim() {
-            Self::vertex_mut(&self.next_vertex, i).propagate(axis, i, f);
-        }
+        let slf: &Self = self;
+        rayon::join(
+            || {
+                (start_axis..axis).into_par_iter().for_each(move |i| {
+                    Self::vertex_mut(&slf.next_vertex, i).propagate(axis - 1, i, f);
+                });
+            },
+            || {
+                ((axis + 1).max(start_axis)..slf.dim())
+                    .into_par_iter()
+                    .for_each(move |i| {
+                        Self::vertex_mut(&slf.next_vertex, i).propagate(axis, i, f);
+                    });
+            },
+        );
     }
 
     /// ```
     /// assert_eq!(*filter & (1 << axis), 0);
     /// ```
-    fn filter_propagate<F: FnMut(&mut V, &mut V)>(
+    fn filter_propagate<F: Fn(&mut V, &mut V) + std::marker::Send + std::marker::Sync>(
         &mut self,
         axis: usize,
         filter: BitSet,
         filter_offset: usize,
-        mut f: F,
+        f: &F,
     ) {
         let mut filter = filter;
         let mut axis = axis;
         debug_assert_eq!(*filter & (1 << axis), 0);
 
         if filter.is_empty() {
-            self.propagate(axis, 0, &mut f);
+            self.propagate(axis, 0, &f);
         }
 
         for i in filter_offset..self.dim() {
@@ -360,15 +376,31 @@ impl Vertex {
             &mut Self::vertex_mut(&self.next_vertex, axis_1).amplitude,
             &mut Self::vertex_mut(&self.next_vertex, axis_2).amplitude,
         );
-        for i in start_axis..axis_1 {
-            Self::vertex_mut(&self.next_vertex, i).swap(axis_1 - 1, axis_2 - 1, i);
-        }
-        for i in (axis_1 + 1).max(start_axis)..axis_2 {
-            Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2 - 1, i);
-        }
-        for i in (axis_2 + 1).max(start_axis)..self.dim() {
-            Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2, i);
-        }
+        rayon::join(
+            || {
+                (start_axis..axis_1).into_par_iter().for_each(|i| {
+                    Self::vertex_mut(&self.next_vertex, i).swap(axis_1 - 1, axis_2 - 1, i);
+                });
+            },
+            || {
+                rayon::join(
+                    || {
+                        ((axis_1 + 1).max(start_axis)..axis_2)
+                            .into_par_iter()
+                            .for_each(|i| {
+                                Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2 - 1, i);
+                            });
+                    },
+                    || {
+                        ((axis_2 + 1).max(start_axis)..self.dim())
+                            .into_par_iter()
+                            .for_each(|i| {
+                                Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2, i);
+                            });
+                    },
+                );
+            },
+        );
     }
 
     /// ```
@@ -444,7 +476,10 @@ impl Vertex {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
+    use std::{
+        collections::HashSet,
+        sync::{Arc, RwLock},
+    };
 
     use crate::{
         cart,
@@ -456,17 +491,17 @@ mod tests {
     /// Assert that foreach only visits each index once
     fn foreach() {
         let t = Vertex::new(3);
-        let st = &mut HashSet::new();
-        t.for_each(0.into(), 0, 0, &mut |i, _| {
-            st.insert(i);
+        let st = Arc::new(RwLock::new(HashSet::new()));
+        t.for_each(0.into(), 0, 0, &|i, _| {
+            write!(st).insert(i);
         });
-        assert_eq!(st.len(), (1 << 3));
-        st.clear();
+        assert_eq!(read!(st).len(), (1 << 3));
+        write!(st).clear();
         let t = Vertex::new(4);
         t.for_each(0.into(), 0, 0, &mut |i, _| {
-            st.insert(i);
+            write!(st).insert(i);
         });
-        assert_eq!(st.len(), (1 << 4));
+        assert_eq!(read!(st).len(), (1 << 4));
     }
 
     #[test]
@@ -474,13 +509,13 @@ mod tests {
     fn propagate_id() {
         let tt = |ax, n| {
             let mut t = Vertex::new(n);
-            let st = &mut 0;
+            let st = Arc::new(RwLock::new(0));
             t.propagate(ax, 0, &mut |src, dst| {
-                *st += 1;
+                *write!(st) += 1;
                 *src += cart!(1);
                 *dst += cart!(1);
             });
-            assert_eq!(*st, (1 << (n - 1)));
+            assert_eq!(*read!(st), (1 << (n - 1)));
             t.for_each(0.into(), 0, 0, &mut |_, v| assert!(v == cart!(1)));
         };
 
@@ -496,13 +531,13 @@ mod tests {
     fn propagate_filter() {
         let tt = |ax, n, filter: BitSet, n_ctrls| {
             let mut t = Vertex::new(n);
-            let st = &mut 0;
-            t.filter_propagate(ax, filter, 0, |src, dst| {
-                *st += 1;
+            let st = Arc::new(RwLock::new(0));
+            t.filter_propagate(ax, filter, 0, &|src, dst| {
+                *write!(st) += 1;
                 *src += cart!(1);
                 *dst += cart!(1);
             });
-            assert_eq!(*st, (1 << (n - 1)) >> n_ctrls);
+            assert_eq!(*read!(st), (1 << (n - 1)) >> n_ctrls);
             t.for_each(0.into(), 0, 0, &mut |i, v| {
                 if i & *filter == *filter {
                     assert_eq!(v, cart!(1))
