@@ -1,9 +1,7 @@
 use rayon::prelude::*;
 use std::{
     mem,
-    ops::Index,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
-    thread,
 };
 
 use nalgebra::{Complex, Matrix2, Vector2};
@@ -15,7 +13,7 @@ use crate::{
     ext::{BitSet, TargetIter},
     gate::{Gate, GateType, QBits},
     register_file::RegisterFile,
-    simulator::{DebuggableSimulator, StoredCircuitSimulator},
+    simulator::{Debuggable, QuantumState, Simulator, StoredCircuit},
 };
 
 macro_rules! read {
@@ -37,21 +35,6 @@ pub struct CubeSimulator {
 }
 
 impl CubeSimulator {
-    pub fn collapse_peek(&self) -> usize {
-        let ri = Arc::new(RwLock::new(rand::random_range(0.0..1.0)));
-        let collapsed = Arc::new(RwLock::new(None));
-        self.state_vector.for_each(|state, val| {
-            let prob = val.norm_sqr();
-            let mut ri_guard = write!(ri);
-            *ri_guard -= prob;
-            if *ri_guard <= 0.0 {
-                write!(collapsed).get_or_insert(state);
-            }
-        });
-
-        read!(collapsed).unwrap_or(0)
-    }
-
     fn handle_gate(&mut self, gate: Gate) {
         self.pc.increment();
         self.state_vector.apply_gate(gate);
@@ -59,7 +42,7 @@ impl CubeSimulator {
 
     fn handle_measure_bit(&mut self, target: usize, (reg, c_target): (&str, usize)) {
         self.pc.increment();
-        let collapsed = self.collapse_peek();
+        let collapsed = self.state_vector.collapse();
         let q_mask = 1 << target;
         let c_mask = 1 << c_target;
         let q_masked = collapsed & q_mask;
@@ -87,7 +70,7 @@ impl CubeSimulator {
 
     fn handle_measure_all(&mut self, reg: &str) {
         self.pc.increment();
-        let collapsed = self.collapse_peek();
+        let collapsed = self.state_vector.collapse();
         self.register_file[reg].write(collapsed);
         self.state_vector.map(|i, val| {
             if i == collapsed {
@@ -120,10 +103,27 @@ impl CubeSimulator {
     }
 }
 
-impl DebuggableSimulator for CubeSimulator {
-    type Storage = CubeVector;
-    type State = Complex<f64>;
+impl Simulator for CubeSimulator {
+    type State = CubeVector;
+    type BasisValue = Complex<f64>;
 
+    fn run(&mut self) {
+        while self.next() {}
+    }
+
+    fn reset(&mut self) {
+        self.register_file.reset();
+        self.pc = Default::default();
+        self.state_vector
+            .map(|i, v| *v = cart!(1usize.saturating_sub(i)));
+    }
+
+    fn state(&self) -> &Self::State {
+        &self.state_vector
+    }
+}
+
+impl Debuggable for CubeSimulator {
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(&self.pc) else {
             // End of (sub) circuit: Try to return
@@ -161,14 +161,6 @@ impl DebuggableSimulator for CubeSimulator {
     fn current_instruction(&self) -> (&CircuitPc, Option<crate::instruction::Instruction>) {
         (&self.pc, self.circuit.instruction(&self.pc))
     }
-
-    fn current_state(&self) -> &Self::Storage {
-        &self.state_vector
-    }
-
-    fn collapse_peek(&self) -> usize {
-        self.collapse_peek()
-    }
 }
 
 impl<B> TryFrom<Circuit<B>> for CubeSimulator
@@ -188,7 +180,7 @@ where
     }
 }
 
-impl StoredCircuitSimulator for CubeSimulator {
+impl StoredCircuit for CubeSimulator {
     type B = HybridCircuit;
 
     fn circuit(&self) -> &Circuit<Self::B> {
@@ -252,6 +244,29 @@ impl CubeVector {
             *low = uv[0];
             *high = uv[1];
         });
+    }
+}
+
+impl QuantumState for CubeVector {
+    type BasisValue = Complex<f64>;
+
+    fn collapse(&self) -> usize {
+        let ri = Arc::new(RwLock::new(rand::random_range(0.0..1.0)));
+        let collapsed = Arc::new(RwLock::new(None));
+        self.for_each(|state, val| {
+            let prob = val.norm_sqr();
+            let mut ri_guard = write!(ri);
+            *ri_guard -= prob;
+            if *ri_guard <= 0.0 {
+                write!(collapsed).get_or_insert(state);
+            }
+        });
+
+        read!(collapsed).unwrap_or(0)
+    }
+
+    fn basis_value(&self, basis: usize) -> Self::BasisValue {
+        self.zero.at(basis.into(), 0)
     }
 }
 
@@ -337,6 +352,7 @@ impl Vertex {
         );
     }
 
+    #[cfg(not(doctest))]
     /// ```
     /// assert_eq!(*filter & (1 << axis), 0);
     /// ```
@@ -367,6 +383,7 @@ impl Vertex {
         }
     }
 
+    #[cfg(not(doctest))]
     /// ```
     /// assert!(axis_1 < axis_2)
     /// ```
@@ -403,6 +420,7 @@ impl Vertex {
         );
     }
 
+    #[cfg(not(doctest))]
     /// ```
     /// assert_eq!(*filter & (1 << axis_1), 0)
     /// assert_eq!(*filter & (1 << axis_2), 0)
@@ -481,11 +499,7 @@ mod tests {
         sync::{Arc, RwLock},
     };
 
-    use crate::{
-        cart,
-        cube_map2::{V, Vertex},
-        ext::BitSet,
-    };
+    use crate::{cart, cube_map2::Vertex, ext::BitSet};
 
     #[test]
     /// Assert that foreach only visits each index once

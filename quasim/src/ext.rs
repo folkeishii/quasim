@@ -9,6 +9,7 @@ use rand::{Rng, prelude::Distribution};
 use serde::{Deserialize, Serialize};
 
 use crate::gate::{Gate, GateType, QBits};
+use crate::simulator::QuantumState;
 
 #[macro_export]
 macro_rules! cart {
@@ -48,16 +49,7 @@ pub fn equal_to_c(lhs: Complex<f64>, rhs: Complex<f64>, margin: f64) -> bool {
     (lhs - rhs).norm().le(&margin)
 }
 
-/// Compares complex elements using ´cmp_c´
-///
-/// Equality is determined by every element being equal
-///
-/// Returns `Ordering::Greater` if all elements preceeding an element
-/// are equal and the same element is greater
-///
-/// Return `Ordering::Less` if all elements preceeding an element
-/// are equal and the same element is less
-pub fn equal_state_c<'a>(
+pub fn equal_matrix_c<'a>(
     lhs: &'a impl Index<usize, Output = Complex<f64>>,
     rhs: &'a impl Index<usize, Output = Complex<f64>>,
     n_qubits: usize,
@@ -65,6 +57,21 @@ pub fn equal_state_c<'a>(
 ) -> bool {
     for state in 0..(1 << n_qubits) {
         if !equal_to_c(lhs[state], rhs[state], margin) {
+            return false;
+        }
+    }
+
+    true
+}
+
+pub fn equal_state_c<'a>(
+    lhs: &'a impl QuantumState<BasisValue = Complex<f64>>,
+    rhs: &'a impl QuantumState<BasisValue = Complex<f64>>,
+    n_qubits: usize,
+    margin: f64,
+) -> bool {
+    for basis in 0..(1 << n_qubits) {
+        if !equal_to_c(lhs.basis_value(basis), rhs.basis_value(basis), margin) {
             return false;
         }
     }
@@ -92,6 +99,22 @@ fn u(theta: f64, phi: f64, lambda: f64) -> [Complex<f64>; 4] {
         polar!(sin, phi),
         polar!(cos, lambda + phi),
     ]
+}
+
+pub fn get_gate2_data(gate: &Gate) -> Option<[Complex<f64>; 4]> {
+    match gate.get_type() {
+        GateType::X => Some(Gate::PAULI_X_DATA),
+        GateType::Y => Some(Gate::PAULI_Y_DATA),
+        GateType::Z => Some(Gate::PAULI_Z_DATA),
+        GateType::H => Some(Gate::HADAMARD_DATA),
+        GateType::U(theta, phi, lambda) => Some(u(theta, phi, lambda)),
+        GateType::S => Some(Gate::PHASE_S_DATA),
+        _ => None,
+    }
+}
+
+pub fn get_gate2_matrix(gate: &Gate) -> Option<Matrix2<Complex<f64>>> {
+    get_gate2_data(gate).map(|d| Matrix2::from_row_slice(&d))
 }
 
 pub fn get_u_matrix2(theta: f64, phi: f64, lambda: f64) -> Matrix2<Complex<f64>> {
@@ -259,14 +282,14 @@ pub fn convention_convertion_matrix(n_qubits: usize) -> DMatrix<Complex<f64>> {
 /// # convert_vector
 /// converts a state vector between little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
 pub fn convert_vector(vector: &DVector<Complex<f64>>) -> DVector<Complex<f64>> {
-    let n_qubits = (vector.nrows() as f32).log2() as usize;
+    let n_qubits = (vector.nrows() as f64).log2() as usize;
     convention_convertion_matrix(n_qubits) * vector
 }
 
 /// # convert_matrix
 /// converts a matrix between little-endian and big-endian convention. |q_0 q_1 q_2> <-> |q_2 q_1 q_0>.
 pub fn convert_matrix(matrix: &DMatrix<Complex<f64>>) -> DMatrix<Complex<f64>> {
-    let n_qubits = (matrix.nrows() as f32).log2() as usize;
+    let n_qubits = (matrix.nrows() as f64).log2() as usize;
     let mat = convention_convertion_matrix(n_qubits);
     let adj = mat.adjoint();
     mat * matrix * adj
@@ -515,7 +538,7 @@ impl BitSet {
     pub const fn insert(&mut self, bit: usize) {
         let tmp = self.0 & !(usize::MAX << bit);
         self.0 <<= 1;
-        self.0 &= usize::MAX << (bit+1);
+        self.0 &= usize::MAX << (bit + 1);
         self.0 |= tmp;
         self.0 |= 1usize << bit;
     }
@@ -577,8 +600,8 @@ impl From<usize> for BitSet {
 #[cfg(test)]
 mod tests {
     use crate::ext::{
-        BitMaskIter, convert_matrix, convert_vector, equal_state_c, expand_matrix_from_gate,
-        get_gate_matrix, swap_matrix,
+        BitMaskIter, convert_matrix, convert_vector, equal_matrix_c, equal_state_c,
+        expand_matrix_from_gate, get_gate_matrix, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
@@ -586,7 +609,7 @@ mod tests {
 
     #[test]
     fn swap_test() {
-        assert!(equal_state_c(
+        assert!(equal_matrix_c(
             &swap_matrix(&[], 0, 1, 2),
             &get_gate_matrix(&Gate::new(GateType::SWAP, &[], &[0, 1]).unwrap()),
             4,
@@ -595,7 +618,7 @@ mod tests {
     }
     #[test]
     fn fredkin_test() {
-        assert!(equal_state_c(
+        assert!(equal_matrix_c(
             &swap_matrix(&[2], 1, 0, 3),
             &dmatrix![
                 cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -644,13 +667,13 @@ mod tests {
         ];
         let sim_ch = expand_matrix_from_gate(&Gate::new(GateType::H, &[0], &[1]).unwrap(), 2);
 
-        assert!(equal_state_c(
+        assert!(equal_matrix_c(
             &convert_matrix(&sim_ch),
             &textbook_ch,
             4,
             0.001
         ));
-        assert!(equal_state_c(
+        assert!(equal_matrix_c(
             &convert_matrix(&textbook_ch),
             &sim_ch,
             4,
