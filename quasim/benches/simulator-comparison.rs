@@ -3,10 +3,10 @@ use quasim::{
     circuit::{Circuit, HybridCircuit, PureCircuit},
     debug_simulator::DebugSimulator,
     gpu_sv_simulator::GpuStateVectorSimulator,
+    product_state_simulator::ProductStateSimulator,
     sampler::CircuitSampler,
     simulator::Sampleable,
     sv_simulator::StateVectorSimulator,
-    product_state_simulator::ProductStateSimulator,
 };
 
 extern crate quasim;
