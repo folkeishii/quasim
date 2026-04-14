@@ -415,7 +415,8 @@ where
         cart!(0.07322330885223931),
         cart!(-0.12500000042912138),
         cart!(0.12500000042912138),
-    ].into();
+    ]
+    .into();
 
     assert!(equal_state_c(sim.state(), &expected, 4, 0.001));
 }
