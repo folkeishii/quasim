@@ -126,38 +126,40 @@ fn convergents(cf: &[usize]) -> Vec<(usize, usize)> {
 /// # Returns
 /// * `Some(usize)`, if a valid period is found
 /// * None, if not
-fn refine_period(a: usize, n: usize, init_r: usize, t: usize) -> Option<usize> {
-    let num = init_r;
+fn extract_period(a: usize, n: usize, k: usize, t: usize) -> Option<usize> {
+    let num = k;
     let den = 1 << t;
 
     let cf = continued_fraction(num, den);
     let convs = convergents(&cf);
-
-    let mut best: Option<usize> = None;
 
     for &(_, r) in &convs {
         if r == 0 || r > n{
             continue;
         }
 
-        if modpow(a, r, n) != 1 {
+        for m in 1..=n {
+        let candidate = r * m;
+        if candidate > n {
+            break;
+        }
+
+        if modpow(a, candidate, n) != 1 {
             continue;
         }
 
-        if r % 2 != 0 {
+        if candidate % 2 != 0 {
             continue;
         }
 
-        if modpow(a, r/2, n) == n - 1 {
+        if modpow(a, candidate / 2, n) == n - 1 {
             continue;
         }
 
-        best = Some(match best {
-            Some(b) => b.min(r),
-            None => r,
-        });
+        return Some(candidate);
     }
-    best
+    }
+    None
 }
 
 /// Constructs an adder gate that sums two numbers and stores the
@@ -397,14 +399,8 @@ pub fn quantum(n: usize, a: usize) -> Option<usize> {
     sim.cont();
 
     let r = sim.register("res").read();
-    println!("r: {}", r);
-    let refined = refine_period(a, n, r, 2 * n_bits);
-    if let Some(refi) = refined {
-    println!("refined: {}", refi);
-    } else {
-    println!("refined: undefined");
-    }
-    refined
+
+    extract_period(a, n, r, 2 * n_bits)
 }
 
 /// Runs Shor's algorithm to attempt to factor `n`.
@@ -691,8 +687,8 @@ mod tests {
 
     #[test]
     fn test_quantum() {
-        let n = 31;
-        let a = 4;
+        let n = 61;
+        let a = 8;
         let attempts = 10;
 
         let mut success = false;
@@ -719,7 +715,7 @@ mod tests {
 
     #[test]
     fn test_shors() {
-        let n = 15;
+        let n = 55;
         let a = 2;
         let attempts = 10;
 
@@ -770,27 +766,5 @@ mod tests {
             "Shor failed to find factors after {} attempts",
             attempts
         );
-    }
-
-    #[test]
-    fn test_register(){
-
-        let mut c = Circuit::new(1)
-            .new_reg("res", 4);
-
-        c = c.x(0);
-
-        for i in 0..4{
-            c = c.measure_bit(0, ("res",i));
-            c = c.x(0);
-        }
-
-        let mut sim = SVSimulatorDebugger::build(c).unwrap();
-
-        sim.cont();
-
-        let res = sim.register("res").read();
-
-        println!("res: {}",res);
     }
 }
