@@ -47,6 +47,23 @@ pub fn modpow(mut b: usize, mut ex: usize, m: usize) -> usize {
     result
 }
 
+/// Performs continued fractions using `num` and `den`
+///
+/// ```text
+/// num / den = a0 + 1/(a1 + 1/(a2 + ...))
+/// ```
+///
+/// # Arguments
+/// * `num` - The numerator
+/// * `den` - The denominator
+///
+/// # Returns
+/// * `Vec<usize>`, representing the continued fraction coefficients `[a0, a1, ...]`
+///
+/// # Example
+/// ```text
+/// 415 / 93 → [4, 2, 6, 7]
+/// ```
 fn continued_fraction(mut num: usize, mut den: usize) -> Vec<usize> {
     let mut cf = Vec::new();
 
@@ -56,10 +73,27 @@ fn continued_fraction(mut num: usize, mut den: usize) -> Vec<usize> {
         num = den;
         den = r;
     }
-
     cf
 }
 
+/// Computes the convergents of a continued fraction expansion
+///
+/// ```text
+/// num / den = a0 + 1/(a1 + 1/(a2 + ...))
+/// ```
+///
+/// # Arguments
+/// * `cf` - Continued fraction coefficients `[a0, a1, ...]`
+///
+/// # Returns
+/// * `Vec<usize, usize>`, representing a vector of convergents `(numerator, denominator)`
+///
+/// # Example
+/// CF: `[4, 2, 6, 7]`
+/// Returns:
+/// ```text
+/// (4/1), (9/2), (58/13), (415/93)
+/// ```
 fn convergents(cf: &[usize]) -> Vec<(usize, usize)> {
     let mut result = Vec::new();
 
@@ -81,12 +115,12 @@ fn convergents(cf: &[usize]) -> Vec<(usize, usize)> {
 }
 
 /// Takes a period `r` and reduces it to the smallest equivalent given the base `a` and modulo `n`
-/// 
+///
 /// # Arguments
 /// * `a` - The base of `r`
 /// * `r` - The period to reduce
 /// * `n` - The modulo number
-/// 
+///
 /// # Returns
 /// `usize`, representing the smallest period reduced from `r`
 fn smallest_period(a: usize, n: usize, r: usize) -> usize {
@@ -135,7 +169,7 @@ fn refine_period(a: usize, n: usize, init_r: usize, t: usize) -> Option<usize> {
 
         // Check if it's a valid period
         if modpow(a, r, n) == 1 {
-            return Some(smallest_period(a, n,r));
+            return Some(smallest_period(a, n, r));
         }
     }
     None
@@ -378,7 +412,7 @@ pub fn quantum(n: usize, a: usize) -> Option<usize> {
     sim.cont();
 
     let r = sim.register("res").read();
-    refine_period(a, n, r, 2*n_bits)
+    refine_period(a, n, r, 2 * n_bits)
 }
 
 /// Runs Shor's algorithm to attempt to factor `n`.
@@ -410,8 +444,7 @@ pub fn shors(n: usize, a: usize) -> Option<Vec<usize>> {
             if res == 0 || res % 2 != 0 {
                 return None;
             }
-
-        },
+        }
         None => {
             return None;
         }
@@ -688,8 +721,7 @@ mod tests {
                     if res == 0 || res % 2 != 0 {
                         continue;
                     }
-
-                },
+                }
                 None => {
                     continue;
                 }
@@ -699,7 +731,11 @@ mod tests {
                 break;
             }
         }
-        assert!(success, "No non-trivial period found for a = {} in {} attempts.",a, attempts);
+        assert!(
+            success,
+            "No non-trivial period found for a = {} in {} attempts.",
+            a, attempts
+        );
     }
 
     #[test]
@@ -725,8 +761,7 @@ mod tests {
         assert!(
             success,
             "Shor failed to find factors with a = {} after {} attempts",
-            a,
-            attempts
+            a, attempts
         );
     }
 
