@@ -581,7 +581,7 @@ where
                 c.0,
                 c.0,
                 c.1,
-                ((c.1 as f64).div(count as f64) * 100.0).round()
+                ((c.1 as f32).div(count as f32) * 100.0).round()
             )?;
         }
 
