@@ -398,7 +398,7 @@ where
     .unwrap();
     while sim.next() {}
 
-    let expected = StateVector::from(dvector![
+    let expected: StateVector = dvector![
         cart!(0.5000000293365844),
         cart!(0.35355340368276855),
         cart!(0.12500000042912138),
@@ -415,7 +415,7 @@ where
         cart!(0.07322330885223931),
         cart!(-0.12500000042912138),
         cart!(0.12500000042912138),
-    ]);
+    ].into();
 
     assert!(equal_state_c(sim.state(), &expected, 4, 0.001));
 }
