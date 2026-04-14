@@ -1,6 +1,6 @@
 use crate::{
     cart,
-    ext::get_u_matrix2,
+    ext::{collapse, get_u_matrix2},
     gate::{Gate, GateType, QBits},
 };
 use nalgebra::{Complex, DMatrix, DVector, Matrix2};
@@ -19,6 +19,14 @@ impl StateVector {
         let mut v = Self(DVector::<Complex<f64>>::zeros(1 << n_qubits));
         v[bitstring] = cart!(1.0);
         v
+    }
+
+    pub fn basis_value(&self, basis: usize) -> Complex<f64> {
+        self[basis]
+    }
+
+    pub fn collapse(&self) -> usize {
+        collapse(self.as_slice())
     }
 
     /// Checks that all control bits are 1
