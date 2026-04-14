@@ -1,6 +1,10 @@
 use rayon::prelude::*;
 use std::{
+    alloc::{Layout, dealloc},
     mem,
+    ops::{Deref, DerefMut},
+    pin::Pin,
+    ptr::NonNull,
     sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
 };
 
@@ -284,10 +288,54 @@ impl QuantumState for CubeVector {
 type Locker<T> = Arc<RwLock<T>>;
 type V = Complex<f64>;
 
+#[derive(Debug)]
+pub struct SendPtr<T>(Option<NonNull<T>>);
+
+impl<T> SendPtr<T> {
+    pub unsafe fn construct(value: T) -> Self {
+        let boxed = Box::new(value);
+        let ptr = NonNull::from(Box::leak(boxed));
+        Self(Some(ptr))
+    }
+
+    pub unsafe fn destroy(ptr: Self) {
+        unsafe {
+            drop(Box::from_raw(
+                ptr.0.expect("Expected non null pointer").as_ptr(),
+            ));
+        }
+    }
+}
+
+impl<T> Deref for SendPtr<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { self.0.expect("Expected non null pointer").as_ref() }
+    }
+}
+impl<T> DerefMut for SendPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { self.0.expect("Expected non null pointer").as_mut() }
+    }
+}
+
+impl<T> Clone for SendPtr<T> {
+    fn clone(&self) -> Self {
+        Self(Some(NonNull::clone(
+            &self.0.expect("Expected non null pointer"),
+        )))
+    }
+}
+impl<T> Copy for SendPtr<T> {}
+
+unsafe impl<T: Send> Send for SendPtr<T> {}
+unsafe impl<T: Send> Sync for SendPtr<T> {}
+
 #[derive(Debug, Clone)]
 pub struct Vertex {
     amplitude: V,
-    next_vertex: Vec<Locker<Self>>,
+    next_vertex: Vec<SendPtr<Self>>,
 }
 
 impl Vertex {
@@ -299,9 +347,25 @@ impl Vertex {
             }
         } else {
             let mut ret = Vertex::new(n - 1);
-            ret.ascend_with(Arc::new(RwLock::new(Vertex::new(n - 1))));
+            unsafe {
+                ret.ascend_with(SendPtr::construct(Vertex::new(n - 1)));
+            };
             ret
         }
+    }
+
+    unsafe fn destroy(&mut self, path: BitSet, path_offset: usize, start_axis: usize) {
+        for i in start_axis..self.dim() {
+            let mut next = path;
+            let path_offset = path_offset + i - start_axis;
+            next.set(path_offset);
+            let mut vertex = Self::vertex_mut(&self.next_vertex, i);
+            unsafe { Vertex::destroy(&mut *vertex, next, path_offset + 1, i) };
+            unsafe {
+                SendPtr::destroy(vertex);
+            }
+        }
+        self.next_vertex.clear();
     }
 
     fn for_each<F: Fn(usize, V) + std::marker::Send + std::marker::Sync>(
@@ -401,8 +465,8 @@ impl Vertex {
     fn swap(&mut self, axis_1: usize, axis_2: usize, start_axis: usize) {
         debug_assert!(axis_1 < axis_2);
         mem::swap(
-            &mut Self::vertex_mut(&self.next_vertex, axis_1).amplitude,
             &mut Self::vertex_mut(&self.next_vertex, axis_2).amplitude,
+            &mut Self::vertex_mut(&self.next_vertex, axis_1).amplitude,
         );
         rayon::join(
             || {
@@ -458,7 +522,7 @@ impl Vertex {
                 } else if i < axis_2 {
                     axis_2 -= 1;
                 }
-                Self::vertex_mut(&self.next_vertex, i).filter_swap(axis_1, axis_2, filter, i);
+                Self::vertex_mut(&mut self.next_vertex, i).filter_swap(axis_1, axis_2, filter, i);
                 return;
             }
         }
@@ -468,24 +532,24 @@ impl Vertex {
         self.next_vertex.len()
     }
 
-    fn vertex(next_vertex: &Vec<Locker<Self>>, axis: usize) -> RwLockReadGuard<'_, Self> {
-        read!(next_vertex[next_vertex.len() - axis - 1])
+    fn vertex(next_vertex: &Vec<SendPtr<Self>>, axis: usize) -> SendPtr<Self> {
+        next_vertex[next_vertex.len() - axis - 1]
+        //read!(next_vertex[next_vertex.len() - axis - 1])
     }
 
-    fn vertex_mut(next_vertex: &Vec<Locker<Self>>, axis: usize) -> RwLockWriteGuard<'_, Self> {
-        write!(next_vertex[next_vertex.len() - axis - 1])
+    fn vertex_mut(next_vertex: &Vec<SendPtr<Self>>, axis: usize) -> SendPtr<Self> {
+        next_vertex[next_vertex.len() - axis - 1]
+        // write!(next_vertex[next_vertex.len() - axis - 1])
     }
 
     /// Does nothing if self and cube are not the same dimension
-    fn ascend_with(&mut self, cube: Locker<Self>) {
-        let cube_guard = read!(cube);
-        if self.dim() != cube_guard.dim() {
+    unsafe fn ascend_with(&mut self, cube: SendPtr<Self>) {
+        if self.dim() != cube.dim() {
             return;
         }
         for i in 0..self.dim() {
-            write!(self.next_vertex[i]).ascend_with(Arc::clone(&cube_guard.next_vertex[i]));
+            unsafe { self.next_vertex[i].ascend_with(cube.next_vertex[i]) };
         }
-        drop(cube_guard);
         self.next_vertex.push(cube);
     }
 
@@ -500,6 +564,12 @@ impl Vertex {
             path_offset += 1;
         }
         self.amplitude
+    }
+}
+
+impl Drop for Vertex {
+    fn drop(&mut self) {
+        unsafe { self.destroy(0.into(), 0, 0) };
     }
 }
 
@@ -519,18 +589,14 @@ mod tests {
     #[test]
     /// Assert that foreach only visits each index once
     fn foreach() {
-        let t = Vertex::new(3);
-        let st = Arc::new(RwLock::new(HashSet::new()));
-        t.for_each(0.into(), 0, 0, &|i, _| {
-            write!(st).insert(i);
-        });
-        assert_eq!(read!(st).len(), (1 << 3));
-        write!(st).clear();
-        let t = Vertex::new(4);
-        t.for_each(0.into(), 0, 0, &mut |i, _| {
-            write!(st).insert(i);
-        });
-        assert_eq!(read!(st).len(), (1 << 4));
+        for n in 0..5 {
+            let t = Vertex::new(n);
+            let st = Arc::new(RwLock::new(HashSet::new()));
+            t.for_each(0.into(), 0, 0, &|i, _| {
+                write!(st).insert(i);
+            });
+            assert_eq!(read!(st).len(), (1 << n));
+        }
     }
 
     #[test]
