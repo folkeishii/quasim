@@ -13,7 +13,7 @@ use crate::{
     ext::{BitSet, TargetIter},
     gate::{Gate, GateType, QBits},
     register_file::RegisterFile,
-    simulator::{Debuggable, QuantumState, Simulator, StoredCircuit},
+    simulator::{Debuggable, QuantumState, Sampleable, Simulator, StoredCircuit, StoredRegisters},
 };
 
 macro_rules! read {
@@ -190,6 +190,17 @@ impl StoredCircuit for CubeSimulator {
     fn circuit_mut(&mut self) -> &mut Circuit<Self::B> {
         &mut self.circuit
     }
+}
+
+impl StoredRegisters for CubeSimulator {
+    fn registers(&self) -> &RegisterFile {
+        &self.register_file
+    }
+}
+
+impl<B: CircuitBehaviour> Sampleable<B> for CubeSimulator where
+    Circuit<B>: Into<Circuit<HybridCircuit>>
+{
 }
 
 #[derive(Debug, Clone)]
@@ -499,7 +510,11 @@ mod tests {
         sync::{Arc, RwLock},
     };
 
-    use crate::{cart, cube_map2::Vertex, ext::BitSet};
+    use crate::{
+        cart, common_test,
+        cube_map2::{CubeSimulator, Vertex},
+        ext::BitSet,
+    };
 
     #[test]
     /// Assert that foreach only visits each index once
@@ -629,6 +644,51 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    pub fn apply_gates() {
+        common_test::apply_gates::<CubeSimulator>();
+    }
+
+    #[test]
+    pub fn double_sub() {
+        common_test::double_sub::<CubeSimulator>();
+    }
+
+    #[test]
+    pub fn deep_sub() {
+        common_test::deep_sub::<CubeSimulator>();
+    }
+
+    #[test]
+    pub fn hybrid_test() {
+        common_test::hybrid_test::<CubeSimulator>();
+    }
+
+    #[test]
+    pub fn register_test() {
+        common_test::register_test::<CubeSimulator>();
+    }
+
+    #[test]
+    pub fn test_measure_overwrites_with_zero() {
+        common_test::test_measure_overwrites_with_zero::<CubeSimulator>();
+    }
+
+    #[test]
+    pub fn test_reset() {
+        common_test::test_reset::<CubeSimulator>();
+    }
+
+    #[test]
+    pub fn test_reset_with_shared_scratch_register() {
+        common_test::test_reset_with_shared_scratch_register::<CubeSimulator>();
+    }
+
+    #[test]
+    pub fn deep_ctrl_sub() {
+        common_test::deep_ctrl_sub::<CubeSimulator>();
     }
 }
 
