@@ -140,7 +140,7 @@ impl StateVector {
 
     /// # coefficent_matrix
     /// Finds the appropriate coefficent matrix
-    /// used in schmitt decomposition.
+    /// used in schmidt decomposition.
     fn coefficent_matrix(&self, targets: &[usize], n_qubits: usize) -> DMatrix<Complex<f64>> {
         let squash_by_mask = |bitstring: usize, mask: usize| {
             let mut res = 0;
@@ -175,10 +175,10 @@ impl StateVector {
         coeffs
     }
 
-    /// # schmitt_trace
+    /// # schmidt_trace
     /// Assuming state can be factored,
     /// returns the state with targets traced out.
-    pub fn schmitt_trace(&self, targets: &[usize], n_qubits: usize) -> Self {
+    pub fn schmidt_trace(&self, targets: &[usize], n_qubits: usize) -> Self {
         // Find the coefficent matrix for the state vector.
         let coeffs = self.coefficent_matrix(targets, n_qubits);
 
@@ -190,10 +190,10 @@ impl StateVector {
         Self(res.scale(res[0].re.signum()))
     }
 
-    /// # schmitt_reduce
+    /// # schmidt_reduce
     /// Assuming state can be factored,
     /// returns the reduced state of targets.
-    pub fn schmitt_reduce(&self, targets: &[usize], n_qubits: usize) -> Self {
+    pub fn schmidt_reduce(&self, targets: &[usize], n_qubits: usize) -> Self {
         // Find the coefficent matrix for the state vector.
         let coeffs = self.coefficent_matrix(targets, n_qubits);
 
@@ -269,7 +269,7 @@ mod tests {
     use std::f64::consts::{FRAC_1_SQRT_2, PI};
 
     #[test]
-    fn schmitt_test() {
+    fn schmidt_test() {
         let hcnot = StateVector::from(dvector![
             cart!(FRAC_1_SQRT_2),
             cart!(0.0),
@@ -286,23 +286,23 @@ mod tests {
                 * zero.clone();
 
         let tot_last = StateVector::from(random_state.kronecker(&hcnot));
-        let trace_tot_last = tot_last.schmitt_trace(&[2], 3);
+        let trace_tot_last = tot_last.schmidt_trace(&[2], 3);
         assert!(equal_state_c(&trace_tot_last, &hcnot, 2, 0.001));
-        let reduce_tot_last = tot_last.schmitt_reduce(&[0, 1], 3);
+        let reduce_tot_last = tot_last.schmidt_reduce(&[0, 1], 3);
         assert!(equal_state_c(&reduce_tot_last, &hcnot, 2, 0.001));
 
         let tot_first = StateVector::from(hcnot.kronecker(&random_state));
-        let trace_tot_first = tot_first.schmitt_trace(&[0], 3);
+        let trace_tot_first = tot_first.schmidt_trace(&[0], 3);
         assert!(equal_state_c(&trace_tot_first, &hcnot, 2, 0.001));
-        let reduce_tot_first = tot_first.schmitt_reduce(&[1, 2], 3);
+        let reduce_tot_first = tot_first.schmidt_reduce(&[1, 2], 3);
         assert!(equal_state_c(&reduce_tot_first, &hcnot, 2, 0.001));
 
         let mut tot_middle = StateVector::from(zero.kronecker(&random_state.kronecker(&zero)));
         tot_middle.apply_gate(&Gate::new(GateType::H, &[], &[0]).unwrap());
         tot_middle.apply_gate(&Gate::new(GateType::X, &[0], &[2]).unwrap());
-        let trace_tot_middle = tot_middle.schmitt_trace(&[1], 3);
+        let trace_tot_middle = tot_middle.schmidt_trace(&[1], 3);
         assert!(equal_state_c(&trace_tot_middle, &hcnot, 2, 0.001));
-        let reduce_tot_middle = tot_middle.schmitt_reduce(&[0, 2], 3);
+        let reduce_tot_middle = tot_middle.schmidt_reduce(&[0, 2], 3);
         assert!(equal_state_c(&reduce_tot_middle, &hcnot, 2, 0.001));
     }
 }

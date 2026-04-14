@@ -176,7 +176,7 @@ impl ProductStateSimulator {
         sys.qubits_mut().remove(local_target);
         *sys.state_vector_mut() = sys
             .state_vector()
-            .schmitt_trace(&[local_target], local_n_qubits);
+            .schmidt_trace(&[local_target], local_n_qubits);
 
         self.product_state[target_system] = sys;
 
