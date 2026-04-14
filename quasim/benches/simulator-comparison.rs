@@ -6,9 +6,12 @@ use quasim::{
     sampler::CircuitSampler,
     simulator::Sampleable,
     sv_simulator::StateVectorSimulator,
+    product_state_simulator::ProductStateSimulator,
 };
 
 extern crate quasim;
+
+const QUBITS_UPPER_BOUND: usize = 22;
 
 fn main() {
     divan::main();
@@ -88,7 +91,7 @@ where
 )]
 fn circuit_size_full_entagnlement<Sim>(n_qubits: usize)
 where
-    Sim: Sampleable<HybridCircuit>,
+    Sim: Sampleable<PureCircuit>,
 {
     let mut circuit = Circuit::new(n_qubits);
 
@@ -107,7 +110,7 @@ where
 )]
 fn entanglement_size<Sim>(entangle_size: usize)
 where
-    Sim: Sampleable<HybridCircuit>,
+    Sim: Sampleable<PureCircuit>,
 {
     let n_systems = QUBITS_UPPER_BOUND / entangle_size;
 
@@ -150,7 +153,7 @@ where
         circuit = circuit.h(q).cx(&[q], (q + 1) % QUBITS_UPPER_BOUND);
     }
 
-    Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
+    Sim::sample_once(circuit.into(), CircuitSampler).expect("couldn't build circuit");
 }
 
 #[divan::bench(
@@ -174,5 +177,5 @@ where
         circuit = circuit.h(q).cx(&[q], (q + 1) % n_qubits);
     }
 
-    Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
+    Sim::sample_once(circuit.into(), CircuitSampler).expect("couldn't build circuit");
 }
