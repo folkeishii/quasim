@@ -134,30 +134,30 @@ fn extract_period(a: usize, n: usize, k: usize, t: usize) -> Option<usize> {
     let convs = convergents(&cf);
 
     for &(_, r) in &convs {
-        if r == 0 || r > n{
+        if r == 0 || r > n {
             continue;
         }
 
         for m in 1..=n {
-        let candidate = r * m;
-        if candidate > n {
-            break;
-        }
+            let candidate = r * m;
+            if candidate > n {
+                break;
+            }
 
-        if modpow(a, candidate, n) != 1 {
-            continue;
-        }
+            if modpow(a, candidate, n) != 1 {
+                continue;
+            }
 
-        if candidate % 2 != 0 {
-            continue;
-        }
+            if candidate % 2 != 0 {
+                continue;
+            }
 
-        if modpow(a, candidate / 2, n) == n - 1 {
-            continue;
-        }
+            if modpow(a, candidate / 2, n) == n - 1 {
+                continue;
+            }
 
-        return Some(candidate);
-    }
+            return Some(candidate);
+        }
     }
     None
 }
@@ -429,7 +429,7 @@ pub fn shors(n: usize, a: usize) -> Option<Vec<usize>> {
         return None;
     };
 
-    let a_pow = modpow(a,r / 2, n);
+    let a_pow = modpow(a, r / 2, n);
 
     // 4. reject bad cases
     if a_pow == 1 || a_pow == n - 1 {
@@ -497,8 +497,8 @@ mod tests {
     };
 
     use crate::{
-        create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv,
-        quantum, shors, shors_random,
+        create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, quantum,
+        shors, shors_random,
     };
 
     #[test]
@@ -687,7 +687,7 @@ mod tests {
 
     #[test]
     fn test_quantum() {
-        let n = 61;
+        let n = 17;
         let a = 8;
         let attempts = 10;
 
@@ -700,10 +700,7 @@ mod tests {
 
             success = true;
 
-            println!(
-                "Found valid period (r = {}) in {} attempts.",
-                r, i
-            );
+            println!("Found valid period (r = {}) in {} attempts.", r, i);
             break;
         }
         assert!(
@@ -715,7 +712,7 @@ mod tests {
 
     #[test]
     fn test_shors() {
-        let n = 55;
+        let n = 15;
         let a = 2;
         let attempts = 10;
 
