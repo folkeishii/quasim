@@ -231,7 +231,8 @@ pub enum DebugSimulatorError {
 mod tests {
     use crate::common_test;
     use crate::ext::{
-        collapse, equal_matrix_c, equal_state_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix, measure_and_observe_sv
+        collapse, equal_matrix_c, equal_state_c, expand_matrix, expand_matrix_from_gate,
+        get_gate_matrix, measure_and_observe_sv,
     };
     use crate::simulator::Simulator;
     use crate::{

@@ -421,7 +421,8 @@ impl<T: Ord> OrdByKey<T> for T {
 #[cfg(test)]
 mod tests {
     use crate::ext::{
-        convert_matrix, convert_vector, equal_matrix_c, equal_state_c, expand_matrix_from_gate, get_gate_matrix, swap_matrix
+        convert_matrix, convert_vector, equal_matrix_c, equal_state_c, expand_matrix_from_gate,
+        get_gate_matrix, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
     use nalgebra::{dmatrix, dvector};
