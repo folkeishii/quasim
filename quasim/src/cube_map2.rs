@@ -3,7 +3,6 @@ use std::{
     mem,
     ops::{Deref, DerefMut},
     ptr::NonNull,
-    sync::{Arc, RwLock},
 };
 
 use nalgebra::{Complex, Matrix2};
@@ -20,17 +19,6 @@ use crate::{
 
 const MULTI_THREAD_MIN: usize = 16;
 
-macro_rules! read {
-    ($x:expr) => {
-        $x.read().unwrap_or_else(|e| e.into_inner())
-    };
-}
-macro_rules! write {
-    ($x:expr) => {
-        $x.write().unwrap_or_else(|e| e.into_inner())
-    };
-}
-
 pub struct CubeSimulator {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
@@ -46,30 +34,13 @@ impl CubeSimulator {
 
     fn handle_measure_bit(&mut self, target: usize, (reg, c_target): (&str, usize)) {
         self.pc.increment();
-        let collapsed = self.state_vector.collapse();
-        let q_mask = 1 << target;
-        let c_mask = 1 << c_target;
-        let q_masked = collapsed & q_mask;
-        let c_masked = (q_masked >> target) << c_target;
-
+        let is_on = self.state_vector.collapse_axis(target);
         let mut val = self.register_file[reg].read();
-        val &= !c_mask;
-        val |= c_masked;
+        val &= !(1usize << c_target);
+        if is_on {
+            val |= 1usize << c_target;
+        }
         self.register_file[reg].write(val);
-
-        let total_prob = Arc::new(RwLock::new(0.0));
-        self.state_vector.map(|state, val| {
-            let s_masked = state & q_mask;
-            if s_masked ^ q_masked == 0 {
-                *write!(total_prob) += val.norm_sqr();
-            } else {
-                *val = cart!(0);
-            }
-        });
-        let total_prob = read!(total_prob).sqrt();
-        self.state_vector.map(|_, val| {
-            *val /= total_prob;
-        });
     }
 
     fn handle_measure_all(&mut self, reg: &str) {
@@ -254,6 +225,19 @@ impl CubeVector {
         self.zero.dim()
     }
 
+    pub fn collapse_axis(&mut self, axis: usize) -> bool {
+        let r = rand::random_range(0.0..1.0);
+        self.zero.collapse_axis(axis, r)
+    }
+
+    pub fn sum_norm_sqr(&mut self) -> f64 {
+        self.zero.sum_norm_sqr(0)
+    }
+
+    pub fn nullify(&mut self) {
+        self.zero.nullify(None, 0)
+    }
+
     fn apply_2x2(&mut self, axis: usize, filter: BitSet, matrix: Matrix2<Complex<f64>>) {
         self.zero.filter_apply_2x2(axis, filter, 0, &matrix);
     }
@@ -263,18 +247,9 @@ impl QuantumState for CubeVector {
     type BasisValue = Complex<f64>;
 
     fn collapse(&self) -> usize {
-        let ri = Arc::new(RwLock::new(rand::random_range(0.0..1.0)));
-        let collapsed = Arc::new(RwLock::new(None));
-        self.for_each(|state, val| {
-            let prob = val.norm_sqr();
-            let mut ri_guard = write!(ri);
-            *ri_guard -= prob;
-            if *ri_guard <= 0.0 {
-                write!(collapsed).get_or_insert(state);
-            }
-        });
-
-        read!(collapsed).unwrap_or(0)
+        self.zero
+            .collapse_peek(0.into(), 0, 0, rand::random_range(0.0..1.0))
+            .unwrap_or(0)
     }
 
     fn basis_value(&self, basis: usize) -> Self::BasisValue {
@@ -355,7 +330,7 @@ impl Vertex {
             let mut next = path;
             let path_offset = path_offset + i - start_axis;
             next.set(path_offset);
-            let mut vertex = Self::vertex_mut(&self.next_vertex, i);
+            let mut vertex = Self::vertex(&self.next_vertex, i);
             unsafe { Vertex::destroy(&mut *vertex, next, path_offset + 1, i) };
             unsafe {
                 SendPtr::destroy(vertex);
@@ -377,14 +352,14 @@ impl Vertex {
                 let mut next = path;
                 let path_offset = path_offset + i - start_axis;
                 next.set(path_offset);
-                Self::vertex_mut(&self.next_vertex, i).for_each(next, path_offset + 1, i, f);
+                Self::vertex(&self.next_vertex, i).for_each(next, path_offset + 1, i, f);
             });
         } else {
             for i in start_axis..self.dim() {
                 let mut next = path;
                 let path_offset = path_offset + i - start_axis;
                 next.set(path_offset);
-                Self::vertex_mut(&self.next_vertex, i).for_each(next, path_offset + 1, i, f);
+                Self::vertex(&self.next_vertex, i).for_each(next, path_offset + 1, i, f);
             }
         }
     }
@@ -402,27 +377,108 @@ impl Vertex {
                 let mut next = path;
                 let path_offset = path_offset + i - start_axis;
                 next.set(path_offset);
-                Self::vertex_mut(&self.next_vertex, i).map(next, path_offset + 1, i, f);
+                Self::vertex(&self.next_vertex, i).map(next, path_offset + 1, i, f);
             });
         } else {
             for i in start_axis..self.dim() {
                 let mut next = path;
                 let path_offset = path_offset + i - start_axis;
                 next.set(path_offset);
-                Self::vertex_mut(&self.next_vertex, i).map(next, path_offset + 1, i, f);
+                Self::vertex(&self.next_vertex, i).map(next, path_offset + 1, i, f);
             }
         }
+    }
+
+    fn collapse_peek(
+        &self,
+        path: BitSet,
+        path_offset: usize,
+        start_axis: usize,
+        rand: f64,
+    ) -> Result<usize, f64> {
+        let mut rand = rand;
+        rand -= self.amplitude.norm_sqr();
+        if rand < 0.0 {
+            return Ok(*path);
+        }
+        for i in start_axis..self.dim() {
+            let mut next = path;
+            let path_offset = path_offset + i - start_axis;
+            next.set(path_offset);
+            match Self::vertex(&self.next_vertex, i).collapse_peek(next, path_offset + 1, i, rand) {
+                Ok(c) => return Ok(c),
+                Err(r) => rand = r,
+            }
+        }
+        return Err(rand);
+    }
+
+    fn collapse_axis(&mut self, axis: usize, rand: f64) -> bool {
+        let chance_on = Self::vertex(&self.next_vertex, axis).sum_norm_sqr(0);
+        let is_on = rand < chance_on;
+
+        if is_on {
+            let divisor = chance_on.sqrt();
+            Self::vertex(&self.next_vertex, axis).normalize_with(None, 0, divisor);
+            self.nullify(Some(axis), 0);
+        } else {
+            let divisor = (1.0 - chance_on).sqrt();
+            Self::vertex(&self.next_vertex, axis).nullify(None, 0);
+            self.normalize_with(Some(axis), 0, divisor);
+        }
+
+        is_on
+    }
+
+    fn normalize_with(&mut self, skip_axis: Option<usize>, start_axis: usize, divisor: f64) {
+        self.amplitude /= divisor;
+        if let Some(skip) = skip_axis {
+            for i in start_axis..skip {
+                Self::vertex(&self.next_vertex, i).normalize_with(Some(skip - 1), i, divisor);
+            }
+            for i in (skip + 1).max(start_axis)..self.dim() {
+                Self::vertex(&self.next_vertex, i).normalize_with(Some(skip), i, divisor);
+            }
+        } else {
+            for i in start_axis..self.dim() {
+                Self::vertex(&self.next_vertex, i).normalize_with(None, i, divisor);
+            }
+        }
+    }
+
+    fn nullify(&mut self, skip_axis: Option<usize>, start_axis: usize) {
+        self.amplitude = cart!(0);
+        if let Some(skip) = skip_axis {
+            for i in start_axis..skip {
+                Self::vertex(&self.next_vertex, i).nullify(Some(skip - 1), i);
+            }
+            for i in (skip + 1).max(start_axis)..self.dim() {
+                Self::vertex(&self.next_vertex, i).nullify(Some(skip), i);
+            }
+        } else {
+            for i in start_axis..self.dim() {
+                Self::vertex(&self.next_vertex, i).nullify(None, i);
+            }
+        }
+    }
+
+    fn sum_norm_sqr(&self, start_axis: usize) -> f64 {
+        let mut s = self.amplitude.norm_sqr();
+        for i in start_axis..self.dim() {
+            s += Self::vertex(&self.next_vertex, i).sum_norm_sqr(i);
+        }
+        s
     }
 
     fn apply_2x2(&mut self, axis: usize, start_axis: usize, matrix: &Matrix2<V>) {
         (
             self.amplitude,
-            Self::vertex_mut(&self.next_vertex, axis).amplitude,
+            Self::vertex(&self.next_vertex, axis).amplitude,
         ) = (
             matrix[(0, 0)] * self.amplitude
-                + matrix[(0, 1)] * Self::vertex_mut(&self.next_vertex, axis).amplitude,
+                + matrix[(0, 1)] * Self::vertex(&self.next_vertex, axis).amplitude,
             matrix[(1, 0)] * self.amplitude
-                + matrix[(1, 1)] * Self::vertex_mut(&self.next_vertex, axis).amplitude,
+                + matrix[(1, 1)] * Self::vertex(&self.next_vertex, axis).amplitude,
         );
 
         let slf: &Self = self;
@@ -430,23 +486,23 @@ impl Vertex {
             rayon::join(
                 || {
                     (start_axis..axis).into_par_iter().for_each(move |i| {
-                        Self::vertex_mut(&slf.next_vertex, i).apply_2x2(axis - 1, i, matrix);
+                        Self::vertex(&slf.next_vertex, i).apply_2x2(axis - 1, i, matrix);
                     });
                 },
                 || {
                     ((axis + 1).max(start_axis)..slf.dim())
                         .into_par_iter()
                         .for_each(move |i| {
-                            Self::vertex_mut(&slf.next_vertex, i).apply_2x2(axis, i, matrix);
+                            Self::vertex(&slf.next_vertex, i).apply_2x2(axis, i, matrix);
                         });
                 },
             );
         } else {
             for i in start_axis..axis {
-                Self::vertex_mut(&self.next_vertex, i).apply_2x2(axis - 1, i, matrix);
+                Self::vertex(&self.next_vertex, i).apply_2x2(axis - 1, i, matrix);
             }
             for i in (axis + 1).max(start_axis)..self.dim() {
-                Self::vertex_mut(&slf.next_vertex, i).apply_2x2(axis, i, matrix);
+                Self::vertex(&slf.next_vertex, i).apply_2x2(axis, i, matrix);
             }
         }
     }
@@ -476,7 +532,7 @@ impl Vertex {
                 if i < axis {
                     axis -= 1;
                 }
-                Self::vertex_mut(&self.next_vertex, i).filter_apply_2x2(axis, filter, i, matrix);
+                Self::vertex(&self.next_vertex, i).filter_apply_2x2(axis, filter, i, matrix);
                 return;
             }
         }
@@ -489,14 +545,14 @@ impl Vertex {
     fn swap(&mut self, axis_1: usize, axis_2: usize, start_axis: usize) {
         debug_assert!(axis_1 < axis_2);
         mem::swap(
-            &mut Self::vertex_mut(&self.next_vertex, axis_2).amplitude,
-            &mut Self::vertex_mut(&self.next_vertex, axis_1).amplitude,
+            &mut Self::vertex(&self.next_vertex, axis_2).amplitude,
+            &mut Self::vertex(&self.next_vertex, axis_1).amplitude,
         );
         if self.dim() > MULTI_THREAD_MIN {
             rayon::join(
                 || {
                     (start_axis..axis_1).into_par_iter().for_each(|i| {
-                        Self::vertex_mut(&self.next_vertex, i).swap(axis_1 - 1, axis_2 - 1, i);
+                        Self::vertex(&self.next_vertex, i).swap(axis_1 - 1, axis_2 - 1, i);
                     });
                 },
                 || {
@@ -505,14 +561,14 @@ impl Vertex {
                             ((axis_1 + 1).max(start_axis)..axis_2)
                                 .into_par_iter()
                                 .for_each(|i| {
-                                    Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2 - 1, i);
+                                    Self::vertex(&self.next_vertex, i).swap(axis_1, axis_2 - 1, i);
                                 });
                         },
                         || {
                             ((axis_2 + 1).max(start_axis)..self.dim())
                                 .into_par_iter()
                                 .for_each(|i| {
-                                    Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2, i);
+                                    Self::vertex(&self.next_vertex, i).swap(axis_1, axis_2, i);
                                 });
                         },
                     );
@@ -520,13 +576,13 @@ impl Vertex {
             );
         } else {
             for i in start_axis..axis_1 {
-                Self::vertex_mut(&self.next_vertex, i).swap(axis_1 - 1, axis_2 - 1, i);
+                Self::vertex(&self.next_vertex, i).swap(axis_1 - 1, axis_2 - 1, i);
             }
             for i in (axis_1 + 1).max(start_axis)..axis_2 {
-                Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2 - 1, i);
+                Self::vertex(&self.next_vertex, i).swap(axis_1, axis_2 - 1, i);
             }
             for i in (axis_2 + 1).max(start_axis)..self.dim() {
-                Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2, i);
+                Self::vertex(&self.next_vertex, i).swap(axis_1, axis_2, i);
             }
         }
     }
@@ -558,7 +614,7 @@ impl Vertex {
                 } else if i < axis_2 {
                     axis_2 -= 1;
                 }
-                Self::vertex_mut(&mut self.next_vertex, i).filter_swap(axis_1, axis_2, filter, i);
+                Self::vertex(&mut self.next_vertex, i).filter_swap(axis_1, axis_2, filter, i);
                 return;
             }
         }
@@ -569,11 +625,6 @@ impl Vertex {
     }
 
     fn vertex(next_vertex: &Vec<SendPtr<Self>>, axis: usize) -> SendPtr<Self> {
-        next_vertex[next_vertex.len() - axis - 1]
-        //read!(next_vertex[next_vertex.len() - axis - 1])
-    }
-
-    fn vertex_mut(next_vertex: &Vec<SendPtr<Self>>, axis: usize) -> SendPtr<Self> {
         next_vertex[next_vertex.len() - axis - 1]
         // write!(next_vertex[next_vertex.len() - axis - 1])
     }
@@ -611,29 +662,12 @@ impl Drop for Vertex {
 
 #[cfg(test)]
 mod tests {
-    use std::{
-        collections::HashSet,
-        sync::{Arc, RwLock},
-    };
 
     use crate::{
         cart, common_test,
         cube_map2::{CubeSimulator, Vertex},
         ext::BitSet,
     };
-
-    #[test]
-    /// Assert that foreach only visits each index once
-    fn foreach() {
-        for n in 0..5 {
-            let t = Vertex::new(n);
-            let st = Arc::new(RwLock::new(HashSet::new()));
-            t.for_each(0.into(), 0, 0, &|i, _| {
-                write!(st).insert(i);
-            });
-            assert_eq!(read!(st).len(), (1 << n));
-        }
-    }
 
     #[test]
     /// Assert that propagate only visits each filtered index once
