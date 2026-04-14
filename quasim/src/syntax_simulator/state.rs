@@ -20,9 +20,8 @@ impl ScaledState {
         self.0
             .clone()
             .all_inherent_states()
-            .iter()
-            // Guaranteed usize means cheap clone.
-            .map(|substate| my_scalar * substate.clone())
+            .into_iter()
+            .map(|substate| my_scalar * substate)
             .collect()
     }
 
@@ -73,7 +72,7 @@ impl SumOfScaledStates {
 
     pub fn apply_gate(&mut self, gate: &Gate) {
         let controls = gate.get_control_bits();
-        let targets = gate.get_target_bits().get_indices();
+        let targets = gate.get_target_bits().get_indices(); // O(n)
 
         debug!(
             "Applying gate {:?} with controls {:?} and target {:?}",
@@ -82,6 +81,7 @@ impl SumOfScaledStates {
             targets
         );
 
+        // O(3 X applications...)
         if matches!(gate.get_type(), GateType::SWAP) {
             let lsb = [targets[0]];
             let msb = [targets[1]];
@@ -114,6 +114,8 @@ impl SumOfScaledStates {
         controls: QBits,
         target: usize,
     ) -> Sum {
+        let control_indices = controls.get_indices();
+        let control_bitstring = controls.get_bitstring();
         let mut result = self.expand_necessary_controls(controls);
 
         result
@@ -122,13 +124,10 @@ impl SumOfScaledStates {
             .filter(|ScaledState(basis, _)| {
                 use ExtendedBasis::*;
                 match basis {
-                    Binary(bits) => bits & controls.get_bitstring() == controls.get_bitstring(),
+                    Binary(bits) => bits & control_bitstring == control_bitstring,
                     Superposition(bases) => {
                         use ExtendedQubitBasis::*;
-                        controls
-                            .get_indices()
-                            .iter()
-                            .all(|&i| bases.get(i) == Some(&One))
+                        control_indices.iter().all(|&i| bases.get(i) == Some(&One))
                     }
                 }
             })
@@ -150,16 +149,10 @@ impl SumOfScaledStates {
         states
             .into_iter()
             .flat_map(move |ScaledState(basis, scalar)| {
-                transform(basis.clone(), target)
-                    .iter()
-                    .filter_map(|s| {
-                        if let Some(actual_value) = s {
-                            Some(scalar.clone() * actual_value.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>()
+                transform(basis, target)
+                    .into_iter()
+                    .flatten()
+                    .map(move |actual_value| scalar * actual_value)
             })
     }
 
@@ -171,36 +164,31 @@ impl SumOfScaledStates {
         phi: f64,
         lambda: f64,
     ) -> Sum {
-        let mut states_to_alter: Sum = Vec::new();
-        let mut sum: Sum = self.expand_necessary_controls(controls);
-        sum.retain(|ss| {
-            let ScaledState(basis, _) = ss;
-            use ExtendedBasis::*;
-            match basis {
-                Binary(bits) => {
-                    if bits & controls.get_bitstring() == controls.get_bitstring() {
-                        states_to_alter.push(ss.clone());
-                        return false;
-                    } else {
-                        return true;
-                    }
-                }
-                Superposition(bases) => {
-                    use ExtendedQubitBasis::*;
-                    let all_controls_set = controls
-                        .get_indices()
-                        .iter()
-                        .all(|&i| bases.get(i) == Some(&One));
+        let sum: Sum = self.expand_necessary_controls(controls);
+        let mut states_to_alter: Sum = Vec::with_capacity(sum.len());
+        let mut passthrough: Sum = Vec::with_capacity(sum.len());
+        let control_indices = controls.get_indices();
+        let control_bitstring = controls.get_bitstring();
 
-                    if all_controls_set {
-                        states_to_alter.push(ss.clone());
-                        return false;
-                    } else {
-                        return true;
+        for ss in sum {
+            let should_alter = {
+                let ScaledState(basis, _) = &ss;
+                use ExtendedBasis::*;
+                match basis {
+                    Binary(bits) => bits & control_bitstring == control_bitstring,
+                    Superposition(bases) => {
+                        use ExtendedQubitBasis::*;
+                        control_indices.iter().all(|&i| bases.get(i) == Some(&One))
                     }
                 }
+            };
+
+            if should_alter {
+                states_to_alter.push(ss);
+            } else {
+                passthrough.push(ss);
             }
-        });
+        }
 
         let r_z_lambda = move |b, t| ExtendedBasis::p(b, t, lambda as f32);
         let r_y_theta = move |b, t| ExtendedBasis::r_y(b, t, theta as f32);
@@ -211,8 +199,8 @@ impl SumOfScaledStates {
         let new_state = Self::apply_non_discrete_gate(new_state, target, r_z_phi);
         let new_state = new_state.filter(|s| !s.has_zero_coef());
 
-        sum.extend(new_state);
-        sum
+        passthrough.extend(new_state);
+        passthrough
     }
 
     /// Expands only states that are necessary to check the controls,
@@ -220,41 +208,35 @@ impl SumOfScaledStates {
     /// while others will be expanded so checks can be performed on the underlying binary states.
     pub fn expand_necessary_controls(&self, controls: QBits) -> Sum {
         let control_indices = controls.get_indices();
-        let expanded: Sum = self
-            .sum
-            .iter()
-            .map(|ScaledState(basis, scalar)| {
-                use ExtendedBasis::*;
-                match basis {
-                    Superposition(bases) => {
-                        let any_controls_are_zero = control_indices.iter().any(|&i| {
-                            use ExtendedQubitBasis::*;
-                            bases.get(i).unwrap_or(&Zero) == &Zero
-                        });
+        let mut expanded: Sum = Vec::with_capacity(self.sum.len());
 
-                        if any_controls_are_zero {
-                            return vec![ScaledState(Superposition(bases.clone()), *scalar)];
-                        } else {
-                            // A term where the controls are fulfilled is contained within `basis`
-                            let mut substates = basis
-                                .clone() // Probably expensive clone
-                                .expand_qubits(controls);
+        for ScaledState(basis, scalar) in &self.sum {
+            use ExtendedBasis::*;
+            match basis {
+                Superposition(bases) => {
+                    // O(n) (control indices)
+                    let any_controls_are_zero = control_indices.iter().any(|&i| {
+                        use ExtendedQubitBasis::*;
+                        bases.get(i).unwrap_or(&Zero) == &Zero
+                    });
 
-                            // Distribute the scalar to the expanded states
-                            substates
-                                .iter_mut()
-                                .for_each(|ScaledState(_, inner_scalar)| {
-                                    *inner_scalar = *scalar * *inner_scalar;
-                                });
+                    if any_controls_are_zero {
+                        expanded.push(ScaledState(Superposition(bases.clone()), *scalar));
+                    } else {
+                        // A term where the controls are fulfilled is contained within `basis`
+                        let mut substates = basis.clone().expand_qubits(controls);
 
-                            substates
+                        // Distribute the scalar to the expanded states
+                        for ScaledState(_, inner_scalar) in &mut substates {
+                            *inner_scalar = *scalar * *inner_scalar;
                         }
+
+                        expanded.extend(substates);
                     }
-                    Binary(bits) => vec![ScaledState(Binary(*bits), *scalar)],
                 }
-            })
-            .flatten()
-            .collect();
+                Binary(bits) => expanded.push(ScaledState(Binary(*bits), *scalar)),
+            }
+        }
 
         expanded
     }

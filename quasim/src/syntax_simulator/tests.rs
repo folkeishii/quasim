@@ -64,6 +64,26 @@ fn test_expand_qubits() {
 }
 
 #[test]
+fn all_inherent_states_expands_to_binary_states() {
+    use ExtendedQubitBasis::*;
+
+    let basis = ExtendedBasis::Superposition(vec![Plus, MinusI, One, Zero]);
+    let half = Scalar::FRAC_1_SQRT_2 * Scalar::FRAC_1_SQRT_2;
+    let expected = vec![
+        ScaledState(ExtendedBasis::Binary(0b0100), half),
+        ScaledState(ExtendedBasis::Binary(0b0101), half),
+        ScaledState(ExtendedBasis::Binary(0b0110), -half * Scalar::I),
+        ScaledState(ExtendedBasis::Binary(0b0111), -half * Scalar::I),
+    ];
+
+    let actual = basis.all_inherent_states();
+    assert_eq!(actual.len(), expected.len());
+    for state in expected {
+        assert!(actual.contains(&state));
+    }
+}
+
+#[test]
 fn test_hadamard_cnot_entanglement() {
     let circuit = Circuit::new(2).h(0).cx(&[0], 1);
     for _ in 0..1000 {
