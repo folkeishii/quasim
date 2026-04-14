@@ -25,7 +25,7 @@ where
 {
     let circuit = Circuit::<PureCircuit>::new_qft(n_qubits);
 
-    Sim::sample_once(circuit, &CircuitSampler).expect("couldn't build circuit");
+    Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
 }
 
 #[divan::bench(
@@ -43,7 +43,7 @@ where
         circuit = circuit.h(i % 18);
     }
 
-    Sim::sample_once(circuit, &CircuitSampler).expect("couldn't build circuit");
+    Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
 }
 
 // Measurement benchmark
@@ -61,7 +61,7 @@ where
         .new_reg("r0", 1)
         .measure_bit(0, ("r0", 0));
 
-    Sim::sample_once(circuit, &CircuitSampler).expect("couldn't build circuit");
+    Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
 }
 
 #[divan::bench(
@@ -79,5 +79,5 @@ where
         circuit = circuit.measure_bit(0, ("r0", 0));
     }
 
-    Sim::sample_once(circuit, &CircuitSampler).expect("couldn't build circuit");
+    Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
 }

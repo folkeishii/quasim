@@ -11,7 +11,7 @@ fn main() {
         Err(e) => panic!("Error reading QASM file: {}", e),
     };
 
-    let result = StateVectorSimulator::sample_once(circuit, &CircuitSampler)
+    let result = StateVectorSimulator::sample_once(circuit, CircuitSampler)
         .expect("error building simulator");
 
     println!("\nResult: {:#04b}", result);

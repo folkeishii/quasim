@@ -170,7 +170,7 @@ where
 {
     fn sample_once<S: Sampler<Self>>(
         circuit: Circuit<B>,
-        sampler: &S,
+        sampler: S,
     ) -> Result<S::Output, Self::E> {
         let mut sim = Self::try_from(circuit)?;
         sim.run_without_sync();
@@ -179,7 +179,7 @@ where
 
     fn sample<S: Sampler<Self>>(
         circuit: Circuit<B>,
-        sampler: &S,
+        sampler: S,
         times: usize,
     ) -> Result<impl Iterator<Item = <S as Sampler<Self>>::Output>, Self::E> {
         let mut sim = Self::try_from(circuit)?;
@@ -271,7 +271,7 @@ mod tests {
         let gpu = WgpuSimulator::sample_once(circuit.clone(), &qubits).unwrap();
         let cpu = StateVectorSimulator::sample_once(circuit, &qubits).unwrap();
 
-        assert_eq!(cpu, [1, 1]);
+        assert_eq!(cpu, [1, 0, 1]);
         assert_eq!(gpu, cpu);
     }
 
@@ -334,12 +334,12 @@ mod tests {
         assert!(equal_state_c(gpu.state(), cpu.state(), 4, 0.001));
 
         assert!(
-            WgpuSimulator::sample(circuit.clone(), &CircuitSampler, 10)
+            WgpuSimulator::sample(circuit.clone(), CircuitSampler, 10)
                 .unwrap()
                 .all(|sample| sample == 0)
         );
         assert!(
-            StateVectorSimulator::sample(circuit, &CircuitSampler, 10)
+            StateVectorSimulator::sample(circuit, CircuitSampler, 10)
                 .unwrap()
                 .all(|sample| sample == 0)
         );

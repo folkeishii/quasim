@@ -45,7 +45,7 @@ fn find_secret_string_quantum(secret: u8) -> u8 {
 
     circuit = circuit.measure_bits(&[0, 1, 2, 3, 4], "res");
 
-    let res = StateVectorSimulator::sample_once(circuit, &RegisterSampler::new("res")).unwrap();
+    let res = StateVectorSimulator::sample_once(circuit, RegisterSampler::new("res")).unwrap();
     // Output is reversed
     (res as u8).reverse_bits() >> (8 - N)
 }

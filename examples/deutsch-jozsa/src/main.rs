@@ -78,7 +78,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
 
     circuit = circuit.measure_bits(&[0, 1, 2, 3, 4, 5, 6, 7], "res");
 
-    StateVectorSimulator::sample_once(circuit, &RegisterSampler::new("res")).unwrap() == 0
+    StateVectorSimulator::sample_once(circuit, RegisterSampler::new("res")).unwrap() == 0
 }
 
 fn main() {

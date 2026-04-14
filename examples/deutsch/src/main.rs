@@ -68,7 +68,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
 
     circuit = circuit.h(0).h(1);
 
-    StateVectorSimulator::sample_once(circuit, &QubitSampler::new(0)).unwrap() == 0
+    StateVectorSimulator::sample_once(circuit, QubitSampler::new(0)).unwrap() == 0
 }
 
 fn main() {

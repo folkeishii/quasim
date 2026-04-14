@@ -143,7 +143,7 @@ where
 {
     fn sample_once<S: Sampler<Self>>(
         circuit: Circuit<B>,
-        sampler: &S,
+        sampler: S,
     ) -> Result<S::Output, Self::E> {
         let mut sim = Self::build(circuit)?;
         sim.run();
@@ -152,7 +152,7 @@ where
 
     fn sample<S: Sampler<Self>>(
         circuit: Circuit<B>,
-        sampler: &S,
+        sampler: S,
         times: usize,
     ) -> Result<impl Iterator<Item = <S as Sampler<Self>>::Output>, Self::E> {
         let mut sim = Self::build(circuit)?;

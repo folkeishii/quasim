@@ -23,7 +23,7 @@ fn run_one_quantum_oracle(input: usize, f: impl Fn(usize) -> bool) -> usize {
     let input_qubits: Vec<usize> = (0..N).collect();
     let circuit = circuit_in_start_state(N + 1, input).oracle(&input_qubits, N, f);
 
-    StateVectorSimulator::sample_once(circuit, &CircuitSampler).unwrap()
+    StateVectorSimulator::sample_once(circuit, CircuitSampler).unwrap()
 }
 
 /// Tests a quantum oracle against a classical function by comparing the results.

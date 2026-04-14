@@ -36,7 +36,7 @@ fn send_int(i: u8) -> u8 {
         // Bob measures his qubit + the received one to get c and d
         .measure_bits(&[0, 1], "b");
 
-    StateVectorSimulator::sample_once(circuit, &RegisterSampler::new("b")).unwrap() as u8
+    StateVectorSimulator::sample_once(circuit, RegisterSampler::new("b")).unwrap() as u8
 }
 
 fn main() {

@@ -198,7 +198,7 @@ pub fn register_test<Sim: Sampleable<HybridCircuit> + StoredRegisters>() {
         .measure_bit(1, ("r0", 0));
 
     assert_eq!(
-        Sim::sample_once(circuit, &RegisterSampler::new("r0")).unwrap(),
+        Sim::sample_once(circuit, RegisterSampler::new("r0")).unwrap(),
         1
     );
 }
@@ -214,7 +214,7 @@ where
         .measure_bit(1, ("tmp", 0));
 
     assert_eq!(
-        Sim::sample_once(circuit, &RegisterSampler::new("tmp")).unwrap(),
+        Sim::sample_once(circuit, RegisterSampler::new("tmp")).unwrap(),
         0
     );
 }
@@ -258,7 +258,7 @@ where
         .reset(3);
 
     assert!(
-        Sim::sample(circuit, &CircuitSampler, 100)
+        Sim::sample(circuit, CircuitSampler, 100)
             .unwrap()
             .fold(true, |acc, it| acc && it == 0)
     )

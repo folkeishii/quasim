@@ -10,7 +10,7 @@ use quasim::sv_simulator::StateVectorSimulator;
 fn check_quantum(func: &[usize]) -> bool {
     let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
 
-    StateVectorSimulator::sample_once(circuit(func), &RegisterSampler::new("res")).unwrap()
+    StateVectorSimulator::sample_once(circuit(func), RegisterSampler::new("res")).unwrap()
         == fun_res
 }
 
