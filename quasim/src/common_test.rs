@@ -1,4 +1,4 @@
-use std::{f64::consts::FRAC_1_SQRT_2, ops::Index};
+use std::{f64::consts::FRAC_1_SQRT_2};
 
 use nalgebra::{Complex, DVector, dvector};
 
@@ -13,7 +13,7 @@ use crate::{
 
 pub fn double_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    Sim::State: Index<usize, Output = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f64>>,
 {
     // Keep for sub circuits
     const N: usize = 2;
@@ -107,7 +107,7 @@ where
 
 pub fn deep_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    Sim::State: Index<usize, Output = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f64>>,
 {
     // Keep for sub circuits
     const LEVELS: usize = 5;
@@ -157,7 +157,7 @@ where
 
 pub fn hybrid_test<Sim: Buildable<HybridCircuit>>()
 where
-    Sim::State: Index<usize, Output = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f64>>,
 {
     let circuit = Circuit::new(4)
         .new_reg("r0", 1)
@@ -266,7 +266,7 @@ where
 
 pub fn deep_ctrl_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    Sim::State: Index<usize, Output = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f64>>,
 {
     // Keep for sub circuits
     const LEVELS: usize = 5;

@@ -869,7 +869,7 @@ mod tests {
     use crate::{
         cart,
         circuit::Circuit,
-        ext::{equal_state_c, expand_matrix_from_gate},
+        ext::{equal_matrix_c, equal_state_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{Buildable, Simulator},
         sv_simulator::StateVectorSimulator,
@@ -906,7 +906,7 @@ mod tests {
                 res = expand_matrix_from_gate(gate, 5) * res;
             }
         }
-        assert!(equal_state_c(&id, &res, 5, 0.001));
+        assert!(equal_matrix_c(&id, &res, 5, 0.001));
     }
     #[test]
     fn qft_test() {

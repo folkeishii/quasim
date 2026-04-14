@@ -231,8 +231,7 @@ pub enum DebugSimulatorError {
 mod tests {
     use crate::common_test;
     use crate::ext::{
-        collapse, equal_state_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
-        measure_and_observe_sv,
+        collapse, equal_matrix_c, equal_state_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix, measure_and_observe_sv
     };
     use crate::simulator::Simulator;
     use crate::{
@@ -433,7 +432,7 @@ mod tests {
     fn test_textbook_cnot() {
         let cnot = Gate::new(GateType::X, &[0], &[1]).unwrap();
         let mat = expand_matrix_from_gate(&cnot, 2);
-        assert!(equal_state_c(&mat, &textbook_cnot(), 4, 0.001));
+        assert!(equal_matrix_c(&mat, &textbook_cnot(), 4, 0.001));
     }
 
     fn textbook_toffoli() -> DMatrix<Complex<f64>> {
@@ -454,7 +453,7 @@ mod tests {
     fn test_textbook_toffoli() {
         let x = Gate::new(GateType::X, &[], &[0]).unwrap();
         let mat = expand_matrix(get_gate_matrix(&x), &[0, 1], &[2], 3);
-        assert!(equal_state_c(&mat, &textbook_toffoli(), 6, 0.001));
+        assert!(equal_matrix_c(&mat, &textbook_toffoli(), 6, 0.001));
     }
 
     /* Following tests are based on 'ControlledGates.tex' */
@@ -478,7 +477,7 @@ mod tests {
     fn test_cnot_01() {
         let cnot = Gate::new(GateType::X, &[0], &[1]).unwrap();
         let mat = expand_matrix_from_gate(&cnot, 3);
-        assert!(equal_state_c(&mat, &cnot_01(), 6, 0.001));
+        assert!(equal_matrix_c(&mat, &cnot_01(), 6, 0.001));
     }
 
     fn cnot_02() -> DMatrix<Complex<f64>> {
@@ -500,7 +499,7 @@ mod tests {
     fn test_cnot_02() {
         let cnot = Gate::new(GateType::X, &[0], &[2]).unwrap();
         let mat = expand_matrix_from_gate(&cnot, 3);
-        assert!(equal_state_c(&mat, &cnot_02(), 6, 0.001));
+        assert!(equal_matrix_c(&mat, &cnot_02(), 6, 0.001));
     }
 
     fn cnot_12() -> DMatrix<Complex<f64>> {
@@ -522,7 +521,7 @@ mod tests {
     fn test_cnot_12() {
         let cnot = Gate::new(GateType::X, &[1], &[2]).unwrap();
         let mat = expand_matrix_from_gate(&cnot, 3);
-        assert!(equal_state_c(&mat, &cnot_12(), 6, 0.001));
+        assert!(equal_matrix_c(&mat, &cnot_12(), 6, 0.001));
     }
 
     fn h_0() -> DMatrix<Complex<f64>> {
@@ -544,7 +543,7 @@ mod tests {
     fn test_h_0() {
         let h = Gate::new(GateType::H, &[], &[0]).unwrap();
         let mat = expand_matrix_from_gate(&h, 3);
-        assert!(equal_state_c(&mat, &h_0(), 6, 0.001));
+        assert!(equal_matrix_c(&mat, &h_0(), 6, 0.001));
     }
 
     fn cnot_201() -> DMatrix<Complex<f64>> {
@@ -565,7 +564,7 @@ mod tests {
     fn test_cnot_201() {
         let x = Gate::new(GateType::X, &[], &[0]).unwrap();
         let mat = expand_matrix(get_gate_matrix(&x), &[2], &[0, 1], 3);
-        assert!(equal_state_c(&mat, &cnot_201(), 6, 0.001));
+        assert!(equal_matrix_c(&mat, &cnot_201(), 6, 0.001));
     }
 
     #[test]
