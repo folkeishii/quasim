@@ -2,10 +2,10 @@
 
 pub mod circuit;
 mod common_test;
-pub mod debug_simulator;
 pub mod debug_terminal;
 pub mod expr_dsl;
 pub mod ext;
+pub mod fmm_simulator;
 pub mod gate;
 #[cfg(feature = "gpu")]
 pub mod gpu_sv_simulator;

@@ -1,7 +1,7 @@
 use cubecl::wgpu::WgpuRuntime;
 use quasim::{
     circuit::{Circuit, HybridCircuit, PureCircuit},
-    debug_simulator::DebugSimulator,
+    fmm_simulator::FullMatMulSimulator,
     gpu_sv_simulator::GpuStateVectorSimulator,
     sampler::CircuitSampler,
     simulator::Sampleable,
@@ -15,7 +15,7 @@ fn main() {
 }
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
@@ -29,7 +29,7 @@ where
 }
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>],
     args = [250, 500, 1000, 2000],
     sample_count = 10,
 )]
@@ -49,7 +49,7 @@ where
 // Measurement benchmark
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
@@ -65,7 +65,7 @@ where
 }
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>],
     args = [40, 80, 160, 320],
     sample_count = 20,
 )]
