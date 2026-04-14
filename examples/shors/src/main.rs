@@ -30,18 +30,18 @@ pub fn mod_inv(a: isize, n: isize) -> isize {
 /// # Arguments
 /// * `b` - The base of the exponential
 /// * `ex` -  The power to raise the `base` to
-/// * `m` - The modulo number
+/// * `n` - The modulo number
 ///
 /// # Returns
-/// * `isize`, representing (`b`^`ex`) mod `m`
-pub fn modpow(mut b: usize, mut ex: usize, m: usize) -> usize {
+/// * `isize`, representing (`b`^`ex`) mod `n`
+pub fn modpow(mut b: usize, mut ex: usize, n: usize) -> usize {
     let mut result = 1;
-    b %= m;
+    b %= n;
     while ex > 0 {
         if ex % 2 == 1 {
-            result = (result * b) % m;
+            result = (result * b) % n;
         }
-        b = (b * b) % m;
+        b = (b * b) % n;
         ex /= 2;
     }
     result
@@ -86,7 +86,7 @@ fn continued_fraction(mut num: usize, mut den: usize) -> Vec<usize> {
 /// * `cf` - Continued fraction coefficients `[a0, a1, ...]`
 ///
 /// # Returns
-/// * `Vec<usize, usize>`, representing a vector of convergents `(numerator, denominator)`
+/// * `Vec<(usize, usize)>`, representing a vector of convergents `(numerator, denominator)`
 ///
 /// # Example
 /// CF: `[4, 2, 6, 7]`
@@ -114,33 +114,6 @@ fn convergents(cf: &[usize]) -> Vec<(usize, usize)> {
     result
 }
 
-/// Takes a period `r` and reduces it to the smallest equivalent given the base `a` and modulo `n`
-///
-/// # Arguments
-/// * `a` - The base of `r`
-/// * `r` - The period to reduce
-/// * `n` - The modulo number
-///
-/// # Returns
-/// `usize`, representing the smallest period reduced from `r`
-fn smallest_period(a: usize, n: usize, r: usize) -> usize {
-    let mut best = r;
-
-    for d in 1..=((r as f64).sqrt() as usize) {
-        if r % d == 0 {
-            if modpow(a, d, n) == 1 {
-                return d;
-            }
-
-            let other = r / d;
-            if modpow(a, other, n) == 1 {
-                best = best.min(other);
-            }
-        }
-    }
-    best
-}
-
 /// Refines a candidate period `r` by finding the smallest divisor `d`
 /// such that `a^d ≡ 1 (mod n)`.
 ///
@@ -160,19 +133,31 @@ fn refine_period(a: usize, n: usize, init_r: usize, t: usize) -> Option<usize> {
     let cf = continued_fraction(num, den);
     let convs = convergents(&cf);
 
-    for &(_, r_candidate) in &convs {
-        if r_candidate == 0 {
+    let mut best: Option<usize> = None;
+
+    for &(_, r) in &convs {
+        if r == 0 || r > n{
             continue;
         }
 
-        let r = r_candidate as usize;
-
-        // Check if it's a valid period
-        if modpow(a, r, n) == 1 {
-            return Some(smallest_period(a, n, r));
+        if modpow(a, r, n) != 1 {
+            continue;
         }
+
+        if r % 2 != 0 {
+            continue;
+        }
+
+        if modpow(a, r/2, n) == n - 1 {
+            continue;
+        }
+
+        best = Some(match best {
+            Some(b) => b.min(r),
+            None => r,
+        });
     }
-    None
+    best
 }
 
 /// Constructs an adder gate that sums two numbers and stores the
@@ -412,7 +397,14 @@ pub fn quantum(n: usize, a: usize) -> Option<usize> {
     sim.cont();
 
     let r = sim.register("res").read();
-    refine_period(a, n, r, 2 * n_bits)
+    println!("r: {}", r);
+    let refined = refine_period(a, n, r, 2 * n_bits);
+    if let Some(refi) = refined {
+    println!("refined: {}", refi);
+    } else {
+    println!("refined: undefined");
+    }
+    refined
 }
 
 /// Runs Shor's algorithm to attempt to factor `n`.
@@ -437,20 +429,11 @@ pub fn shors(n: usize, a: usize) -> Option<Vec<usize>> {
         return Some(vec![g, n / g]);
     }
 
-    let r = quantum(n, a);
+    let Some(r) = quantum(n, a) else {
+        return None;
+    };
 
-    match r {
-        Some(res) => {
-            if res == 0 || res % 2 != 0 {
-                return None;
-            }
-        }
-        None => {
-            return None;
-        }
-    }
-
-    let a_pow = modpow(a, r.unwrap() / 2, n);
+    let a_pow = modpow(a,r / 2, n);
 
     // 4. reject bad cases
     if a_pow == 1 || a_pow == n - 1 {
@@ -518,7 +501,7 @@ mod tests {
     };
 
     use crate::{
-        create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, modpow,
+        create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv,
         quantum, shors, shors_random,
     };
 
@@ -708,28 +691,24 @@ mod tests {
 
     #[test]
     fn test_quantum() {
-        let n = 15;
-        let a = 2;
+        let n = 31;
+        let a = 4;
         let attempts = 10;
 
         let mut success = false;
 
-        for _ in 0..attempts {
-            let r = quantum(n, a);
-            match r {
-                Some(res) => {
-                    if res == 0 || res % 2 != 0 {
-                        continue;
-                    }
-                }
-                None => {
-                    continue;
-                }
-            }
-            if modpow(a, r.unwrap(), n) == 1 {
-                success = true;
-                break;
-            }
+        for i in 1..=attempts {
+            let Some(r) = quantum(n, a) else {
+                continue;
+            };
+
+            success = true;
+
+            println!(
+                "Found valid period (r = {}) in {} attempts.",
+                r, i
+            );
+            break;
         }
         assert!(
             success,
@@ -791,5 +770,27 @@ mod tests {
             "Shor failed to find factors after {} attempts",
             attempts
         );
+    }
+
+    #[test]
+    fn test_register(){
+
+        let mut c = Circuit::new(1)
+            .new_reg("res", 4);
+
+        c = c.x(0);
+
+        for i in 0..4{
+            c = c.measure_bit(0, ("res",i));
+            c = c.x(0);
+        }
+
+        let mut sim = SVSimulatorDebugger::build(c).unwrap();
+
+        sim.cont();
+
+        let res = sim.register("res").read();
+
+        println!("res: {}",res);
     }
 }
