@@ -1,6 +1,7 @@
 use quasim::circuit::Circuit;
-use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
-use quasim::sv_simulator::SVSimulatorDebugger;
+use quasim::sampler::QubitSampler;
+use quasim::simulator::Sampleable;
+use quasim::sv_simulator::StateVectorSimulator;
 
 #[allow(dead_code)]
 #[derive(PartialEq, Debug)]
@@ -67,11 +68,7 @@ fn check_quantum(function_type: FunctionType) -> bool {
 
     circuit = circuit.h(0).h(1);
 
-    circuit = circuit.measure_bits([0], "res");
-    let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-    sim.cont();
-
-    sim.register("res").read() == 0
+    StateVectorSimulator::sample_once(circuit, QubitSampler::new(0)).unwrap() == 0
 }
 
 fn main() {

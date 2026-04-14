@@ -613,15 +613,15 @@ where
     /// measure_bit(1, ("reg", 1))
     /// measure_bit(3, ("reg", 2))
     /// ```
-    pub fn measure_bits<S: Into<String>, I: IntoIterator<Item = usize>>(
+    pub fn measure_bits<S: Into<String>>(
         self,
-        targets: I,
+        targets: &[usize],
         reg: S,
     ) -> Circuit<HybridCircuit> {
         let mut ret_self = self.into();
         let reg = reg.into();
-        for (i, target) in targets.into_iter().enumerate() {
-            ret_self = ret_self.measure_bit(target, (&reg, i))
+        for (i, target) in targets.iter().enumerate() {
+            ret_self = ret_self.measure_bit(*target, (&reg, i))
         }
         ret_self
     }
@@ -869,10 +869,10 @@ mod tests {
     use crate::{
         cart,
         circuit::Circuit,
-        ext::{equal_state_c, expand_matrix_from_gate},
+        ext::{equal_matrix_c, equal_state_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
-        simulator::{BuildSimulator, RunnableSimulator},
-        sv_simulator::SVSimulator,
+        simulator::{Buildable, Simulator},
+        sv_simulator::StateVectorSimulator,
     };
     use nalgebra::{Complex, DMatrix, dvector};
     fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
@@ -906,16 +906,17 @@ mod tests {
                 res = expand_matrix_from_gate(gate, 5) * res;
             }
         }
-        assert!(equal_state_c(&id, &res, 5, 0.001));
+        assert!(equal_matrix_c(&id, &res, 5, 0.001));
     }
     #[test]
     fn qft_test() {
-        let sim = SVSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
+        let mut sim = StateVectorSimulator::build(Circuit::new(4).x(0).y(1).z(2).h(3).call_new(
             "QFT",
             Circuit::new_qft(4),
             0,
         ))
         .unwrap();
+        sim.run();
 
         let expected_vec = dvector![
             cart!(0.0, 0.35355),  // |0000>
@@ -935,7 +936,7 @@ mod tests {
             cart!(0.25, -0.25),   // |1110>
             cart!(0.0),           // |1111>
         ];
-        assert!(equal_state_c(&expected_vec, &sim.final_state(), 4, 0.001));
+        assert!(equal_state_c(&expected_vec, sim.state(), 4, 0.001));
     }
 
     #[test]

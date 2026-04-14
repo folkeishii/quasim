@@ -39,7 +39,7 @@ where
         circuit = circuit.h(i);
     }
 
-    circuit = circuit.measure_bits(0..n, "res");
+    circuit = circuit.measure_bits(&(0..n).collect::<Vec<_>>(), "res");
     let mut sim = S::build(circuit).unwrap();
     sim.cont();
 
