@@ -7,7 +7,6 @@ use crate::{
     product_state::{ProductState, SubSystem},
     register_file::RegisterFile,
     simulator::{Debuggable, QuantumState, Sampleable, Simulator, StoredCircuit, StoredRegisters},
-    state_vector::StateVector,
 };
 use nalgebra::Complex;
 
@@ -17,7 +16,6 @@ pub struct ProductStateSimulator {
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile,
-    state_vector_cache: StateVector,
 }
 
 impl Simulator for ProductStateSimulator {
@@ -48,7 +46,6 @@ impl ProductStateSimulator {
             circuit: circuit,
             pc: Default::default(),
             registers: registers,
-            state_vector_cache: init_state.vector(), //TODO: remove cache when state is generic
             product_state: init_state,
         }
     }
@@ -246,7 +243,6 @@ where
             circuit: value.into(),
             pc: Default::default(),
             registers: registers,
-            state_vector_cache: init_state.vector(), //TODO: remove cache when state is generic
             product_state: init_state,
         })
     }
@@ -267,8 +263,6 @@ impl Debuggable for ProductStateSimulator {
             Instruction::Assign(expr, reg) => self.assign(&expr, &reg),
             Instruction::Call(name, lsq, ctrl) => self.pc_mut().jump_and_link(name, lsq, ctrl),
         }
-
-        self.state_vector_cache = self.product_state.vector(); //TODO: remove cache when state is generic
 
         true
     }
