@@ -1,4 +1,4 @@
-use num_integer::{Integer, Roots, gcd};
+use num_integer::{Integer, gcd};
 use quasim::circuit::Circuit;
 use quasim::expr_dsl::expr_helpers::rb;
 use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
@@ -47,25 +47,95 @@ pub fn modpow(mut b: usize, mut ex: usize, m: usize) -> usize {
     result
 }
 
+fn continued_fraction(mut num: usize, mut den: usize) -> Vec<usize> {
+    let mut cf = Vec::new();
+
+    while den != 0 {
+        cf.push(num / den);
+        let r = num % den;
+        num = den;
+        den = r;
+    }
+
+    cf
+}
+
+fn convergents(cf: &[usize]) -> Vec<(usize, usize)> {
+    let mut result = Vec::new();
+
+    let (mut h1, mut h2) = (1, 0);
+    let (mut k1, mut k2) = (0, 1);
+
+    for &a in cf {
+        let h = a * h1 + h2;
+        let k = a * k1 + k2;
+
+        result.push((h, k));
+
+        h2 = h1;
+        h1 = h;
+        k2 = k1;
+        k1 = k;
+    }
+    result
+}
+
+/// Takes a period `r` and reduces it to the smallest equivalent given the base `a` and modulo `n`
+/// 
+/// # Arguments
+/// * `a` - The base of `r`
+/// * `r` - The period to reduce
+/// * `n` - The modulo number
+/// 
+/// # Returns
+/// `usize`, representing the smallest period reduced from `r`
+fn smallest_period(a: usize, n: usize, r: usize) -> usize {
+    let mut best = r;
+
+    for d in 1..=((r as f64).sqrt() as usize) {
+        if r % d == 0 {
+            if modpow(a, d, n) == 1 {
+                return d;
+            }
+
+            let other = r / d;
+            if modpow(a, other, n) == 1 {
+                best = best.min(other);
+            }
+        }
+    }
+    best
+}
+
 /// Refines a candidate period `r` by finding the smallest divisor `d`
 /// such that `a^d ≡ 1 (mod n)`.
 ///
 /// # Arguments
 /// * `a` - The base used in modular exponentiation
 /// * `n` -  The modulo number
-/// * `r` - Candidate period
+/// * `init_r` - The initial period
+/// * `t` - The number of bits of precision
 ///
 /// # Returns
-/// * `Some(d)` - smallest valid period dividing `r`
-/// * `None` - if no valid refinement is found
-pub fn refine_period(a: usize, n: usize, r: usize) -> Option<usize> {
-    if r == 0 {
-        return None;
-    }
+/// * `Some(usize)`, if a valid period is found
+/// * None, if not
+fn refine_period(a: usize, n: usize, init_r: usize, t: usize) -> Option<usize> {
+    let num = init_r;
+    let den = 1 << t;
 
-    for d in 1..=r.sqrt() {
-        if r % d == 0 && modpow(a, d, n) == 1 {
-            return Some(d); // smallest valid period  
+    let cf = continued_fraction(num, den);
+    let convs = convergents(&cf);
+
+    for &(_, r_candidate) in &convs {
+        if r_candidate == 0 {
+            continue;
+        }
+
+        let r = r_candidate as usize;
+
+        // Check if it's a valid period
+        if modpow(a, r, n) == 1 {
+            return Some(smallest_period(a, n,r));
         }
     }
     None
@@ -271,13 +341,13 @@ fn create_u_a(n: usize, a: usize) -> Circuit {
 ///
 /// # Returns
 /// * `usize`, representing the estimated period
-pub fn quantum(n: usize, a: usize) -> usize {
+pub fn quantum(n: usize, a: usize) -> Option<usize> {
     let n_bits: usize = ((n as f64) + 1.0).log2().ceil() as usize;
 
     let mut circuit = Circuit::new(2 * n_bits + 3).new_reg("res", 2 * n_bits);
 
     circuit = circuit.h(0);
-    circuit = circuit.ccall_new("u_a0", create_u_a(a, n), 1, &[0]);
+    circuit = circuit.ccall_new("u_a0", create_u_a(n, a), 1, &[0]);
     circuit = circuit.h(0);
     circuit = circuit.measure_bit(0, ("res", 0));
 
@@ -307,7 +377,8 @@ pub fn quantum(n: usize, a: usize) -> usize {
 
     sim.cont();
 
-    sim.register("res").read()
+    let r = sim.register("res").read();
+    refine_period(a, n, r, 2*n_bits)
 }
 
 /// Runs Shor's algorithm to attempt to factor `n`.
@@ -334,11 +405,19 @@ pub fn shors(n: usize, a: usize) -> Option<Vec<usize>> {
 
     let r = quantum(n, a);
 
-    if r == 0 || r % 2 != 0 {
-        return None;
+    match r {
+        Some(res) => {
+            if res == 0 || res % 2 != 0 {
+                return None;
+            }
+
+        },
+        None => {
+            return None;
+        }
     }
 
-    let a_pow = modpow(a, r / 2, n);
+    let a_pow = modpow(a, r.unwrap() / 2, n);
 
     // 4. reject bad cases
     if a_pow == 1 || a_pow == n - 1 {
@@ -407,7 +486,7 @@ mod tests {
 
     use crate::{
         create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, modpow,
-        quantum, refine_period, shors, shors_random,
+        quantum, shors, shors_random,
     };
 
     #[test]
@@ -598,25 +677,36 @@ mod tests {
     fn test_quantum() {
         let n = 15;
         let a = 2;
+        let attempts = 10;
 
-        let mut successes = 0;
+        let mut success = false;
 
-        for _ in 0..10 {
-            let r_cand = quantum(n, a);
-            if let Some(r) = refine_period(a, n, r_cand) {
-                if modpow(a, r, n) == 1 {
-                    successes += 1;
+        for _ in 0..attempts {
+            let r = quantum(n, a);
+            match r {
+                Some(res) => {
+                    if res == 0 || res % 2 != 0 {
+                        continue;
+                    }
+
+                },
+                None => {
+                    continue;
                 }
             }
+            if modpow(a, r.unwrap(), n) == 1 {
+                success = true;
+                break;
+            }
         }
-        assert!(successes > 0, "No successful period found in 100 runs");
+        assert!(success, "No non-trivial period found for a = {} in {} attempts.",a, attempts);
     }
 
     #[test]
     fn test_shors() {
         let n = 15;
         let a = 2;
-        let attempts = 20;
+        let attempts = 10;
 
         let mut success = false;
 
@@ -634,7 +724,8 @@ mod tests {
         }
         assert!(
             success,
-            "Shor failed to find factors after {} attempts",
+            "Shor failed to find factors with a = {} after {} attempts",
+            a,
             attempts
         );
     }
@@ -644,11 +735,11 @@ mod tests {
         let n = 15;
         let start: usize = 2;
         let stop: usize = 10;
-        let attempts: usize = 20;
+        let attempts: usize = 10;
 
         let mut success = false;
 
-        for _ in 0..20 {
+        for _ in 0..attempts {
             if let Some(res) = shors_random(n, start, stop) {
                 let f1 = res[0];
                 let f2 = res[1];
