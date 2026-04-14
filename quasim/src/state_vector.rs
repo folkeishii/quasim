@@ -1,13 +1,32 @@
 use crate::{
     cart,
-    ext::{collapse, get_u_matrix2},
+    ext::get_u_matrix2,
     gate::{Gate, GateType, QBits},
+    simulator::QuantumState,
 };
 use nalgebra::{Complex, DMatrix, DVector, Matrix2};
+use rand::distr::{Distribution, weighted::WeightedIndex};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 #[derive(Debug, Clone)]
 pub struct StateVector(DVector<Complex<f64>>);
+
+impl QuantumState for StateVector {
+    type BasisValue = Complex<f64>;
+    fn basis_value(&self, basis: usize) -> Complex<f64> {
+        self[basis]
+    }
+
+    fn collapse(&self) -> usize {
+        let probs = self.iter().map(|&c| c.norm_sqr());
+
+        let dist = WeightedIndex::new(probs)
+            .expect("Failed to create probability distribution. Invalid or empty state vector?");
+        let mut rng = rand::rng();
+
+        dist.sample(&mut rng)
+    }
+}
 
 impl StateVector {
     pub fn zeros(n_qubits: usize) -> Self {
@@ -21,12 +40,8 @@ impl StateVector {
         v
     }
 
-    pub fn basis_value(&self, basis: usize) -> Complex<f64> {
-        self[basis]
-    }
-
-    pub fn collapse(&self) -> usize {
-        collapse(self.as_slice())
+    pub fn apply_matrix(&mut self, matrix: &DMatrix<Complex<f64>>) {
+        self.0 = matrix * self.0.clone();
     }
 
     /// Checks that all control bits are 1

@@ -8,6 +8,7 @@ use rand::distr::weighted::WeightedIndex;
 use rand::{Rng, prelude::Distribution};
 
 use crate::gate::{Gate, GateType};
+use crate::simulator::QuantumState;
 
 #[macro_export]
 macro_rules! cart {
@@ -47,16 +48,7 @@ pub fn equal_to_c(lhs: Complex<f64>, rhs: Complex<f64>, margin: f64) -> bool {
     (lhs - rhs).norm().le(&margin)
 }
 
-/// Compares complex elements using ´cmp_c´
-///
-/// Equality is determined by every element being equal
-///
-/// Returns `Ordering::Greater` if all elements preceeding an element
-/// are equal and the same element is greater
-///
-/// Return `Ordering::Less` if all elements preceeding an element
-/// are equal and the same element is less
-pub fn equal_state_c<'a>(
+pub fn equal_matrix_c<'a>(
     lhs: &'a impl Index<usize, Output = Complex<f64>>,
     rhs: &'a impl Index<usize, Output = Complex<f64>>,
     n_qubits: usize,
@@ -64,6 +56,21 @@ pub fn equal_state_c<'a>(
 ) -> bool {
     for state in 0..(1 << n_qubits) {
         if !equal_to_c(lhs[state], rhs[state], margin) {
+            return false;
+        }
+    }
+
+    true
+}
+
+pub fn equal_state_c<'a>(
+    lhs: &'a impl QuantumState<BasisValue = Complex<f64>>,
+    rhs: &'a impl QuantumState<BasisValue = Complex<f64>>,
+    n_qubits: usize,
+    margin: f64,
+) -> bool {
+    for basis in 0..(1 << n_qubits) {
+        if !equal_to_c(lhs.basis_value(basis), rhs.basis_value(basis), margin) {
             return false;
         }
     }
@@ -404,16 +411,17 @@ impl<T: Ord> OrdByKey<T> for T {
 #[cfg(test)]
 mod tests {
     use crate::ext::{
-        convert_matrix, convert_vector, equal_state_c, expand_matrix_from_gate, get_gate_matrix,
-        swap_matrix,
+        convert_matrix, convert_vector, equal_matrix_c, equal_state_c, expand_matrix_from_gate,
+        get_gate_matrix, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
+    use crate::state_vector::StateVector;
     use nalgebra::{dmatrix, dvector};
     use std::f64::consts::FRAC_1_SQRT_2;
 
     #[test]
     fn swap_test() {
-        assert!(equal_state_c(
+        assert!(equal_matrix_c(
             &swap_matrix(&[], 0, 1, 2),
             &get_gate_matrix(&Gate::new(GateType::SWAP, &[], &[0, 1]).unwrap()),
             4,
@@ -422,7 +430,7 @@ mod tests {
     }
     #[test]
     fn fredkin_test() {
-        assert!(equal_state_c(
+        assert!(equal_matrix_c(
             &swap_matrix(&[2], 1, 0, 3),
             &dmatrix![
                 cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -461,8 +469,18 @@ mod tests {
             cart!(3.0), //|110>
             cart!(7.0), //|111>
         ];
-        assert!(equal_state_c(&vec_lsb, &convert_vector(&vec_msb), 3, 0.001));
-        assert!(equal_state_c(&vec_msb, &convert_vector(&vec_lsb), 3, 0.001));
+        assert!(equal_state_c(
+            &StateVector::from(vec_lsb.clone()),
+            &StateVector::from(convert_vector(&vec_msb)),
+            3,
+            0.001
+        ));
+        assert!(equal_state_c(
+            &StateVector::from(vec_msb.clone()),
+            &StateVector::from(convert_vector(&vec_lsb)),
+            3,
+            0.001
+        ));
         let textbook_ch = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
@@ -471,13 +489,13 @@ mod tests {
         ];
         let sim_ch = expand_matrix_from_gate(&Gate::new(GateType::H, &[0], &[1]).unwrap(), 2);
 
-        assert!(equal_state_c(
+        assert!(equal_matrix_c(
             &convert_matrix(&sim_ch),
             &textbook_ch,
             4,
             0.001
         ));
-        assert!(equal_state_c(
+        assert!(equal_matrix_c(
             &convert_matrix(&textbook_ch),
             &sim_ch,
             4,

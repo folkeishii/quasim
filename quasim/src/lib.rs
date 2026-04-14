@@ -13,7 +13,7 @@ pub mod instruction;
 pub mod product_state;
 pub mod product_state_simulator;
 pub mod register_file;
-pub mod simple_simulator;
+pub mod sampler;
 pub mod simulator;
 pub mod state_vector;
 pub mod sv_simulator;

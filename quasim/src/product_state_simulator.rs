@@ -1,15 +1,15 @@
 use crate::{
-    circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
+    circuit::{Circuit, CircuitBehaviour, HybridCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{collapse, measure_state_vector},
+    ext::measure_state_vector,
     gate::{Gate, GateType},
     instruction::Instruction,
     product_state::{ProductState, SubSystem},
     register_file::RegisterFile,
-    simulator::{DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
+    simulator::{Debuggable, QuantumState, Sampleable, Simulator, StoredCircuit, StoredRegisters},
     state_vector::StateVector,
 };
-use nalgebra::{Complex, DVector};
+use nalgebra::Complex;
 
 #[derive(Debug, Clone)]
 pub struct ProductStateSimulator {
@@ -18,6 +18,25 @@ pub struct ProductStateSimulator {
     pc: CircuitPc,
     registers: RegisterFile,
     state_vector_cache: StateVector,
+}
+
+impl Simulator for ProductStateSimulator {
+    type State = ProductState;
+    type BasisValue = Complex<f64>;
+    fn run(&mut self) {
+        while self.next() {}
+    }
+
+    fn reset(&mut self) {
+        // reset? resets state & registers?
+        self.registers.reset(); //?
+        self.product_state = ProductState::zeros(self.n_qubits());
+        self.pc = Default::default();
+    }
+
+    fn state(&self) -> &ProductState {
+        &self.product_state
+    }
 }
 
 impl ProductStateSimulator {
@@ -32,23 +51,6 @@ impl ProductStateSimulator {
             state_vector_cache: init_state.vector(), //TODO: remove cache when state is generic
             product_state: init_state,
         }
-    }
-
-    pub fn run(&mut self) -> &mut Self {
-        while self.next() {}
-        self
-    }
-
-    pub fn reset(&mut self) -> &mut Self {
-        // reset? resets state & registers?
-        self.registers.reset(); //?
-        self.product_state = ProductState::zeros(self.n_qubits());
-        self.pc = Default::default();
-        self
-    }
-
-    pub fn state(&self) -> &ProductState {
-        &self.product_state
     }
 
     fn apply_gate(&mut self, gate: Gate) {
@@ -229,34 +231,28 @@ impl ProductStateSimulator {
     }
 }
 
-impl TryFrom<Circuit<HybridCircuit>> for ProductStateSimulator {
+impl<B> TryFrom<Circuit<B>> for ProductStateSimulator
+where
+    B: CircuitBehaviour,
+    Circuit<B>: Into<Circuit<HybridCircuit>>,
+{
     type Error = ProductStateSimulatorError;
 
-    fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
-        let circuit = value;
+    fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
+        let registers = RegisterFile::from(value.registers());
+        let init_state = ProductState::zeros(value.n_qubits());
 
-        let sim = Self::init(circuit);
-
-        Ok(sim)
+        Ok(ProductStateSimulator {
+            circuit: value.into(),
+            pc: Default::default(),
+            registers: registers,
+            state_vector_cache: init_state.vector(), //TODO: remove cache when state is generic
+            product_state: init_state,
+        })
     }
 }
 
-impl TryFrom<Circuit<PureCircuit>> for ProductStateSimulator {
-    type Error = ProductStateSimulatorError;
-
-    fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
-        Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
-    }
-}
-
-impl DebuggableSimulator for ProductStateSimulator {
-    type Storage = DVector<Complex<f64>>;
-    type State = Complex<f64>;
-
-    fn collapse_peek(&self) -> usize {
-        collapse(&self.product_state.vector().as_slice())
-    }
-
+impl Debuggable for ProductStateSimulator {
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             return false;
@@ -281,23 +277,13 @@ impl DebuggableSimulator for ProductStateSimulator {
         (self.pc(), self.circuit.instruction(self.pc()))
     }
 
-    fn current_state(&self) -> &DVector<Complex<f64>> {
-        &self.state_vector_cache //TODO: remove cache when state is generic
-    }
-
     fn double_ended(&self) -> bool {
         false
     }
 }
-
-impl HybridSimulator for ProductStateSimulator {
-    fn registers(&self) -> &RegisterFile {
-        &self.registers
-    }
-}
-
-impl StoredCircuitSimulator for ProductStateSimulator {
+impl StoredCircuit for ProductStateSimulator {
     type B = HybridCircuit;
+
     fn circuit(&self) -> &Circuit<HybridCircuit> {
         &self.circuit
     }
@@ -305,6 +291,19 @@ impl StoredCircuitSimulator for ProductStateSimulator {
     fn circuit_mut(&mut self) -> &mut Circuit<HybridCircuit> {
         &mut self.circuit
     }
+}
+
+impl StoredRegisters for ProductStateSimulator {
+    fn registers(&self) -> &RegisterFile {
+        &self.registers
+    }
+}
+
+impl<B> Sampleable<B> for ProductStateSimulator
+where
+    B: CircuitBehaviour,
+    Circuit<B>: Into<Circuit<HybridCircuit>>,
+{
 }
 
 #[derive(Debug, Clone, thiserror::Error)]

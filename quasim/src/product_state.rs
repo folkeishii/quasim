@@ -2,6 +2,7 @@ use crate::{
     cart,
     ext::collapse,
     gate::{Gate, GateType, QBits},
+    simulator::QuantumState,
     state_vector::StateVector,
 };
 use nalgebra::{Complex, dvector};
@@ -104,6 +105,55 @@ impl SubSystem {
 /// A collection of subsystems.
 #[derive(Debug, Clone)]
 pub struct ProductState(Vec<SubSystem>);
+impl QuantumState for ProductState {
+    type BasisValue = Complex<f64>;
+    /// Return the amplitude for a given basis state.
+    fn basis_value(&self, basis: usize) -> Complex<f64> {
+        //Translate to order of system
+        let indices = QBits::from_bitstring(basis)
+            .get_indices()
+            .iter()
+            .map(|&inp| {
+                self.qubits()
+                    .iter()
+                    .position(|&b| b == inp)
+                    .expect("Basis should be a subset of all qubits")
+            })
+            .collect::<Vec<usize>>();
+
+        let basis_translation = QBits::from_indices(&indices).get_bitstring();
+
+        //Find the amplitude of the whole system.
+        let mut amp_acc = cart!(1.0);
+        let mut base_index = 0;
+
+        for sys in self.iter() {
+            let n = sys.n_qubits();
+            let mask = (1 << n) - 1; // 1111..
+            let local_basis = (basis_translation >> base_index) & mask;
+            base_index += n;
+            amp_acc *= sys.state_vector[local_basis];
+        }
+
+        amp_acc
+    }
+
+    fn collapse(&self) -> usize {
+        let indicies = self
+            .iter()
+            .map(|sys| {
+                QBits::from_bitstring(collapse(sys.state_vector().as_slice()))
+                    .get_indices()
+                    .iter()
+                    .map(|&b| sys.qubits()[b])
+                    .collect::<Vec<usize>>()
+            })
+            .collect::<Vec<Vec<usize>>>()
+            .concat();
+
+        QBits::from_indices(&indicies).get_bitstring()
+    }
+}
 
 impl ProductState {
     /// A system with no qubits.
@@ -162,53 +212,6 @@ impl ProductState {
 
         tot_sys.sort();
         tot_sys.state_vector
-    }
-
-    /// Return the amplitude for a given basis state.
-    pub fn basis_value(&self, basis: usize) -> Complex<f64> {
-        //Translate to order of system
-        let indices = QBits::from_bitstring(basis)
-            .get_indices()
-            .iter()
-            .map(|&inp| {
-                self.qubits()
-                    .iter()
-                    .position(|&b| b == inp)
-                    .expect("Basis should be a subset of all qubits")
-            })
-            .collect::<Vec<usize>>();
-
-        let basis_translation = QBits::from_indices(&indices).get_bitstring();
-
-        //Find the amplitude of the whole system.
-        let mut amp_acc = cart!(1.0);
-        let mut base_index = 0;
-
-        for sys in self.iter() {
-            let n = sys.n_qubits();
-            let mask = (1 << n) - 1; // 1111..
-            let local_basis = (basis_translation >> base_index) & mask;
-            base_index += n;
-            amp_acc *= sys.state_vector[local_basis];
-        }
-
-        amp_acc
-    }
-
-    pub fn collapse(&self) -> usize {
-        let indicies = self
-            .iter()
-            .map(|sys| {
-                QBits::from_bitstring(collapse(sys.state_vector().as_slice()))
-                    .get_indices()
-                    .iter()
-                    .map(|&b| sys.qubits()[b])
-                    .collect::<Vec<usize>>()
-            })
-            .collect::<Vec<Vec<usize>>>()
-            .concat();
-
-        QBits::from_indices(&indicies).get_bitstring()
     }
 }
 
@@ -281,16 +284,17 @@ mod tests {
         ext::equal_state_c,
         product_state::ProductState,
         product_state_simulator::ProductStateSimulator,
-        simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
+        simulator::{Buildable, QuantumState, Simulator, StoredCircuit},
+        state_vector::StateVector,
     };
     use nalgebra::{Complex, DVector};
 
-    fn dvec_from_amps(state: &ProductState, n_qubits: usize) -> DVector<Complex<f64>> {
+    fn sv_from_amps(state: &ProductState, n_qubits: usize) -> StateVector {
         let mut v = DVector::<Complex<f64>>::zeros(1 << n_qubits);
         for basis in 0..(1 << n_qubits) {
             v[basis] = state.basis_value(basis);
         }
-        v
+        v.into()
     }
 
     #[test]
@@ -309,10 +313,10 @@ mod tests {
                 .swap(0, 1),
         )
         .unwrap();
-        while sim.next() {}
+        sim.run();
 
         let state = sim.state();
-        let amps = dvec_from_amps(&state, sim.n_qubits());
+        let amps = sv_from_amps(&state, sim.n_qubits());
         let dvec = state.vector();
         assert!(equal_state_c(&amps, &dvec, 4, 0.001));
     }
