@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use nalgebra::{Complex, Matrix2, Vector2};
+use nalgebra::{Complex, Matrix2};
 
 use crate::{
     cart,
@@ -17,6 +17,8 @@ use crate::{
     register_file::RegisterFile,
     simulator::{Debuggable, QuantumState, Sampleable, Simulator, StoredCircuit, StoredRegisters},
 };
+
+const MULTI_THREAD_MIN: usize = 16;
 
 macro_rules! read {
     ($x:expr) => {
@@ -370,12 +372,21 @@ impl Vertex {
         f: &F,
     ) {
         f(*path, self.amplitude);
-        (start_axis..self.dim()).into_par_iter().for_each(move |i| {
-            let mut next = path;
-            let path_offset = path_offset + i - start_axis;
-            next.set(path_offset);
-            Self::vertex_mut(&self.next_vertex, i).for_each(next, path_offset + 1, i, f);
-        });
+        if self.dim() > MULTI_THREAD_MIN {
+            (start_axis..self.dim()).into_par_iter().for_each(move |i| {
+                let mut next = path;
+                let path_offset = path_offset + i - start_axis;
+                next.set(path_offset);
+                Self::vertex_mut(&self.next_vertex, i).for_each(next, path_offset + 1, i, f);
+            });
+        } else {
+            for i in start_axis..self.dim() {
+                let mut next = path;
+                let path_offset = path_offset + i - start_axis;
+                next.set(path_offset);
+                Self::vertex_mut(&self.next_vertex, i).for_each(next, path_offset + 1, i, f);
+            }
+        }
     }
 
     fn map<F: Fn(usize, &mut V) + std::marker::Send + std::marker::Sync>(
@@ -386,12 +397,21 @@ impl Vertex {
         f: &F,
     ) {
         f(*path, &mut self.amplitude);
-        (start_axis..self.dim()).into_par_iter().for_each(move |i| {
-            let mut next = path;
-            let path_offset = path_offset + i - start_axis;
-            next.set(path_offset);
-            Self::vertex_mut(&self.next_vertex, i).map(next, path_offset + 1, i, f);
-        });
+        if self.dim() > MULTI_THREAD_MIN {
+            (start_axis..self.dim()).into_par_iter().for_each(move |i| {
+                let mut next = path;
+                let path_offset = path_offset + i - start_axis;
+                next.set(path_offset);
+                Self::vertex_mut(&self.next_vertex, i).map(next, path_offset + 1, i, f);
+            });
+        } else {
+            for i in start_axis..self.dim() {
+                let mut next = path;
+                let path_offset = path_offset + i - start_axis;
+                next.set(path_offset);
+                Self::vertex_mut(&self.next_vertex, i).map(next, path_offset + 1, i, f);
+            }
+        }
     }
 
     fn apply_2x2(&mut self, axis: usize, start_axis: usize, matrix: &Matrix2<V>) {
@@ -406,20 +426,29 @@ impl Vertex {
         );
 
         let slf: &Self = self;
-        rayon::join(
-            || {
-                (start_axis..axis).into_par_iter().for_each(move |i| {
-                    Self::vertex_mut(&slf.next_vertex, i).apply_2x2(axis - 1, i, matrix);
-                });
-            },
-            || {
-                ((axis + 1).max(start_axis)..slf.dim())
-                    .into_par_iter()
-                    .for_each(move |i| {
-                        Self::vertex_mut(&slf.next_vertex, i).apply_2x2(axis, i, matrix);
+        if self.dim() > MULTI_THREAD_MIN {
+            rayon::join(
+                || {
+                    (start_axis..axis).into_par_iter().for_each(move |i| {
+                        Self::vertex_mut(&slf.next_vertex, i).apply_2x2(axis - 1, i, matrix);
                     });
-            },
-        );
+                },
+                || {
+                    ((axis + 1).max(start_axis)..slf.dim())
+                        .into_par_iter()
+                        .for_each(move |i| {
+                            Self::vertex_mut(&slf.next_vertex, i).apply_2x2(axis, i, matrix);
+                        });
+                },
+            );
+        } else {
+            for i in start_axis..axis {
+                Self::vertex_mut(&self.next_vertex, i).apply_2x2(axis - 1, i, matrix);
+            }
+            for i in (axis + 1).max(start_axis)..self.dim() {
+                Self::vertex_mut(&slf.next_vertex, i).apply_2x2(axis, i, matrix);
+            }
+        }
     }
 
     #[cfg(not(doctest))]
@@ -463,31 +492,43 @@ impl Vertex {
             &mut Self::vertex_mut(&self.next_vertex, axis_2).amplitude,
             &mut Self::vertex_mut(&self.next_vertex, axis_1).amplitude,
         );
-        rayon::join(
-            || {
-                (start_axis..axis_1).into_par_iter().for_each(|i| {
-                    Self::vertex_mut(&self.next_vertex, i).swap(axis_1 - 1, axis_2 - 1, i);
-                });
-            },
-            || {
-                rayon::join(
-                    || {
-                        ((axis_1 + 1).max(start_axis)..axis_2)
-                            .into_par_iter()
-                            .for_each(|i| {
-                                Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2 - 1, i);
-                            });
-                    },
-                    || {
-                        ((axis_2 + 1).max(start_axis)..self.dim())
-                            .into_par_iter()
-                            .for_each(|i| {
-                                Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2, i);
-                            });
-                    },
-                );
-            },
-        );
+        if self.dim() > MULTI_THREAD_MIN {
+            rayon::join(
+                || {
+                    (start_axis..axis_1).into_par_iter().for_each(|i| {
+                        Self::vertex_mut(&self.next_vertex, i).swap(axis_1 - 1, axis_2 - 1, i);
+                    });
+                },
+                || {
+                    rayon::join(
+                        || {
+                            ((axis_1 + 1).max(start_axis)..axis_2)
+                                .into_par_iter()
+                                .for_each(|i| {
+                                    Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2 - 1, i);
+                                });
+                        },
+                        || {
+                            ((axis_2 + 1).max(start_axis)..self.dim())
+                                .into_par_iter()
+                                .for_each(|i| {
+                                    Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2, i);
+                                });
+                        },
+                    );
+                },
+            );
+        } else {
+            for i in start_axis..axis_1 {
+                Self::vertex_mut(&self.next_vertex, i).swap(axis_1 - 1, axis_2 - 1, i);
+            }
+            for i in (axis_1 + 1).max(start_axis)..axis_2 {
+                Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2 - 1, i);
+            }
+            for i in (axis_2 + 1).max(start_axis)..self.dim() {
+                Self::vertex_mut(&self.next_vertex, i).swap(axis_1, axis_2, i);
+            }
+        }
     }
 
     #[cfg(not(doctest))]
@@ -593,61 +634,6 @@ mod tests {
             assert_eq!(read!(st).len(), (1 << n));
         }
     }
-
-    // #[test]
-    // /// Assert that propagate only visits each index once
-    // fn propagate_id() {
-    //     let tt = |ax, n| {
-    //         let mut t = Vertex::new(n);
-    //         let st = Arc::new(RwLock::new(0));
-    //         t.apply_2x2(ax, 0, &mut |src, dst| {
-    //             *write!(st) += 1;
-    //             *src += cart!(1);
-    //             *dst += cart!(1);
-    //         });
-    //         assert_eq!(*read!(st), (1 << (n - 1)));
-    //         t.for_each(0.into(), 0, 0, &mut |_, v| assert!(v == cart!(1)));
-    //     };
-
-    //     for n in 1..=5 {
-    //         for ax in 0..n {
-    //             tt(ax, n);
-    //         }
-    //     }
-    // }
-
-    // #[test]
-    // /// Assert that propagate only visits each filtered index once
-    // fn propagate_filter() {
-    //     let tt = |ax, n, filter: BitSet, n_ctrls| {
-    //         let mut t = Vertex::new(n);
-    //         let st = Arc::new(RwLock::new(0));
-    //         t.filter_apply_2x2(ax, filter, 0, &|src, dst| {
-    //             *write!(st) += 1;
-    //             *src += cart!(1);
-    //             *dst += cart!(1);
-    //         });
-    //         assert_eq!(*read!(st), (1 << (n - 1)) >> n_ctrls);
-    //         t.for_each(0.into(), 0, 0, &mut |i, v| {
-    //             if i & *filter == *filter {
-    //                 assert_eq!(v, cart!(1))
-    //             } else {
-    //                 assert_eq!(v, cart!(0))
-    //             }
-    //         });
-    //     };
-
-    //     for n in 1..=5 {
-    //         for filter in 0..(1 << n) {
-    //             for ax in 0..n {
-    //                 if filter | (1 << ax) == filter {
-    //                     continue;
-    //                 }
-    //                 tt(ax, n, filter.into(), filter.count_ones());
-    //             }
-    //         }
-    //     }
-    // }
 
     #[test]
     /// Assert that propagate only visits each filtered index once
