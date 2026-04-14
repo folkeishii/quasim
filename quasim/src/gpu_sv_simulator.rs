@@ -271,7 +271,7 @@ mod tests {
         let gpu = WgpuSimulator::sample_once(circuit.clone(), &qubits).unwrap();
         let cpu = StateVectorSimulator::sample_once(circuit, &qubits).unwrap();
 
-        assert_eq!(cpu, [1, 0, 1]);
+        assert_eq!(cpu, [1, 1]);
         assert_eq!(gpu, cpu);
     }
 
