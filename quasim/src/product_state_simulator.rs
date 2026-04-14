@@ -38,18 +38,6 @@ impl Simulator for ProductStateSimulator {
 }
 
 impl ProductStateSimulator {
-    fn init(circuit: Circuit<HybridCircuit>) -> Self {
-        let registers = RegisterFile::from(circuit.registers());
-        let init_state = ProductState::zeros(circuit.n_qubits());
-
-        ProductStateSimulator {
-            circuit: circuit,
-            pc: Default::default(),
-            registers: registers,
-            product_state: init_state,
-        }
-    }
-
     fn apply_gate(&mut self, gate: Gate) {
         /* Overview:
          *
