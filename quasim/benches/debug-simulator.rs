@@ -1,5 +1,5 @@
 use nalgebra::{Complex, DMatrix};
-use quasim::ext::equal_state_c;
+use quasim::ext::equal_matrix_c;
 
 extern crate quasim;
 
@@ -25,5 +25,5 @@ fn controlled_id_all_control_but_one(n_qubits: usize) {
     let dim = 1 << n_qubits;
     let id_big = DMatrix::<Complex<f64>>::identity(dim, dim);
 
-    assert!(equal_state_c(&mat, &id_big, n_qubits, 0.000001,));
+    assert!(equal_matrix_c(&mat, &id_big, n_qubits, 0.000001,));
 }
