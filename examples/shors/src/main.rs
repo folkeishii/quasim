@@ -363,7 +363,10 @@ fn create_u_a(n: usize, a: usize) -> Circuit {
 /// # Returns
 /// * `Some(usize)`, if a valid period was found
 /// * `None`, if not
-pub fn qpe<S>(n: usize, a: usize) -> Option<usize> where S: Sampleable<HybridCircuit> + StoredRegisters {
+pub fn qpe<S>(n: usize, a: usize) -> Option<usize>
+where
+    S: Sampleable<HybridCircuit> + StoredRegisters,
+{
     let n_bits: usize = ((n as f32) + 1.0).log2().ceil() as usize;
 
     let mut circuit = Circuit::new(2 * n_bits + 3).new_reg("res", 2 * n_bits);
@@ -413,7 +416,10 @@ pub fn qpe<S>(n: usize, a: usize) -> Option<usize> where S: Sampleable<HybridCir
 /// # Returns
 /// * `Some(Vec![f1,f2]` if non-trivial factors are found
 /// * `None` if the attempt fails (due to an invalid period or quantum failure)
-pub fn shors<S>(n: usize, a: usize) -> Option<Vec<usize>> where S: Sampleable<HybridCircuit> + StoredRegisters {
+pub fn shors<S>(n: usize, a: usize) -> Option<Vec<usize>>
+where
+    S: Sampleable<HybridCircuit> + StoredRegisters,
+{
     if n % 2 == 0 {
         return Some(vec![2, n / 2]);
     }
@@ -457,7 +463,10 @@ pub fn shors<S>(n: usize, a: usize) -> Option<Vec<usize>> where S: Sampleable<Hy
 /// # Returns
 /// * `Some(Vec![f1,f2]` if non-trivial factors are found
 /// * `None` if the attempt fails (due to an invalid period or quantum failure)
-pub fn shors_random<S>(n: usize, start: usize, stop: usize) -> Option<Vec<usize>> where S: Sampleable<HybridCircuit> + StoredRegisters {
+pub fn shors_random<S>(n: usize, start: usize, stop: usize) -> Option<Vec<usize>>
+where
+    S: Sampleable<HybridCircuit> + StoredRegisters,
+{
     assert!(n > 1, "n must be > 1");
     assert!(start >= 2, "start must be >= 2");
     assert!(stop < n, "stop must be < n");
@@ -489,12 +498,13 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use quasim::{
-        circuit::Circuit, sampler::RegisterSampler, simulator::Sampleable, sv_simulator::StateVectorSimulator
+        circuit::Circuit, sampler::RegisterSampler, simulator::Sampleable,
+        sv_simulator::StateVectorSimulator,
     };
 
     use crate::{
-        create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, qpe,
-        shors, shors_random,
+        create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, qpe, shors,
+        shors_random,
     };
 
     #[test]
@@ -595,7 +605,8 @@ mod tests {
         c = c.measure_bits(&(0..n_bits).collect::<Vec<usize>>(), "top");
         c = c.measure_bits(&(n_bits..2 * n_bits).collect::<Vec<usize>>(), "bott");
 
-        let top = StateVectorSimulator::sample_once(c.clone(), RegisterSampler::new("top")).unwrap();
+        let top =
+            StateVectorSimulator::sample_once(c.clone(), RegisterSampler::new("top")).unwrap();
         let bott = StateVectorSimulator::sample_once(c, RegisterSampler::new("bott")).unwrap();
 
         let x_tot: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
@@ -660,7 +671,8 @@ mod tests {
             c = c.measure_bits(&(0..n_bits).collect::<Vec<usize>>(), "top");
             c = c.measure_bits(&(n_bits..2 * n_bits).collect::<Vec<usize>>(), "bott");
 
-            let top = StateVectorSimulator::sample_once(c.clone(), RegisterSampler::new("top")).unwrap();
+            let top =
+                StateVectorSimulator::sample_once(c.clone(), RegisterSampler::new("top")).unwrap();
             let bott = StateVectorSimulator::sample_once(c, RegisterSampler::new("bott")).unwrap();
 
             let x_t: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
