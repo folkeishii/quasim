@@ -10,13 +10,12 @@ pub use arguments::*;
 pub use command::*;
 
 use crate::debug_simulator::DebugSimulator;
-use crate::simulator::HybridSimulator;
+use crate::simulator::{QuantumState, StoredRegisters};
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
     debug_terminal::{parse::into_tokens, show_circuit::show_circuit},
-    simulator::{BuildSimulator, DebuggableSimulator, StoredCircuitSimulator},
+    simulator::{Buildable, Debuggable, StoredCircuit},
 };
-use std::ops::Index;
 use std::{
     io::{self, Write},
     ops::Div,
@@ -26,19 +25,14 @@ pub struct DebugTerminal<S = DebugSimulator> {
     simulator: S,
 }
 
-impl<S, Storage, State> DebugTerminal<S>
+impl<S> DebugTerminal<S>
 where
-    S: DebuggableSimulator<Storage = Storage, State = State>
-        + StoredCircuitSimulator<B = HybridCircuit>
-        + HybridSimulator,
-    Storage: Index<usize, Output = State>,
-    State: ToString,
+    S: Debuggable + StoredCircuit<B = HybridCircuit> + StoredRegisters,
+    S::BasisValue: ToString,
 {
-    pub fn new<B: CircuitBehaviour>(
-        circuit: Circuit<B>,
-    ) -> Result<Self, <S as BuildSimulator<B>>::E>
+    pub fn new<B: CircuitBehaviour>(circuit: Circuit<B>) -> Result<Self, <S as Buildable<B>>::E>
     where
-        S: BuildSimulator<B>,
+        S: Buildable<B>,
     {
         let simulator = S::build(circuit)?;
         Ok(Self { simulator })
@@ -503,7 +497,7 @@ where
     }
 
     fn handle_state<W: Write>(&mut self, stdout: &mut W, state_args: &StateArgs) -> io::Result<()> {
-        let current_state = self.simulator.current_state();
+        let current_state = self.simulator.state();
         let to_show = match StateArgs::from_state(
             current_state,
             state_args,
@@ -555,7 +549,7 @@ where
         let mut max_state = 0; // Only used for formatting
         let mut max_count = 0; // Only used for formatting
         for _ in 0..count {
-            let collapsed = sim.collapse_peek();
+            let collapsed = sim.state().collapse();
             max_state = max_state.max(collapsed);
             let new_count = match count_map.binary_search_by_key(&collapsed, |(state, _)| *state) {
                 // state already recorded
@@ -587,7 +581,7 @@ where
                 c.0,
                 c.0,
                 c.1,
-                ((c.1 as f64).div(count as f64) * 100.0).round()
+                ((c.1 as f32).div(count as f32) * 100.0).round()
             )?;
         }
 

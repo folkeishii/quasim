@@ -19,7 +19,7 @@ use crate::{
     },
     gate::{Gate, QBits},
     instruction::Instruction,
-    simulator::{DebuggableSimulator, StoredCircuitSimulator},
+    simulator::{Debuggable, StoredCircuit},
 };
 
 const T: bool = true;
@@ -28,7 +28,7 @@ const F: bool = false;
 pub fn show_circuit<W, S>(w: &mut W, simulator: &S) -> io::Result<()>
 where
     W: Write,
-    S: DebuggableSimulator + StoredCircuitSimulator<B = HybridCircuit>,
+    S: Debuggable + StoredCircuit<B = HybridCircuit>,
 {
     let mut cols;
     cols = vec![Column::only_kets(repeat('0').take(simulator.n_qubits()))];
@@ -622,7 +622,7 @@ pub struct Column {
     gate_content: EitherContent,
 }
 impl Column {
-    pub fn from_instruction<S: DebuggableSimulator + StoredCircuitSimulator>(
+    pub fn from_instruction<S: Debuggable + StoredCircuit>(
         simulator: &S,
         instruction: &Instruction,
     ) -> Self {
@@ -2206,7 +2206,7 @@ mod tests {
         debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit},
         gate::{Gate, GateType},
         instruction::Instruction,
-        simulator::{BuildSimulator, DebuggableSimulator},
+        simulator::{Buildable, Debuggable},
     };
 
     #[test]

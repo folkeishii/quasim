@@ -1,10 +1,11 @@
 use crate::debug_terminal::state::{IndexedState, StateError};
+use crate::simulator::QuantumState;
 use crate::{
     debug_terminal::CommandIdent,
     debug_terminal::parse::{ParseError, ParseResult, TokenIterator},
     parse_usize,
 };
-use std::ops::{Index, RangeInclusive};
+use std::ops::RangeInclusive;
 
 #[derive(Debug, Clone, Copy)]
 pub enum HelpArgs {
@@ -236,7 +237,7 @@ impl StateArgs {
         n_qubits: usize,
     ) -> Result<Vec<IndexedState>, StateError>
     where
-        I: Index<usize, Output = It>,
+        I: QuantumState<BasisValue = It>,
         It: ToString,
     {
         let mx = 1 << n_qubits;
@@ -267,27 +268,27 @@ impl StateArgs {
             StateArgs::All => (0..mx)
                 .map(|i| IndexedState {
                     index: i,
-                    state: current_state[i].to_string(),
+                    state: current_state.basis_value(i).to_string(),
                 })
                 .collect(),
             StateArgs::Range(r) => r
                 .clone()
                 .map(|r| IndexedState {
                     index: r,
-                    state: current_state[r].to_string(),
+                    state: current_state.basis_value(r).to_string(),
                 })
                 .collect(),
             StateArgs::Multiple(ms) => ms
                 .into_iter()
                 .map(|m| IndexedState {
                     index: *m,
-                    state: current_state[*m].to_string(),
+                    state: current_state.basis_value(*m).to_string(),
                 })
                 .collect(),
             StateArgs::Single(s) => {
                 vec![IndexedState {
                     index: *s,
-                    state: current_state[*s].to_string(),
+                    state: current_state.basis_value(*s).to_string(),
                 }]
             }
         };
