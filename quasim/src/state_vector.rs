@@ -161,6 +161,45 @@ impl StateVector {
         }
     }
 
+    /// Measures a single qubit and updates the state vector.
+    /// Returns the measured result, 0 or 1.
+    pub fn measure_bit(&mut self, target: usize) -> usize {
+        let mask = 1 << target;
+        let measurement = self.collapse() & mask;
+        let measured_bit = (measurement >> target) & 1;
+
+        let mut norm = Complex::ZERO;
+
+        for (i, amp) in self.0.iter_mut().enumerate() {
+            if (i & mask) != measurement {
+                // Remove amplitude for all states that do not align with measurement
+                *amp = Complex::ZERO;
+            } else {
+                // If amplitude != 0, then sum
+                norm += amp.norm_sqr();
+            }
+        }
+
+        norm = norm.sqrt();
+
+        // Renormalize state vector
+        self.0.iter_mut().for_each(|x| *x /= norm);
+
+        measured_bit
+    }
+
+    /// Measures all qubits and updates the state vector.
+    /// Returns the measured result as a bitstring.
+    pub fn measure_all(&mut self) -> usize {
+        let measurement = self.collapse();
+
+        // Collapse whole state vector
+        self.0.fill(cart!(0.0));
+        self.0[measurement] = cart!(1.0);
+
+        measurement
+    }
+
     /// # coefficent_matrix
     /// Finds the appropriate coefficent matrix
     /// used in schmidt decomposition.

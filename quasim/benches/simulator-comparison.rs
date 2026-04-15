@@ -153,7 +153,7 @@ where
         circuit = circuit.h(q).cx(&[q], (q + 1) % QUBITS_UPPER_BOUND);
     }
 
-    Sim::sample_once(circuit.into(), CircuitSampler).expect("couldn't build circuit");
+    Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
 }
 
 #[divan::bench(
@@ -177,5 +177,5 @@ where
         circuit = circuit.h(q).cx(&[q], (q + 1) % n_qubits);
     }
 
-    Sim::sample_once(circuit.into(), CircuitSampler).expect("couldn't build circuit");
+    Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
 }

@@ -1,7 +1,6 @@
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::measure_state_vector,
     gate::{Gate, GateType},
     instruction::Instruction,
     product_state::{ProductState, SubSystem},
@@ -156,8 +155,7 @@ impl ProductStateSimulator {
         let local_target = sys.local_index(target);
         let local_n_qubits = sys.n_qubits();
 
-        let measurement =
-            measure_state_vector(sys.state_vector_mut(), local_target, local_n_qubits);
+        let measurement = sys.state_vector_mut().measure_bit(local_target);
 
         // "Split" state.
         sys.qubits_mut().remove(local_target);

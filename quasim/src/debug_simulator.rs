@@ -2,7 +2,7 @@ use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{collapse, expand_matrix_from_gate, measure_state_vector},
+    ext::expand_matrix_from_gate,
     instruction::Instruction,
     register_file::{RegisterError, RegisterFile},
     simulator::{Debuggable, Sampleable, Simulator, StoredCircuit, StoredRegisters},
@@ -150,8 +150,7 @@ impl Debuggable for DebugSimulator {
 
 impl DebugSimulator {
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
-        let n_qubits = self.n_qubits();
-        let measurement = measure_state_vector(&mut self.current_state, target, n_qubits);
+        let measurement = self.current_state.measure_bit(target);
 
         self.registers[reg]
             .write_bit(bit_pos, measurement)
@@ -161,13 +160,9 @@ impl DebugSimulator {
     }
 
     fn measure_all(&mut self, reg: &str) {
-        let measurement = collapse(self.current_state.as_slice());
+        let measurement = self.current_state.measure_all();
 
         self.registers[reg].write(measurement);
-
-        // Collapse whole state vector
-        self.current_state.fill(cart!(0.0));
-        self.current_state[measurement] = cart!(1.0);
 
         self.pc_mut().increment();
     }
@@ -225,7 +220,6 @@ mod tests {
     use crate::common_test;
     use crate::ext::{
         equal_matrix_c, equal_state_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
-        measure_state_vector,
     };
     use crate::simulator::Simulator;
     use crate::{
@@ -279,7 +273,7 @@ mod tests {
             cart!(0.5), // |111>
         ]
         .into();
-        measure_state_vector(&mut res, 0, 3);
+        res.measure_bit(0);
         assert!(
             equal_state_c(&res, &plus_plus_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_plus_measure1, 3, 0.001)
@@ -328,14 +322,14 @@ mod tests {
             cart!(FRAC_1_SQRT_2), // |111>
         ]
         .into();
-        measure_state_vector(&mut res, 1, 3);
+        res.measure_bit(1);
         assert!(
             equal_state_c(&res, &plus_measure0_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_measure0_measure1, 3, 0.001)
                 || equal_state_c(&res, &plus_measure1_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_measure1_measure1, 3, 0.001)
         );
-        measure_state_vector(&mut res, 2, 3);
+        res.measure_bit(2);
         // Now collapsed to any 3-bit-string.
         assert!(state_is_collapsed(res));
     }
@@ -396,7 +390,7 @@ mod tests {
             cart!(0.0),
         ]
         .into();
-        measure_state_vector(&mut res, 0, 3);
+        res.measure_bit(0);
         println!("{}", res);
 
         assert!(
@@ -404,7 +398,7 @@ mod tests {
                 || equal_state_c(&res, &colapse_11, 3, 0.001)
         );
 
-        measure_state_vector(&mut res, 1, 3);
+        res.measure_bit(1);
         assert!(
             equal_state_c(&res, &colapse_00, 3, 0.001)
                 || equal_state_c(&res, &colapse_11, 3, 0.001)

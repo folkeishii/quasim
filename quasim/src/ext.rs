@@ -5,7 +5,7 @@ use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, DVector, Matrix2, dmatrix};
 use rand::distr::weighted::WeightedIndex;
-use rand::{Rng, prelude::Distribution};
+use rand::prelude::Distribution;
 
 use crate::gate::{Gate, GateType};
 use crate::simulator::QuantumState;
@@ -147,41 +147,6 @@ pub fn collapse(state: &[Complex<f64>]) -> usize {
     let mut rng = rand::rng();
 
     dist.sample(&mut rng)
-}
-
-/// # measure_state_vector
-/// Returns a measurement and updates the state vector.
-pub fn measure_state_vector(
-    state: &mut DVector<Complex<f64>>,
-    target: usize,
-    n_qubits: usize,
-) -> usize {
-    // Choose a collapsed state
-    let prob_target_eq_zero = state
-        .iter()
-        .enumerate()
-        .filter(|&(idx, _)| (1 << target) & idx == 0) // Using |..q_1q_0> convetion
-        .map(|(_, c)| c.norm_sqr())
-        .sum::<f64>();
-
-    let mut rng = rand::rng();
-    let random_value = rng.random_range(0.0..1.0);
-    let result = if random_value < prob_target_eq_zero {
-        0
-    } else {
-        1
-    };
-    let mut normalization = cart!(0.0);
-    for basis in 0..(1 << n_qubits) {
-        if (basis >> target) & 1 == result {
-            normalization += state[basis].norm_sqr();
-        } else {
-            state[basis] = cart!(0.0);
-        }
-    }
-    normalization = normalization.sqrt();
-    state.iter_mut().for_each(|amp| *amp /= normalization);
-    result
 }
 
 /// # expand_matrix_from_gate

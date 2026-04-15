@@ -52,47 +52,20 @@ impl StateVectorSimulator {
         dist.sample(&mut rng)
     }
 
-    /// Get current state of the quantum system
-    pub fn state_vector(&self) -> &StateVector {
-        &self.state_vector
-    }
-
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
-        let mask = 1 << target;
-        let measurement = self.get_collapsed_state() & mask;
-        let measured_bit = (measurement >> target) & 1;
+        let measured_bit = self.state_vector.measure_bit(target);
 
         self.registers[reg]
             .write_bit(bit_pos, measured_bit)
             .expect("invalid register write");
 
-        // Go through state vector and remove amplitude for all states that do not align with measurement
-        for (i, amp) in self.state_vector.iter_mut().enumerate() {
-            if (i & mask) != measurement {
-                *amp = Complex::ZERO;
-            }
-        }
-
-        // Renormalize state vector
-        let norm = self
-            .state_vector
-            .iter()
-            .map(|x| x.norm_sqr())
-            .sum::<f64>()
-            .sqrt();
-        self.state_vector.iter_mut().for_each(|x| *x /= norm);
-
         self.pc_mut().increment();
     }
 
     fn measure_all(&mut self, reg: &str) {
-        let measurement = self.get_collapsed_state();
+        let measurement = self.state_vector.measure_all();
 
         self.registers[reg].write(measurement);
-
-        // Collapse whole state vector
-        self.state_vector.fill(cart!(0.0));
-        self.state_vector[measurement] = cart!(1.0);
 
         self.pc_mut().increment();
     }

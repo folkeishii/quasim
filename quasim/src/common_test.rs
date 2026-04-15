@@ -312,71 +312,57 @@ where
         assert!(equal_state_c(sim.state(), &correct, LEVELS, 0.001));
     }
 }
-pub fn mid_measure_all<Sim: Buildable<HybridCircuit> + Debuggable + StoredRegisters>()
-where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
-{
+pub fn mid_measure_all<Sim: Sampleable<HybridCircuit> + StoredRegisters>() {
     println!("mid measure all");
-    let mut sim = Sim::build(
-        Circuit::new(5)
-            .new_reg("a", 4)
-            .new_reg("~a", 4)
-            .h(0)
-            .h(1)
-            .h(2)
-            .h(3)
-            .measure("a")
-            .x(0)
-            .x(1)
-            .x(2)
-            .x(3)
-            .measure("~a")
-            .apply_if((r("a") + r("~a")).eq(0b1111))
-            .x(4)
-            .new_reg("res", 1)
-            .measure_bit(4, ("res", 0)),
-    )
-    .unwrap();
-    while sim.next() {}
-    assert!(sim.register("res").read() & 1 == 1);
+    let circuit = Circuit::new(5)
+        .new_reg("a", 4)
+        .new_reg("~a", 4)
+        .h(0)
+        .h(1)
+        .h(2)
+        .h(3)
+        .measure("a")
+        .x(0)
+        .x(1)
+        .x(2)
+        .x(3)
+        .measure("~a")
+        .apply_if((r("a") + r("~a")).eq(0b1111))
+        .x(4)
+        .new_reg("res", 1)
+        .measure_bit(4, ("res", 0));
+    assert!(Sim::sample_once(circuit, RegisterSampler::new("res")).unwrap() & 1 == 1);
 }
 
-pub fn mid_measure_bit<Sim: Buildable<HybridCircuit> + Debuggable + StoredRegisters>()
-where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
-{
+pub fn mid_measure_bit<Sim: Sampleable<HybridCircuit> + StoredRegisters>() {
     println!("mid measure bit");
-    let mut sim = Sim::build(
-        Circuit::new(5)
-            .new_reg("a", 4)
-            .new_reg("~a", 4)
-            .h(0)
-            .h(1)
-            .h(2)
-            .h(3)
-            .measure_bit(0, ("a", 0))
-            .measure_bit(1, ("a", 1))
-            .measure_bit(2, ("a", 2))
-            .measure_bit(3, ("a", 3))
-            .x(0)
-            .x(1)
-            .x(2)
-            .x(3)
-            .measure_bit(0, ("~a", 0))
-            .measure_bit(1, ("~a", 1))
-            .measure_bit(2, ("~a", 2))
-            .measure_bit(3, ("~a", 3))
-            .apply_if((r("a") + r("~a")).eq(0b1111))
-            .x(4)
-            .new_reg("res", 1)
-            .measure_bit(4, ("res", 0)),
-    )
-    .unwrap();
-    while sim.next() {}
-    assert!(sim.register("res").read() & 1 == 1);
+    let circuit = Circuit::new(5)
+        .new_reg("a", 4)
+        .new_reg("~a", 4)
+        .h(0)
+        .h(1)
+        .h(2)
+        .h(3)
+        .measure_bit(0, ("a", 0))
+        .measure_bit(1, ("a", 1))
+        .measure_bit(2, ("a", 2))
+        .measure_bit(3, ("a", 3))
+        .x(0)
+        .x(1)
+        .x(2)
+        .x(3)
+        .measure_bit(0, ("~a", 0))
+        .measure_bit(1, ("~a", 1))
+        .measure_bit(2, ("~a", 2))
+        .measure_bit(3, ("~a", 3))
+        .apply_if((r("a") + r("~a")).eq(0b1111))
+        .x(4)
+        .new_reg("res", 1)
+        .measure_bit(4, ("res", 0));
+    assert!(Sim::sample_once(circuit, RegisterSampler::new("res")).unwrap() & 1 == 1);
 }
 
-pub fn interleaved<Sim: Buildable<HybridCircuit> + Debuggable + StoredRegisters>()
+pub fn interleaved<Sim: Buildable<HybridCircuit> + StoredRegisters>()
 where
     Sim::State: QuantumState<BasisValue = Complex<f64>>,
 {
@@ -396,7 +382,7 @@ where
             .into(),
     )
     .unwrap();
-    while sim.next() {}
+    sim.run();
 
     let expected: StateVector = dvector![
         cart!(0.5000000293365844),
