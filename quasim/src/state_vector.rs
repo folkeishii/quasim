@@ -9,11 +9,11 @@ use rand::distr::{Distribution, weighted::WeightedIndex};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 
 #[derive(Debug, Clone)]
-pub struct StateVector(DVector<Complex<f64>>);
+pub struct StateVector(DVector<Complex<f32>>);
 
 impl QuantumState for StateVector {
-    type BasisValue = Complex<f64>;
-    fn basis_value(&self, basis: usize) -> Complex<f64> {
+    type BasisValue = Complex<f32>;
+    fn basis_value(&self, basis: usize) -> Complex<f32> {
         self[basis]
     }
 
@@ -35,12 +35,12 @@ impl StateVector {
 
     /// The system |b> where b is any bitstring.
     pub fn from_bitstring(bitstring: usize, n_qubits: usize) -> Self {
-        let mut v = Self(DVector::<Complex<f64>>::zeros(1 << n_qubits));
+        let mut v = Self(DVector::<Complex<f32>>::zeros(1 << n_qubits));
         v[bitstring] = cart!(1.0);
         v
     }
 
-    pub fn apply_matrix(&mut self, matrix: &DMatrix<Complex<f64>>) {
+    pub fn apply_matrix(&mut self, matrix: &DMatrix<Complex<f32>>) {
         self.0 = matrix * self.0.clone();
     }
 
@@ -95,7 +95,7 @@ impl StateVector {
         let state = self.0.as_mut_slice();
         let a = state[base_index];
         let b = state[flipped_index];
-        let inv_sqrt2 = 1.0 / std::f64::consts::SQRT_2;
+        let inv_sqrt2 = 1.0 / std::f32::consts::SQRT_2;
 
         state[base_index] = (a + b) * inv_sqrt2;
         state[flipped_index] = (a - b) * inv_sqrt2;
@@ -122,7 +122,7 @@ impl StateVector {
     }
 
     #[inline(always)]
-    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f64>>, target: QBits) {
+    fn apply_unitary2(&mut self, base_index: usize, u: &Matrix2<Complex<f32>>, target: QBits) {
         let flipped_index = base_index | target.get_bitstring();
         let a = self.0[base_index];
         let b = self.0[flipped_index];
@@ -203,7 +203,7 @@ impl StateVector {
     /// # coefficent_matrix
     /// Finds the appropriate coefficent matrix
     /// used in schmidt decomposition.
-    fn coefficent_matrix(&self, targets: &[usize], n_qubits: usize) -> DMatrix<Complex<f64>> {
+    fn coefficent_matrix(&self, targets: &[usize], n_qubits: usize) -> DMatrix<Complex<f32>> {
         let squash_by_mask = |bitstring: usize, mask: usize| {
             let mut res = 0;
             let mut i = 0;
@@ -223,7 +223,7 @@ impl StateVector {
         let n_elements = 1 << n_qubits;
         let n_targets = targets.len();
 
-        let mut coeffs = DMatrix::<Complex<f64>>::zeros(n_elements >> n_targets, 1 << n_targets);
+        let mut coeffs = DMatrix::<Complex<f32>>::zeros(n_elements >> n_targets, 1 << n_targets);
 
         let target_mask = QBits::from_indices(targets).get_bitstring();
         let not_target_mask = (n_elements - 1) ^ target_mask;
@@ -247,7 +247,7 @@ impl StateVector {
         // Use Singular Value Decomposition to find the traced out vector.
         let svd = coeffs.svd(true, false);
 
-        let res = DVector::<Complex<f64>>::from(svd.u.unwrap().column(0));
+        let res = DVector::<Complex<f32>>::from(svd.u.unwrap().column(0));
         // SVD might mess with global phase.
         Self(res.scale(res[0].re.signum()))
     }
@@ -262,14 +262,14 @@ impl StateVector {
         // Use Singular Value Decomposition to find the traced out vector.
         let svd = coeffs.svd(false, true);
 
-        let res = DVector::<Complex<f64>>::from(svd.v_t.unwrap().transpose().column(0));
+        let res = DVector::<Complex<f32>>::from(svd.v_t.unwrap().transpose().column(0));
         // SVD might mess with global phase.
         Self(res.scale(res[0].re.signum()))
     }
 }
 
 impl Index<usize> for StateVector {
-    type Output = Complex<f64>;
+    type Output = Complex<f32>;
     fn index(&self, index: usize) -> &Self::Output {
         &self.0[index]
     }
@@ -281,35 +281,35 @@ impl IndexMut<usize> for StateVector {
     }
 }
 impl Deref for StateVector {
-    type Target = DVector<Complex<f64>>;
-    fn deref(&self) -> &DVector<Complex<f64>> {
+    type Target = DVector<Complex<f32>>;
+    fn deref(&self) -> &DVector<Complex<f32>> {
         &self.0
     }
 }
 impl DerefMut for StateVector {
-    fn deref_mut(&mut self) -> &mut DVector<Complex<f64>> {
+    fn deref_mut(&mut self) -> &mut DVector<Complex<f32>> {
         &mut self.0
     }
 }
 
-impl From<DVector<Complex<f64>>> for StateVector {
-    fn from(v: DVector<Complex<f64>>) -> Self {
+impl From<DVector<Complex<f32>>> for StateVector {
+    fn from(v: DVector<Complex<f32>>) -> Self {
         StateVector(v)
     }
 }
-impl From<StateVector> for DVector<Complex<f64>> {
-    fn from(m: StateVector) -> DVector<Complex<f64>> {
+impl From<StateVector> for DVector<Complex<f32>> {
+    fn from(m: StateVector) -> DVector<Complex<f32>> {
         m.0
     }
 }
 
-impl AsRef<DVector<Complex<f64>>> for StateVector {
-    fn as_ref(&self) -> &DVector<Complex<f64>> {
+impl AsRef<DVector<Complex<f32>>> for StateVector {
+    fn as_ref(&self) -> &DVector<Complex<f32>> {
         &self.0
     }
 }
-impl AsMut<DVector<Complex<f64>>> for StateVector {
-    fn as_mut(&mut self) -> &mut DVector<Complex<f64>> {
+impl AsMut<DVector<Complex<f32>>> for StateVector {
+    fn as_mut(&mut self) -> &mut DVector<Complex<f32>> {
         &mut self.0
     }
 }
@@ -328,7 +328,7 @@ mod tests {
         state_vector::StateVector,
     };
     use nalgebra::dvector;
-    use std::f64::consts::{FRAC_1_SQRT_2, PI};
+    use std::f32::consts::{FRAC_1_SQRT_2, PI};
 
     #[test]
     fn schmidt_test() {

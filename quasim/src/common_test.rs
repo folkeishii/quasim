@@ -1,4 +1,4 @@
-use std::f64::consts::FRAC_1_SQRT_2;
+use std::f32::consts::FRAC_1_SQRT_2;
 
 use nalgebra::{Complex, DVector, dvector};
 
@@ -14,7 +14,7 @@ use crate::{
 
 pub fn double_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
 {
     println!("double sub");
     // Keep for sub circuits
@@ -37,7 +37,7 @@ where
         .h(2)
         .h(3);
 
-    const L: usize = 5; //(std::f64::consts::PI * 2f64.sqrt() / 4f64).floor() as usize;
+    const L: usize = 5; //(std::f32::consts::PI * 2f32.sqrt() / 4f32).floor() as usize;
 
     for _ in 0..L {
         circuit = circuit.call("sub", 0);
@@ -109,7 +109,7 @@ where
 
 pub fn deep_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
 {
     println!("deep sub");
     // Keep for sub circuits
@@ -139,7 +139,7 @@ where
         forward_steps += 1;
     }
 
-    let mut correct: StateVector = DVector::<Complex<f64>>::zeros(1 << LEVELS).into();
+    let mut correct: StateVector = DVector::<Complex<f32>>::zeros(1 << LEVELS).into();
     correct[0] = cart!(FRAC_1_SQRT_2);
     correct[1 << (LEVELS - 1)] = cart!(FRAC_1_SQRT_2);
     println!("deep sub ok");
@@ -160,7 +160,7 @@ where
 
 pub fn hybrid_test<Sim: Buildable<HybridCircuit>>()
 where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
 {
     println!("hybrid test");
     let circuit = Circuit::new(4)
@@ -190,7 +190,6 @@ where
     sim.run();
 
     let expected = StateVector::zeros(16);
-
     assert!(equal_state_c(sim.state(), &expected, 4, 0.001));
 }
 
@@ -273,7 +272,7 @@ where
 
 pub fn deep_ctrl_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
 {
     println!("deep ctrl sub");
     // Keep for sub circuits
@@ -291,7 +290,8 @@ where
         forward_steps += 1;
     }
 
-    let mut correct: StateVector = DVector::<Complex<f64>>::zeros(1 << LEVELS).into();
+    let mut correct: StateVector = DVector::<Complex<f32>>::zeros(1 << LEVELS).into();
+
     correct[0b00000] = cart!(FRAC_1_SQRT_2);
     correct[0b00001] = cart!(0.5);
     correct[0b00011] = cart!(-0.35355);
@@ -309,6 +309,7 @@ where
         assert_eq!(forward_steps, backward_steps);
 
         let correct = StateVector::zeros(LEVELS);
+
         assert!(equal_state_c(sim.state(), &correct, LEVELS, 0.001));
     }
 }
@@ -364,7 +365,7 @@ pub fn mid_measure_bit<Sim: Sampleable<HybridCircuit> + StoredRegisters>() {
 
 pub fn interleaved<Sim: Buildable<HybridCircuit> + StoredRegisters>()
 where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
 {
     println!("interleaved");
     let mut sim = Sim::build(

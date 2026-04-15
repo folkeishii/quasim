@@ -19,7 +19,7 @@ pub struct ProductStateSimulator {
 
 impl Simulator for ProductStateSimulator {
     type State = ProductState;
-    type BasisValue = Complex<f64>;
+    type BasisValue = Complex<f32>;
     fn run(&mut self) {
         while self.next() {}
     }

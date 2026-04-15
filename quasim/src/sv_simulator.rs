@@ -123,7 +123,6 @@ where
 
     fn try_from(value: Circuit<B>) -> Result<Self, Self::Error> {
         let init_state_vector = StateVector::zeros(value.n_qubits());
-
         let registers = RegisterFile::from(value.registers());
 
         Ok(Self {
@@ -137,7 +136,7 @@ where
 
 impl Simulator for StateVectorSimulator {
     type State = StateVector;
-    type BasisValue = Complex<f64>;
+    type BasisValue = Complex<f32>;
 
     fn run(&mut self) {
         self.reset();
@@ -211,7 +210,7 @@ pub enum SVError {
 
 #[cfg(test)]
 mod tests {
-    use std::f64::consts::FRAC_1_SQRT_2;
+    use std::f32::consts::FRAC_1_SQRT_2;
 
     use nalgebra::dvector;
 

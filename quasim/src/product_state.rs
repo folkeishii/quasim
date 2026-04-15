@@ -106,9 +106,9 @@ impl SubSystem {
 #[derive(Debug, Clone)]
 pub struct ProductState(Vec<SubSystem>);
 impl QuantumState for ProductState {
-    type BasisValue = Complex<f64>;
+    type BasisValue = Complex<f32>;
     /// Return the amplitude for a given basis state.
-    fn basis_value(&self, basis: usize) -> Complex<f64> {
+    fn basis_value(&self, basis: usize) -> Complex<f32> {
         //Translate to order of system
         let indices = QBits::from_bitstring(basis)
             .get_indices()
@@ -290,7 +290,7 @@ mod tests {
     use nalgebra::{Complex, DVector};
 
     fn sv_from_amps(state: &ProductState, n_qubits: usize) -> StateVector {
-        let mut v = DVector::<Complex<f64>>::zeros(1 << n_qubits);
+        let mut v = DVector::<Complex<f32>>::zeros(1 << n_qubits);
         for basis in 0..(1 << n_qubits) {
             v[basis] = state.basis_value(basis);
         }

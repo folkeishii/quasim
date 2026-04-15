@@ -47,7 +47,7 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
 
 impl Simulator for DebugSimulator {
     type State = StateVector;
-    type BasisValue = Complex<f64>;
+    type BasisValue = Complex<f32>;
 
     fn run(&mut self) {
         while self.next() {}
@@ -231,7 +231,7 @@ mod tests {
         state_vector::StateVector,
     };
     use nalgebra::{Complex, DMatrix, dmatrix, dvector};
-    use std::f64::consts::FRAC_1_SQRT_2;
+    use std::f32::consts::FRAC_1_SQRT_2;
 
     #[test]
     fn measure_hadamard_all() {
@@ -417,9 +417,9 @@ mod tests {
         assert!(collapsed == 0b00 || collapsed == 0b11);
     }
 
-    fn textbook_cnot() -> DMatrix<Complex<f64>> {
+    fn textbook_cnot() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
-        let textbook_cnot: DMatrix::<Complex<f64>> = dmatrix![
+        let textbook_cnot: DMatrix::<Complex<f32>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
@@ -435,9 +435,9 @@ mod tests {
         assert!(equal_matrix_c(&mat, &textbook_cnot(), 4, 0.001));
     }
 
-    fn textbook_toffoli() -> DMatrix<Complex<f64>> {
+    fn textbook_toffoli() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
-        let textbook_toffoli: DMatrix::<Complex<f64>> = dmatrix![
+        let textbook_toffoli: DMatrix::<Complex<f32>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -458,9 +458,9 @@ mod tests {
 
     /* Following tests are based on 'ControlledGates.tex' */
 
-    fn cnot_01() -> DMatrix<Complex<f64>> {
+    fn cnot_01() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
-        let cnot_01: DMatrix::<Complex<f64>> = dmatrix![
+        let cnot_01: DMatrix::<Complex<f32>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -480,9 +480,9 @@ mod tests {
         assert!(equal_matrix_c(&mat, &cnot_01(), 6, 0.001));
     }
 
-    fn cnot_02() -> DMatrix<Complex<f64>> {
+    fn cnot_02() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
-        let cnot_02: DMatrix::<Complex<f64>> = dmatrix![
+        let cnot_02: DMatrix::<Complex<f32>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -502,9 +502,9 @@ mod tests {
         assert!(equal_matrix_c(&mat, &cnot_02(), 6, 0.001));
     }
 
-    fn cnot_12() -> DMatrix<Complex<f64>> {
+    fn cnot_12() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
-        let cnot_12: DMatrix::<Complex<f64>> = dmatrix![
+        let cnot_12: DMatrix::<Complex<f32>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0);
@@ -524,9 +524,9 @@ mod tests {
         assert!(equal_matrix_c(&mat, &cnot_12(), 6, 0.001));
     }
 
-    fn h_0() -> DMatrix<Complex<f64>> {
+    fn h_0() -> DMatrix<Complex<f32>> {
         #[rustfmt::skip]
-        let h_0: DMatrix::<Complex<f64>> = dmatrix![
+        let h_0: DMatrix::<Complex<f32>> = dmatrix![
             cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(FRAC_1_SQRT_2), -cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(FRAC_1_SQRT_2), cart!(FRAC_1_SQRT_2), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
@@ -546,8 +546,8 @@ mod tests {
         assert!(equal_matrix_c(&mat, &h_0(), 6, 0.001));
     }
 
-    fn cnot_201() -> DMatrix<Complex<f64>> {
-        let cnot_201: DMatrix<Complex<f64>> = dmatrix![
+    fn cnot_201() -> DMatrix<Complex<f32>> {
+        let cnot_201: DMatrix<Complex<f32>> = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0), cart!(0.0);
