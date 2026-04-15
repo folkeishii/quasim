@@ -1,10 +1,10 @@
 use num_integer::{Integer, gcd};
-use quasim::circuit::Circuit;
+use quasim::circuit::{Circuit, HybridCircuit};
 use quasim::expr_dsl::expr_helpers::rb;
-use quasim::simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator};
-use quasim::sv_simulator::SVSimulatorDebugger;
+use quasim::sampler::RegisterSampler;
+use quasim::simulator::{Sampleable, StoredRegisters};
 use rand::RngExt;
-use std::f64::consts::PI;
+use std::f32::consts::PI;
 
 /// Computes the modular inverse of `a` mod `n`.
 ///
@@ -33,7 +33,7 @@ pub fn mod_inv(a: isize, n: isize) -> isize {
 /// * `n` - The modulo number
 ///
 /// # Returns
-/// * `isize`, representing (`b`^`ex`) mod `n`
+/// * `usize`, representing (`b`^`ex`) mod `n`
 pub fn modpow(mut b: usize, mut ex: usize, n: usize) -> usize {
     let mut result = 1;
     b %= n;
@@ -125,7 +125,7 @@ fn convergents(cf: &[usize]) -> Vec<(usize, usize)> {
 ///
 /// # Returns
 /// * `Some(usize)`, if a valid period is found
-/// * None, if not
+/// * `None`, if not
 fn extract_period(a: usize, n: usize, k: usize, t: usize) -> Option<usize> {
     let num = k;
     let den = 1 << t;
@@ -181,7 +181,7 @@ fn extract_period(a: usize, n: usize, k: usize, t: usize) -> Option<usize> {
 /// * `PureCircuit` representing the adder operation
 fn create_adder(a: usize, b: usize) -> Circuit {
     // Number of bits needed to represent n and one overflow bit
-    let n_bits = 1 + ((a as f64) + 1.0).log2().ceil() as usize;
+    let n_bits = 1 + ((a as f32) + 1.0).log2().ceil() as usize;
 
     // Bitwise representation of a
     let a_bit_array = (0..n_bits)
@@ -195,7 +195,7 @@ fn create_adder(a: usize, b: usize) -> Circuit {
         for j in 0..=i {
             if a_bit_array[j] {
                 let bitshift = 1 << (i - j + 1);
-                let theta = 2.0 * PI / bitshift as f64;
+                let theta = 2.0 * PI / bitshift as f32;
                 circuit = circuit.rz(theta, n_bits - 1 - i)
             }
         }
@@ -222,7 +222,7 @@ fn create_adder(a: usize, b: usize) -> Circuit {
 /// * `PureCircuit` representing the modular adder operation
 fn create_mod_adder(n: usize, a: usize) -> Circuit {
     // n-bits to represent the number being added to
-    let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+    let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
     // Circuit has n-bits for the number, aswell as an overflow bit and a control bit, in that order
     let mut circuit = Circuit::new(n_bits + 2)
@@ -269,7 +269,7 @@ fn create_mod_adder(n: usize, a: usize) -> Circuit {
 /// # Returns
 /// * `PureCircuit` representing the controlled multiplier operation
 fn create_cmult(n: usize, a: usize) -> Circuit {
-    let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+    let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
     let mut circuit = Circuit::new(2 * n_bits + 2);
 
@@ -302,7 +302,7 @@ fn create_cmult(n: usize, a: usize) -> Circuit {
 /// # Returns
 /// * `PureCircuit` representing the swap operation
 fn create_swap(n: usize) -> Circuit {
-    let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+    let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
     let mut circuit = Circuit::new(2 * n_bits);
 
@@ -327,7 +327,7 @@ fn create_swap(n: usize) -> Circuit {
 /// # Returns
 /// * `PureCircuit` representing the controlled multiplier operation
 fn create_u_a(n: usize, a: usize) -> Circuit {
-    let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+    let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
     let mut circuit = Circuit::new(2 * n_bits + 2)
         .new_sub_circuit("cmult", create_cmult(n, a))
@@ -361,9 +361,10 @@ fn create_u_a(n: usize, a: usize) -> Circuit {
 /// * `a` - Base used in modular exponentiation
 ///
 /// # Returns
-/// * `usize`, representing the estimated period
-pub fn quantum(n: usize, a: usize) -> Option<usize> {
-    let n_bits: usize = ((n as f64) + 1.0).log2().ceil() as usize;
+/// * `Some(usize)`, if a valid period was found
+/// * `None`, if not
+pub fn qpe<S>(n: usize, a: usize) -> Option<usize> where S: Sampleable<HybridCircuit> + StoredRegisters {
+    let n_bits: usize = ((n as f32) + 1.0).log2().ceil() as usize;
 
     let mut circuit = Circuit::new(2 * n_bits + 3).new_reg("res", 2 * n_bits);
 
@@ -372,7 +373,7 @@ pub fn quantum(n: usize, a: usize) -> Option<usize> {
     circuit = circuit.h(0);
     circuit = circuit.measure_bit(0, ("res", 0));
 
-    for i in 0..2 * n_bits - 1 {
+    for i in 0..(2 * n_bits - 1) {
         // Check previous bit and apply X if 1
         circuit = circuit.apply_if(rb("res", i).eq(1)).x(0);
 
@@ -386,7 +387,7 @@ pub fn quantum(n: usize, a: usize) -> Option<usize> {
 
         // R gates based on previous bits
         for j in 0..i {
-            let theta = -2.0 * PI / (1 << (i - j + 1)) as f64;
+            let theta = -2.0 * PI / (1 << (i - j + 1)) as f32;
             circuit = circuit.apply_if(rb("res", j).eq(1)).rz(theta, 0);
         }
 
@@ -394,11 +395,8 @@ pub fn quantum(n: usize, a: usize) -> Option<usize> {
         circuit = circuit.measure_bit(0, ("res", i + 1));
     }
 
-    let mut sim = SVSimulatorDebugger::build(circuit).unwrap();
-
-    sim.cont();
-
-    let r = sim.register("res").read();
+    //let r = StateVectorSimulator::sample_once(circuit, RegisterSampler::new("res")).unwrap();
+    let r = S::sample_once(circuit, RegisterSampler::new("res")).unwrap();
 
     extract_period(a, n, r, 2 * n_bits)
 }
@@ -415,7 +413,7 @@ pub fn quantum(n: usize, a: usize) -> Option<usize> {
 /// # Returns
 /// * `Some(Vec![f1,f2]` if non-trivial factors are found
 /// * `None` if the attempt fails (due to an invalid period or quantum failure)
-pub fn shors(n: usize, a: usize) -> Option<Vec<usize>> {
+pub fn shors<S>(n: usize, a: usize) -> Option<Vec<usize>> where S: Sampleable<HybridCircuit> + StoredRegisters {
     if n % 2 == 0 {
         return Some(vec![2, n / 2]);
     }
@@ -425,7 +423,7 @@ pub fn shors(n: usize, a: usize) -> Option<Vec<usize>> {
         return Some(vec![g, n / g]);
     }
 
-    let Some(r) = quantum(n, a) else {
+    let Some(r) = qpe::<S>(n, a) else {
         return None;
     };
 
@@ -459,7 +457,7 @@ pub fn shors(n: usize, a: usize) -> Option<Vec<usize>> {
 /// # Returns
 /// * `Some(Vec![f1,f2]` if non-trivial factors are found
 /// * `None` if the attempt fails (due to an invalid period or quantum failure)
-pub fn shors_random(n: usize, start: usize, stop: usize) -> Option<Vec<usize>> {
+pub fn shors_random<S>(n: usize, start: usize, stop: usize) -> Option<Vec<usize>> where S: Sampleable<HybridCircuit> + StoredRegisters {
     assert!(n > 1, "n must be > 1");
     assert!(start >= 2, "start must be >= 2");
     assert!(stop < n, "stop must be < n");
@@ -474,7 +472,7 @@ pub fn shors_random(n: usize, start: usize, stop: usize) -> Option<Vec<usize>> {
             continue;
         }
 
-        if let Some(factors) = shors(n, a) {
+        if let Some(factors) = shors::<S>(n, a) {
             return Some(factors);
         }
     }
@@ -491,13 +489,11 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use quasim::{
-        circuit::Circuit,
-        simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, RunnableSimulator},
-        sv_simulator::{SVSimulator, SVSimulatorDebugger},
+        circuit::Circuit, sampler::RegisterSampler, simulator::Sampleable, sv_simulator::StateVectorSimulator
     };
 
     use crate::{
-        create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, quantum,
+        create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, qpe,
         shors, shors_random,
     };
 
@@ -505,10 +501,10 @@ mod tests {
     fn test_adder() {
         let n = 14;
 
-        let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
         for a in 0..=n {
-            let mut c = Circuit::new(n_bits + 1);
+            let mut c = Circuit::new(n_bits + 1).new_reg("res", n_bits + 1);
 
             c = c.call_new("qft", Circuit::new_qft(n_bits + 1), 0);
 
@@ -516,10 +512,12 @@ mod tests {
 
             c = c.call_new("qft-inv", Circuit::new_qft(n_bits + 1).inverse(), 0);
 
-            let sim = SVSimulator::build(c).unwrap();
+            c = c.measure("res");
+
+            let res = StateVectorSimulator::sample_once(c, RegisterSampler::new("res")).unwrap();
 
             // Constrained to the size of the number n
-            assert_eq!(sim.run(), a % (1 << n_bits));
+            assert_eq!(res, a % (1 << n_bits));
         }
     }
 
@@ -527,19 +525,21 @@ mod tests {
     fn test_mod_adder() {
         let n = 14;
 
-        let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
         for a in 0..=n {
-            let mut c = Circuit::new(n_bits + 2);
+            let mut c = Circuit::new(n_bits + 2).new_reg("res", n_bits + 2);
             c = c.call_new("qft", Circuit::new_qft(n_bits + 1), 0);
 
             c = c.call_new("mod-adder", create_mod_adder(n, a), 0);
 
             c = c.call_new("qft-inv", Circuit::new_qft(n_bits + 1).inverse(), 0);
 
-            let sim = SVSimulator::build(c).unwrap();
+            c = c.measure("res");
 
-            assert_eq!(sim.run(), a % n);
+            let res = StateVectorSimulator::sample_once(c, RegisterSampler::new("res")).unwrap();
+
+            assert_eq!(res, a % n);
         }
     }
 
@@ -548,7 +548,7 @@ mod tests {
         let n = 13;
         let x = [0, 1, 1];
 
-        let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
         let c_array = (n_bits..=2 * n_bits).collect::<Vec<usize>>();
 
@@ -565,14 +565,11 @@ mod tests {
 
             c = c.measure_bits(&c_array, "res");
 
-            let mut sim = SVSimulatorDebugger::build(c).unwrap();
-
-            sim.cont();
+            let res = StateVectorSimulator::sample_once(c, RegisterSampler::new("res")).unwrap();
 
             let x_tot: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
 
-            let res = sim.register("res").read();
-            assert_eq!(res as usize, (a * x_tot) % n);
+            assert_eq!(res, (a * x_tot) % n);
         }
     }
 
@@ -581,7 +578,7 @@ mod tests {
         let n = 13;
         let x = [1, 1, 1];
 
-        let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
         let mut c = Circuit::new(2 * n_bits)
             .new_reg("top", n_bits)
@@ -598,14 +595,10 @@ mod tests {
         c = c.measure_bits(&(0..n_bits).collect::<Vec<usize>>(), "top");
         c = c.measure_bits(&(n_bits..2 * n_bits).collect::<Vec<usize>>(), "bott");
 
-        let mut sim = SVSimulatorDebugger::build(c).unwrap();
-
-        sim.cont();
+        let top = StateVectorSimulator::sample_once(c.clone(), RegisterSampler::new("top")).unwrap();
+        let bott = StateVectorSimulator::sample_once(c, RegisterSampler::new("bott")).unwrap();
 
         let x_tot: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
-
-        let top = sim.register("top").read();
-        let bott = sim.register("bott").read();
 
         assert_eq!(top, 0);
         assert_eq!(bott, x_tot);
@@ -616,7 +609,7 @@ mod tests {
         let n = 13;
         let y = [0, 1, 0];
 
-        let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
         let c_array = (n_bits..2 * n_bits).collect::<Vec<usize>>();
 
@@ -635,13 +628,9 @@ mod tests {
 
             c = c.measure_bits(&c_array, "res");
 
-            let mut sim = SVSimulatorDebugger::build(c).unwrap();
-
-            sim.cont();
+            let res = StateVectorSimulator::sample_once(c, RegisterSampler::new("res")).unwrap();
 
             let y_tot: usize = y.iter().enumerate().map(|(i, &b)| b << i).sum();
-
-            let res = sim.register("res").read();
 
             let x = (a_inv * y_tot) % n;
             assert_eq!(res, (n - x) % n);
@@ -653,7 +642,7 @@ mod tests {
         let n = 13;
         let x = [1, 1, 0];
 
-        let n_bits = ((n as f64) + 1.0).log2().ceil() as usize;
+        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
 
         for a in 2..n {
             let mut c = Circuit::new(2 * n_bits + 2)
@@ -671,14 +660,10 @@ mod tests {
             c = c.measure_bits(&(0..n_bits).collect::<Vec<usize>>(), "top");
             c = c.measure_bits(&(n_bits..2 * n_bits).collect::<Vec<usize>>(), "bott");
 
-            let mut sim = SVSimulatorDebugger::build(c).unwrap();
-
-            sim.cont();
+            let top = StateVectorSimulator::sample_once(c.clone(), RegisterSampler::new("top")).unwrap();
+            let bott = StateVectorSimulator::sample_once(c, RegisterSampler::new("bott")).unwrap();
 
             let x_t: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
-
-            let top = sim.register("top").read();
-            let bott = sim.register("bott").read();
 
             assert_eq!(top, (x_t * a) % n);
             assert_eq!(bott, 0);
@@ -687,20 +672,18 @@ mod tests {
 
     #[test]
     fn test_quantum() {
-        let n = 17;
-        let a = 8;
+        let n = 15;
+        let a = 2;
         let attempts = 10;
 
         let mut success = false;
 
-        for i in 1..=attempts {
-            let Some(r) = quantum(n, a) else {
+        for _ in 1..=attempts {
+            let Some(_) = qpe::<StateVectorSimulator>(n, a) else {
                 continue;
             };
 
             success = true;
-
-            println!("Found valid period (r = {}) in {} attempts.", r, i);
             break;
         }
         assert!(
@@ -719,7 +702,7 @@ mod tests {
         let mut success = false;
 
         for _ in 0..attempts {
-            if let Some(res) = shors(n, a) {
+            if let Some(res) = shors::<StateVectorSimulator>(n, a) {
                 let f1 = res[0];
                 let f2 = res[1];
 
@@ -747,7 +730,7 @@ mod tests {
         let mut success = false;
 
         for _ in 0..attempts {
-            if let Some(res) = shors_random(n, start, stop) {
+            if let Some(res) = shors_random::<StateVectorSimulator>(n, start, stop) {
                 let f1 = res[0];
                 let f2 = res[1];
 
