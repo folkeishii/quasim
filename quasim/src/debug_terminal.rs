@@ -9,7 +9,7 @@ mod state;
 pub use arguments::*;
 pub use command::*;
 
-use crate::debug_simulator::DebugSimulator;
+use crate::fmm_simulator::FullMatMulSimulator;
 use crate::simulator::{QuantumState, StoredRegisters};
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
@@ -21,7 +21,7 @@ use std::{
     ops::Div,
 };
 
-pub struct DebugTerminal<S = DebugSimulator> {
+pub struct DebugTerminal<S = FullMatMulSimulator> {
     simulator: S,
 }
 

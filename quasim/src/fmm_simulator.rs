@@ -11,30 +11,30 @@ use crate::{
 use nalgebra::Complex;
 
 #[derive(Debug, Clone)]
-pub struct DebugSimulator {
+pub struct FullMatMulSimulator {
     current_state: StateVector,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile,
 }
 
-impl TryFrom<Circuit<PureCircuit>> for DebugSimulator {
-    type Error = DebugSimulatorError;
+impl TryFrom<Circuit<PureCircuit>> for FullMatMulSimulator {
+    type Error = FullMatMulSimulatorError;
 
     fn try_from(value: Circuit<PureCircuit>) -> Result<Self, Self::Error> {
         Self::try_from(Circuit::<HybridCircuit>::from(value.into()))
     }
 }
 
-impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
-    type Error = DebugSimulatorError;
+impl TryFrom<Circuit<HybridCircuit>> for FullMatMulSimulator {
+    type Error = FullMatMulSimulatorError;
 
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         let circuit = value;
 
         let registers = RegisterFile::from(circuit.registers());
 
-        let sim = DebugSimulator {
+        let sim = FullMatMulSimulator {
             current_state: StateVector::zeros(circuit.n_qubits()).into(),
             circuit: circuit,
             pc: Default::default(),
@@ -45,7 +45,7 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
     }
 }
 
-impl Simulator for DebugSimulator {
+impl Simulator for FullMatMulSimulator {
     type State = StateVector;
     type BasisValue = Complex<f32>;
 
@@ -65,13 +65,13 @@ impl Simulator for DebugSimulator {
     }
 }
 
-impl StoredRegisters for DebugSimulator {
+impl StoredRegisters for FullMatMulSimulator {
     fn registers(&self) -> &RegisterFile {
         &self.registers
     }
 }
 
-impl Debuggable for DebugSimulator {
+impl Debuggable for FullMatMulSimulator {
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
             // End of (sub) circuit: Try to return
@@ -148,7 +148,7 @@ impl Debuggable for DebugSimulator {
     }
 }
 
-impl DebugSimulator {
+impl FullMatMulSimulator {
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
         let measurement = self.current_state.measure_bit(target);
 
@@ -194,7 +194,7 @@ impl DebugSimulator {
     }
 }
 
-impl StoredCircuit for DebugSimulator {
+impl StoredCircuit for FullMatMulSimulator {
     type B = HybridCircuit;
     fn circuit(&self) -> &Circuit<HybridCircuit> {
         &self.circuit
@@ -205,11 +205,11 @@ impl StoredCircuit for DebugSimulator {
     }
 }
 
-impl Sampleable<HybridCircuit> for DebugSimulator {}
-impl Sampleable<PureCircuit> for DebugSimulator {}
+impl Sampleable<HybridCircuit> for FullMatMulSimulator {}
+impl Sampleable<PureCircuit> for FullMatMulSimulator {}
 
 #[derive(Debug, Clone, thiserror::Error)]
-pub enum DebugSimulatorError {
+pub enum FullMatMulSimulatorError {
     #[error("Measurement mid-circuit")]
     MidCircuitMeasurement,
     #[error("{0}")]
@@ -225,7 +225,7 @@ mod tests {
     use crate::{
         cart,
         circuit::Circuit,
-        debug_simulator::DebugSimulator,
+        fmm_simulator::FullMatMulSimulator,
         gate::{Gate, GateType},
         simulator::{Buildable, Debuggable, QuantumState},
         state_vector::StateVector,
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn measure_hadamard_all() {
         let circ = Circuit::new(3).h(0).h(1).h(2);
-        let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
+        let mut sim = FullMatMulSimulator::build(circ).expect("Circuit should be valid");
         sim.cont();
         let mut res = sim.state().clone();
         let plus_plus_plus: StateVector = dvector![
@@ -351,7 +351,7 @@ mod tests {
     #[test]
     fn measure_entanglement() {
         let circ = Circuit::new(3).h(0).cx(&[0], 1);
-        let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
+        let mut sim = FullMatMulSimulator::build(circ).expect("Circuit should be valid");
         sim.cont();
         let mut res = sim.state().clone();
         // Expected state vector before any measurments
@@ -409,7 +409,7 @@ mod tests {
     fn bell_state_test() {
         let circ = Circuit::new(2).h(0).cx(&[0], 1);
 
-        let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
+        let mut sim = FullMatMulSimulator::build(circ).expect("No mid-circuit measurements");
         sim.cont();
         let collapsed = sim.state().collapse();
 
@@ -615,7 +615,7 @@ mod tests {
             cart!(FRAC_1_SQRT_2) // |111>
         ]
         .into();
-        let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
+        let mut sim = FullMatMulSimulator::build(circ).expect("Should be no measurements in circ.");
         assert!(equal_state_c(&psi0, sim.state(), 3, 0.001));
         sim.next();
         assert!(equal_state_c(&psi1, sim.state(), 3, 0.001));
@@ -646,41 +646,41 @@ mod tests {
 
     #[test]
     fn hybrid_test() {
-        common_test::hybrid_test::<DebugSimulator>();
+        common_test::hybrid_test::<FullMatMulSimulator>();
     }
 
     #[test]
     fn register_test() {
-        common_test::register_test::<DebugSimulator>();
+        common_test::register_test::<FullMatMulSimulator>();
     }
 
     #[test]
     fn test_measure_overwrites_with_zero() {
-        common_test::test_measure_overwrites_with_zero::<DebugSimulator>();
+        common_test::test_measure_overwrites_with_zero::<FullMatMulSimulator>();
     }
 
     #[test]
     fn test_reset() {
-        common_test::test_reset::<DebugSimulator>();
+        common_test::test_reset::<FullMatMulSimulator>();
     }
 
     #[test]
     fn test_reset_with_shared_scratch_register() {
-        common_test::test_reset_with_shared_scratch_register::<DebugSimulator>();
+        common_test::test_reset_with_shared_scratch_register::<FullMatMulSimulator>();
     }
 
     #[test]
     fn double_sub() {
-        common_test::double_sub::<DebugSimulator>();
+        common_test::double_sub::<FullMatMulSimulator>();
     }
 
     #[test]
     fn deep_sub() {
-        common_test::deep_sub::<DebugSimulator>();
+        common_test::deep_sub::<FullMatMulSimulator>();
     }
 
     #[test]
     fn deep_ctrl_sub() {
-        common_test::deep_ctrl_sub::<DebugSimulator>();
+        common_test::deep_ctrl_sub::<FullMatMulSimulator>();
     }
 }
