@@ -5,7 +5,7 @@ use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, DVector, Matrix2, dmatrix};
 use rand::distr::weighted::WeightedIndex;
-use rand::{Rng, prelude::Distribution};
+use rand::prelude::Distribution;
 
 use crate::gate::{Gate, GateType};
 use crate::simulator::QuantumState;
@@ -149,51 +149,6 @@ pub fn collapse(state: &[Complex<f32>]) -> usize {
     dist.sample(&mut rng)
 }
 
-/// # measure_and_observe_sv
-/// Returns a probable measurement and state vector after measurement.
-pub fn measure_and_observe_sv(
-    target: usize,
-    state: &DVector<Complex<f32>>,
-    n_qubits: usize,
-) -> (usize, DVector<Complex<f32>>) {
-    // Choose a collapsed state
-    let prob_target_eq_zero = state
-        .iter()
-        .enumerate()
-        .filter(|&(idx, _)| (1 << target) & idx == 0) // Using |..q_1q_0> convetion
-        .map(|(_, c)| c.norm_sqr())
-        .sum::<f32>();
-
-    let mut rng = rand::rng();
-    let random_value = rng.random_range(0.0..1.0);
-    let mut result = 1;
-    let mut result_density = dmatrix![cart!(0.0), cart!(0.0); cart!(0.0), cart!(1.0)]; // |1><1|
-    if random_value < prob_target_eq_zero {
-        // 0 was chosen as collapsed state.
-        result = 0;
-        result_density = dmatrix![cart!(1.0), cart!(0.0); cart!(0.0), cart!(0.0)]; // |0><0|
-    }
-
-    // Calculate projection operator, M
-    let mut projection_operator_prod = identity_tensor_factors(n_qubits);
-    projection_operator_prod[target] = result_density;
-    let projection_operator = eval_tensor_product(projection_operator_prod);
-
-    /*
-     * Use formula for next state,
-     *
-     *                 M|s>
-     *  |s'>  ==   ___________
-     *              _________
-     *             √ <s|M|s>
-     * */
-    let bra_state = state.adjoint(); // <s|
-    let proj_times_ket_state = projection_operator * state; // M|s>
-    let normalization = (bra_state * proj_times_ket_state.clone())[(0, 0)].sqrt(); // √ <s|M|s>
-
-    (result, proj_times_ket_state / normalization)
-}
-
 /// # expand_matrix_from_gate
 /// Returns the 2^n by 2^n matrix describing a gate in a n-qubit system.
 pub fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<f32>> {
@@ -215,13 +170,13 @@ pub fn expand_matrix_from_gate(gate: &Gate, n_qubits: usize) -> DMatrix<Complex<
 
 /// # identity_tensor_factors
 /// A `Vec` of `n_factor` number of 2 by 2 identity matricies.
-fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f32>>> {
+pub fn identity_tensor_factors(n_factors: usize) -> Vec<DMatrix<Complex<f32>>> {
     vec![DMatrix::<Complex<f32>>::identity(2, 2); n_factors]
 }
 
 /// # eval_tensor_product
 /// Evaluates the tensor product of a `Vec` of matricies.
-fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f32>>>) -> DMatrix<Complex<f32>> {
+pub fn eval_tensor_product(tensor_factors: Vec<DMatrix<Complex<f32>>>) -> DMatrix<Complex<f32>> {
     tensor_factors.iter().rev().fold(
         DMatrix::<Complex<f32>>::identity(1, 1),
         |product, factor| product.kronecker(factor),
@@ -425,6 +380,7 @@ mod tests {
         get_gate_matrix, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
+    use crate::state_vector::StateVector;
     use nalgebra::{dmatrix, dvector};
     use std::f32::consts::FRAC_1_SQRT_2;
 
@@ -478,8 +434,18 @@ mod tests {
             cart!(3.0), //|110>
             cart!(7.0), //|111>
         ];
-        assert!(equal_state_c(&vec_lsb, &convert_vector(&vec_msb), 3, 0.001));
-        assert!(equal_state_c(&vec_msb, &convert_vector(&vec_lsb), 3, 0.001));
+        assert!(equal_state_c(
+            &StateVector::from(vec_lsb.clone()),
+            &StateVector::from(convert_vector(&vec_msb)),
+            3,
+            0.001
+        ));
+        assert!(equal_state_c(
+            &StateVector::from(vec_msb.clone()),
+            &StateVector::from(convert_vector(&vec_lsb)),
+            3,
+            0.001
+        ));
         let textbook_ch = dmatrix![
             cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0);
             cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0);

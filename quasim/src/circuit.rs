@@ -909,6 +909,7 @@ mod tests {
         ext::{equal_matrix_c, equal_state_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{Buildable, Simulator},
+        state_vector::StateVector,
         sv_simulator::StateVectorSimulator,
     };
     use nalgebra::{Complex, DMatrix, dvector};
@@ -967,7 +968,7 @@ mod tests {
         .unwrap();
         sim.run();
 
-        let expected_vec = dvector![
+        let expected_vec: StateVector = dvector![
             cart!(0.0, 0.35355),  // |0000>
             cart!(0.0),           // |0001>
             cart!(-0.25, -0.25),  // |0010>
@@ -984,7 +985,8 @@ mod tests {
             cart!(0.0),           // |1101>
             cart!(0.25, -0.25),   // |1110>
             cart!(0.0),           // |1111>
-        ];
+        ]
+        .into();
         assert!(equal_state_c(&expected_vec, sim.state(), 4, 0.001));
     }
 

@@ -2,16 +2,17 @@ use crate::{
     cart,
     circuit::{Circuit, HybridCircuit, PureCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{collapse, expand_matrix_from_gate, measure_and_observe_sv},
+    ext::expand_matrix_from_gate,
     instruction::Instruction,
     register_file::{RegisterError, RegisterFile},
     simulator::{Debuggable, Sampleable, Simulator, StoredCircuit, StoredRegisters},
+    state_vector::StateVector,
 };
-use nalgebra::{Complex, DVector};
+use nalgebra::Complex;
 
 #[derive(Debug, Clone)]
 pub struct DebugSimulator {
-    current_state: DVector<Complex<f32>>,
+    current_state: StateVector,
     circuit: Circuit<HybridCircuit>,
     pc: CircuitPc,
     registers: RegisterFile,
@@ -30,16 +31,11 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
 
     fn try_from(value: Circuit<HybridCircuit>) -> Result<Self, Self::Error> {
         let circuit = value;
-        let k = circuit.n_qubits();
-
-        // Initial state assumed to be |000..>
-        let mut init_state = vec![cart!(0.0); 1 << k];
-        init_state[0] = cart!(1.0);
 
         let registers = RegisterFile::from(circuit.registers());
 
         let sim = DebugSimulator {
-            current_state: DVector::from_vec(init_state),
+            current_state: StateVector::zeros(circuit.n_qubits()).into(),
             circuit: circuit,
             pc: Default::default(),
             registers: registers,
@@ -50,7 +46,7 @@ impl TryFrom<Circuit<HybridCircuit>> for DebugSimulator {
 }
 
 impl Simulator for DebugSimulator {
-    type State = DVector<Complex<f32>>;
+    type State = StateVector;
     type BasisValue = Complex<f32>;
 
     fn run(&mut self) {
@@ -90,7 +86,7 @@ impl Debuggable for DebugSimulator {
         match inst {
             Instruction::Gate(gate) => {
                 let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits());
-                self.current_state = mat * self.current_state.clone();
+                self.current_state.apply_matrix(&mat);
                 self.pc_mut().increment();
             }
             Instruction::MeasureBit(qbit, (reg, bit_pos)) => self.measure_bit(qbit, &reg, bit_pos),
@@ -128,7 +124,7 @@ impl Debuggable for DebugSimulator {
         match inst {
             Instruction::Gate(gate) => {
                 let mat = expand_matrix_from_gate(&gate, self.circuit.n_qubits()).adjoint(); // All matricies are unitary --> inverse <=> adjoint
-                self.current_state = mat * self.current_state.clone();
+                self.current_state.apply_matrix(&mat);
             }
             Instruction::MeasureBit(_, _) => todo!(),
             Instruction::MeasureAll(_) => todo!(),
@@ -154,26 +150,19 @@ impl Debuggable for DebugSimulator {
 
 impl DebugSimulator {
     fn measure_bit(&mut self, target: usize, reg: &str, bit_pos: usize) {
-        let (measurement, new_state) =
-            measure_and_observe_sv(target, &self.current_state, self.n_qubits());
+        let measurement = self.current_state.measure_bit(target);
 
         self.registers[reg]
             .write_bit(bit_pos, measurement)
             .expect("invalid register write");
 
-        self.current_state = new_state;
-
         self.pc_mut().increment();
     }
 
     fn measure_all(&mut self, reg: &str) {
-        let measurement = collapse(self.current_state.as_slice());
+        let measurement = self.current_state.measure_all();
 
         self.registers[reg].write(measurement);
-
-        // Collapse whole state vector
-        self.current_state.fill(cart!(0.0));
-        self.current_state[measurement] = cart!(1.0);
 
         self.pc_mut().increment();
     }
@@ -226,13 +215,11 @@ pub enum DebugSimulatorError {
     #[error("{0}")]
     RegisterError(#[from] RegisterError),
 }
-
 #[cfg(test)]
 mod tests {
     use crate::common_test;
     use crate::ext::{
-        collapse, equal_matrix_c, equal_state_c, expand_matrix, expand_matrix_from_gate,
-        get_gate_matrix, measure_and_observe_sv,
+        equal_matrix_c, equal_state_c, expand_matrix, expand_matrix_from_gate, get_gate_matrix,
     };
     use crate::simulator::Simulator;
     use crate::{
@@ -240,9 +227,10 @@ mod tests {
         circuit::Circuit,
         debug_simulator::DebugSimulator,
         gate::{Gate, GateType},
-        simulator::{Buildable, Debuggable},
+        simulator::{Buildable, Debuggable, QuantumState},
+        state_vector::StateVector,
     };
-    use nalgebra::{Complex, DMatrix, DVector, dmatrix, dvector};
+    use nalgebra::{Complex, DMatrix, dmatrix, dvector};
     use std::f32::consts::FRAC_1_SQRT_2;
 
     #[test]
@@ -251,7 +239,7 @@ mod tests {
         let mut sim = DebugSimulator::build(circ).expect("Circuit should be valid");
         sim.cont();
         let mut res = sim.state().clone();
-        let plus_plus_plus: DVector<Complex<f32>> = dvector![
+        let plus_plus_plus: StateVector = dvector![
             cart!(0.5 * FRAC_1_SQRT_2), // |000>
             cart!(0.5 * FRAC_1_SQRT_2), // |001>
             cart!(0.5 * FRAC_1_SQRT_2), // |010>
@@ -260,9 +248,10 @@ mod tests {
             cart!(0.5 * FRAC_1_SQRT_2), // |101>
             cart!(0.5 * FRAC_1_SQRT_2), // |110>
             cart!(0.5 * FRAC_1_SQRT_2), // |111>
-        ];
+        ]
+        .into();
         assert!(equal_state_c(&res, &plus_plus_plus, 3, 0.001));
-        let plus_plus_measure0: DVector<Complex<f32>> = dvector![
+        let plus_plus_measure0: StateVector = dvector![
             cart!(0.5), // |000>
             cart!(0.0), // |001>
             cart!(0.5), // |010>
@@ -271,8 +260,9 @@ mod tests {
             cart!(0.0), // |101>
             cart!(0.5), // |110>
             cart!(0.0), // |111>
-        ];
-        let plus_plus_measure1: DVector<Complex<f32>> = dvector![
+        ]
+        .into();
+        let plus_plus_measure1: StateVector = dvector![
             cart!(0.0), // |000>
             cart!(0.5), // |001>
             cart!(0.0), // |010>
@@ -281,13 +271,14 @@ mod tests {
             cart!(0.5), // |101>
             cart!(0.0), // |110>
             cart!(0.5), // |111>
-        ];
-        (_, res) = measure_and_observe_sv(0, &res, 3);
+        ]
+        .into();
+        res.measure_bit(0);
         assert!(
             equal_state_c(&res, &plus_plus_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_plus_measure1, 3, 0.001)
         );
-        let plus_measure0_measure0: DVector<Complex<f32>> = dvector![
+        let plus_measure0_measure0: StateVector = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
             cart!(0.0),           // |001>
             cart!(0.0),           // |010>
@@ -296,8 +287,9 @@ mod tests {
             cart!(0.0),           // |101>
             cart!(0.0),           // |110>
             cart!(0.0),           // |111>
-        ];
-        let plus_measure0_measure1: DVector<Complex<f32>> = dvector![
+        ]
+        .into();
+        let plus_measure0_measure1: StateVector = dvector![
             cart!(0.0),           // |000>
             cart!(FRAC_1_SQRT_2), // |001>
             cart!(0.0),           // |010>
@@ -306,8 +298,9 @@ mod tests {
             cart!(FRAC_1_SQRT_2), // |101>
             cart!(0.0),           // |110>
             cart!(0.0),           // |111>
-        ];
-        let plus_measure1_measure0: DVector<Complex<f32>> = dvector![
+        ]
+        .into();
+        let plus_measure1_measure0: StateVector = dvector![
             cart!(0.0),           // |000>
             cart!(0.0),           // |001>
             cart!(FRAC_1_SQRT_2), // |010>
@@ -316,8 +309,9 @@ mod tests {
             cart!(0.0),           // |101>
             cart!(FRAC_1_SQRT_2), // |110>
             cart!(0.0),           // |111>
-        ];
-        let plus_measure1_measure1: DVector<Complex<f32>> = dvector![
+        ]
+        .into();
+        let plus_measure1_measure1: StateVector = dvector![
             cart!(0.0),           // |000>
             cart!(0.0),           // |001>
             cart!(0.0),           // |010>
@@ -326,20 +320,21 @@ mod tests {
             cart!(0.0),           // |101>
             cart!(0.0),           // |110>
             cart!(FRAC_1_SQRT_2), // |111>
-        ];
-        (_, res) = measure_and_observe_sv(1, &res, 3);
+        ]
+        .into();
+        res.measure_bit(1);
         assert!(
             equal_state_c(&res, &plus_measure0_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_measure0_measure1, 3, 0.001)
                 || equal_state_c(&res, &plus_measure1_measure0, 3, 0.001)
                 || equal_state_c(&res, &plus_measure1_measure1, 3, 0.001)
         );
-        (_, res) = measure_and_observe_sv(2, &res, 3);
+        res.measure_bit(2);
         // Now collapsed to any 3-bit-string.
         assert!(state_is_collapsed(res));
     }
 
-    fn state_is_collapsed(vector: DVector<Complex<f32>>) -> bool {
+    fn state_is_collapsed(vector: StateVector) -> bool {
         let mut one_count = 0;
 
         for &value in vector.iter() {
@@ -360,7 +355,7 @@ mod tests {
         sim.cont();
         let mut res = sim.state().clone();
         // Expected state vector before any measurments
-        let bell: DVector<Complex<f32>> = dvector![
+        let bell: StateVector = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
             cart!(0.0),
             cart!(0.0),
@@ -369,10 +364,11 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
             cart!(0.0),
-        ];
+        ]
+        .into();
         assert!(equal_state_c(&bell, &res, 3, 0.001));
         // When any qubit is measured, state vector should collapse to either |00> or |11>.
-        let colapse_00: DVector<Complex<f32>> = dvector![
+        let colapse_00: StateVector = dvector![
             cart!(1.0), // |000>
             cart!(0.0),
             cart!(0.0),
@@ -381,8 +377,9 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
             cart!(0.0),
-        ];
-        let colapse_11: DVector<Complex<f32>> = dvector![
+        ]
+        .into();
+        let colapse_11: StateVector = dvector![
             cart!(0.0),
             cart!(0.0),
             cart!(0.0),
@@ -391,15 +388,17 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
             cart!(0.0),
-        ];
-        (_, res) = measure_and_observe_sv(0, &res, 3);
+        ]
+        .into();
+        res.measure_bit(0);
+        println!("{}", res);
 
         assert!(
             equal_state_c(&res, &colapse_00, 3, 0.001)
                 || equal_state_c(&res, &colapse_11, 3, 0.001)
         );
 
-        (_, res) = measure_and_observe_sv(1, &res, 3);
+        res.measure_bit(1);
         assert!(
             equal_state_c(&res, &colapse_00, 3, 0.001)
                 || equal_state_c(&res, &colapse_11, 3, 0.001)
@@ -412,7 +411,7 @@ mod tests {
 
         let mut sim = DebugSimulator::build(circ).expect("No mid-circuit measurements");
         sim.cont();
-        let collapsed = collapse(sim.state().as_ref());
+        let collapsed = sim.state().collapse();
 
         println!("bell_state_test collapsed state: 0b{:02b}", collapsed);
         assert!(collapsed == 0b00 || collapsed == 0b11);
@@ -572,7 +571,7 @@ mod tests {
     fn test_hadamard_double_cnot_entanglement() {
         let circ = Circuit::new(3).h(0).cx(&[0], 1).cx(&[0], 2);
 
-        let psi0: DVector<Complex<f32>> = dvector![
+        let psi0: StateVector = dvector![
             cart!(1.0), // |000>
             cart!(0.0),
             cart!(0.0),
@@ -581,8 +580,9 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
             cart!(0.0)
-        ];
-        let psi1: DVector<Complex<f32>> = dvector![
+        ]
+        .into();
+        let psi1: StateVector = dvector![
             cart!(FRAC_1_SQRT_2), //|000>
             cart!(FRAC_1_SQRT_2), //|001>
             cart!(0.0),
@@ -591,8 +591,9 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
             cart!(0.0)
-        ];
-        let psi2: DVector<Complex<f32>> = dvector![
+        ]
+        .into();
+        let psi2: StateVector = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
             cart!(0.0),
             cart!(0.0),
@@ -601,8 +602,9 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
             cart!(0.0)
-        ];
-        let psi3: DVector<Complex<f32>> = dvector![
+        ]
+        .into();
+        let psi3: StateVector = dvector![
             cart!(FRAC_1_SQRT_2), // |000>
             cart!(0.0),
             cart!(0.0),
@@ -611,7 +613,8 @@ mod tests {
             cart!(0.0),
             cart!(0.0),
             cart!(FRAC_1_SQRT_2) // |111>
-        ];
+        ]
+        .into();
         let mut sim = DebugSimulator::build(circ).expect("Should be no measurements in circ.");
         assert!(equal_state_c(&psi0, sim.state(), 3, 0.001));
         sim.next();
