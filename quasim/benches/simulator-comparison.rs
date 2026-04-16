@@ -1,10 +1,15 @@
 use cubecl::wgpu::WgpuRuntime;
-use divan::AllocProfiler;
 use nalgebra::{Complex, DVector};
 use quasim::{
-    circuit::{Circuit, HybridCircuit, PureCircuit}, cube_simulator::CubeSimulator, fmm_simulator::FullMatMulSimulator, gpu_sv_simulator::GpuStateVectorSimulator, product_state_simulator::ProductStateSimulator, sampler::CircuitSampler, simulator::Sampleable, sv_simulator::StateVectorSimulator
+    circuit::{Circuit, HybridCircuit, PureCircuit},
+    cube_simulator::CubeSimulator,
+    fmm_simulator::FullMatMulSimulator,
+    gpu_sv_simulator::GpuStateVectorSimulator,
+    product_state_simulator::ProductStateSimulator,
+    sampler::CircuitSampler,
+    simulator::Sampleable,
+    sv_simulator::StateVectorSimulator,
 };
-use std::collections::BTreeMap;
 
 extern crate quasim;
 
