@@ -130,8 +130,14 @@ impl GateType {
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum GateError {
-    #[error("Invalid targete")]
+    #[error("Invalid targets")]
     InvalidTargets,
+    #[error("Target out of bounds")]
+    TargetOutOfBounds,
+    #[error("Control out of bounds")]
+    ControlOutOfBounds,
+    #[error("Targets and controls overlap")]
+    TargetControlOverlap,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -185,11 +191,28 @@ impl Gate {
             return Err(GateError::InvalidTargets);
         }
 
+        let control_bits = QBits::from_indices(controls);
+        let target_bits = QBits::from_indices(targets);
+
+        if control_bits.get_bitstring() & target_bits.get_bitstring() != 0 {
+            return Err(GateError::TargetControlOverlap);
+        }
+
         Ok(Self {
             ty: ty,
-            controls: QBits::from_indices(controls),
-            targets: QBits::from_indices(targets),
+            controls: control_bits,
+            targets: target_bits,
         })
+    }
+
+    pub fn check_qubits(self, n_qubits: usize) -> Result<Self, GateError> {
+        if self.targets.get_bitstring() >= 1 << n_qubits {
+            return Err(GateError::TargetOutOfBounds);
+        }
+        if self.controls.get_bitstring() >= 1 << n_qubits {
+            return Err(GateError::ControlOutOfBounds);
+        }
+        Ok(self)
     }
 
     pub fn get_type(&self) -> GateType {
