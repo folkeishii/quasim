@@ -45,10 +45,6 @@ impl QBits {
         vec
     }
 
-    pub const fn inner(&self) -> usize {
-        self.0
-    }
-
     pub fn union(self, other: QBits) -> Self {
         Self(self.0 | other.0)
     }

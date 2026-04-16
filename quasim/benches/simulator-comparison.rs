@@ -5,7 +5,6 @@ use quasim::{
     circuit::{Circuit, HybridCircuit, PureCircuit},
     fmm_simulator::FullMatMulSimulator,
     gpu_sv_simulator::GpuStateVectorSimulator,
-    pot_sim::{GenericSim, StateMaybe},
     product_state_simulator::ProductStateSimulator,
     sampler::CircuitSampler,
     simulator::Sampleable,
@@ -14,8 +13,6 @@ use quasim::{
 use std::collections::BTreeMap;
 
 extern crate quasim;
-#[global_allocator]
-static ALLOCATOR: AllocProfiler = AllocProfiler::system();
 
 const QUBITS_UPPER_BOUND: usize = 22;
 

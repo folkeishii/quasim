@@ -8,7 +8,7 @@ use rand::distr::weighted::WeightedIndex;
 use rand::prelude::Distribution;
 use serde::{Deserialize, Serialize};
 
-use crate::gate::{Gate, GateType, QBits};
+use crate::gate::{Gate, GateType};
 use crate::simulator::QuantumState;
 
 #[macro_export]
@@ -371,40 +371,6 @@ pub trait OrdByKey<K: PartialOrd> {
 impl<T: Ord> OrdByKey<T> for T {
     fn key(&self) -> &T {
         self
-    }
-}
-
-#[derive(Debug, Clone)]
-/// Items are offsets of targets
-pub struct TargetIter {
-    rem: QBits,
-    removed: usize,
-}
-impl From<QBits> for TargetIter {
-    fn from(value: QBits) -> Self {
-        Self {
-            rem: value,
-            removed: 0,
-        }
-    }
-}
-impl Iterator for TargetIter {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if *self.rem == 0 {
-            return None;
-        }
-
-        while *self.rem & 1 == 0 {
-            self.rem >>= 1;
-            self.removed += 1;
-        }
-
-        self.rem >>= 1;
-        self.removed += 1;
-
-        Some(self.removed - 1)
     }
 }
 
