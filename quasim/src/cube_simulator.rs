@@ -11,7 +11,7 @@ use crate::{
     cart,
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, pc::CircuitPc},
     expr_dsl::{BitExpr, BoolExpr},
-    ext::{BitSet, TargetIter},
+    ext::BitSet,
     gate::{Gate, GateType, QBits},
     register_file::RegisterFile,
     simulator::{Debuggable, QuantumState, Sampleable, Simulator, StoredCircuit, StoredRegisters},
@@ -775,3 +775,37 @@ mod tests {
 
 #[derive(Debug, thiserror::Error)]
 pub enum CubeError {}
+
+#[derive(Debug, Clone)]
+/// Items are offsets of targets
+struct TargetIter {
+    rem: QBits,
+    removed: usize,
+}
+impl From<QBits> for TargetIter {
+    fn from(value: QBits) -> Self {
+        Self {
+            rem: value,
+            removed: 0,
+        }
+    }
+}
+impl Iterator for TargetIter {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if *self.rem == 0 {
+            return None;
+        }
+
+        while *self.rem & 1 == 0 {
+            self.rem >>= 1;
+            self.removed += 1;
+        }
+
+        self.rem >>= 1;
+        self.removed += 1;
+
+        Some(self.removed - 1)
+    }
+}

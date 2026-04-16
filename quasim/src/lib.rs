@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 
 pub mod circuit;
 mod common_test;

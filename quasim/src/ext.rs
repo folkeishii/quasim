@@ -453,67 +453,6 @@ impl Iterator for TargetIter {
     }
 }
 
-#[derive(Debug, Clone)]
-/// ## Examples:
-/// ```
-/// use quasim::ext::BitMaskIter;
-/// let mut it = BitMaskIter::from(0b101);
-/// assert_eq!(it.next(), Some(0b000));
-/// assert_eq!(it.next(), Some(0b001));
-/// assert_eq!(it.next(), Some(0b100));
-/// assert_eq!(it.next(), Some(0b101));
-/// assert_eq!(it.next(), None);
-/// ```
-pub struct BitMaskIter {
-    bitmask: usize,
-    next: usize,
-    exhausted: bool,
-}
-impl From<usize> for BitMaskIter {
-    fn from(value: usize) -> Self {
-        Self {
-            bitmask: value,
-            next: 0,
-            exhausted: false,
-        }
-    }
-}
-impl Iterator for BitMaskIter {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.exhausted {
-            return None;
-        }
-
-        let mut ret = 0;
-        let mut next_i = 1;
-        let mut mask_i = 1;
-        while mask_i > 0 && next_i > 0 {
-            match (self.bitmask & mask_i > 0, self.next & next_i > 0) {
-                (true, true) => {
-                    ret |= mask_i;
-                    mask_i <<= 1;
-                    next_i <<= 1;
-                }
-                (true, false) => {
-                    mask_i <<= 1;
-                    next_i <<= 1;
-                }
-                (false, _) => {
-                    mask_i <<= 1;
-                }
-            }
-        }
-
-        if ret ^ self.bitmask == 0 {
-            self.exhausted = true
-        }
-        self.next += 1;
-        Some(ret)
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
 pub struct BitSet(pub usize);
 
@@ -600,7 +539,7 @@ impl From<usize> for BitSet {
 #[cfg(test)]
 mod tests {
     use crate::ext::{
-        BitMaskIter, convert_matrix, convert_vector, equal_matrix_c, equal_state_c,
+        convert_matrix, convert_vector, equal_matrix_c, equal_state_c,
         expand_matrix_from_gate, get_gate_matrix, swap_matrix,
     };
     use crate::gate::{Gate, GateType};
@@ -679,27 +618,5 @@ mod tests {
             4,
             0.001
         ));
-    }
-
-    #[test]
-    fn bitmask_iter() {
-        let mut it = BitMaskIter::from(0b011101);
-        assert_eq!(it.next(), Some(0b000000));
-        assert_eq!(it.next(), Some(0b000001));
-        assert_eq!(it.next(), Some(0b000100));
-        assert_eq!(it.next(), Some(0b000101));
-        assert_eq!(it.next(), Some(0b001000));
-        assert_eq!(it.next(), Some(0b001001));
-        assert_eq!(it.next(), Some(0b001100));
-        assert_eq!(it.next(), Some(0b001101));
-        assert_eq!(it.next(), Some(0b010000));
-        assert_eq!(it.next(), Some(0b010001));
-        assert_eq!(it.next(), Some(0b010100));
-        assert_eq!(it.next(), Some(0b010101));
-        assert_eq!(it.next(), Some(0b011000));
-        assert_eq!(it.next(), Some(0b011001));
-        assert_eq!(it.next(), Some(0b011100));
-        assert_eq!(it.next(), Some(0b011101));
-        assert!(it.next().is_none())
     }
 }
