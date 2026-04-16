@@ -1,7 +1,7 @@
 use cubecl::wgpu::WgpuRuntime;
 use quasim::{
     circuit::{Circuit, HybridCircuit, PureCircuit},
-    debug_simulator::DebugSimulator,
+    fmm_simulator::FullMatMulSimulator,
     gpu_sv_simulator::GpuStateVectorSimulator,
     product_state_simulator::ProductStateSimulator,
     sampler::CircuitSampler,
@@ -18,7 +18,7 @@ fn main() {
 }
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
@@ -32,7 +32,7 @@ where
 }
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
     args = [250, 500, 1000, 2000],
     sample_count = 10,
 )]
@@ -52,7 +52,7 @@ where
 // Measurement benchmark
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
@@ -68,7 +68,7 @@ where
 }
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
     args = [40, 80, 160, 320],
     sample_count = 20,
 )]
@@ -85,7 +85,7 @@ where
     Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
 }
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
@@ -104,7 +104,7 @@ where
     Sim::sample_once(circuit, CircuitSampler).expect("couldn't build circuit");
 }
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
     args = [1, 2, 4, 8, 16, 20, 22],
     sample_count = 10,
 )]
@@ -131,7 +131,7 @@ where
 }
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
     args = [1, 2, 4, 8, 16, 20, 22],
     sample_count = 10,
 )]
@@ -157,7 +157,7 @@ where
 }
 
 #[divan::bench(
-    types = [DebugSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
