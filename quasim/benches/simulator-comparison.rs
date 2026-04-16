@@ -2,13 +2,7 @@ use cubecl::wgpu::WgpuRuntime;
 use divan::AllocProfiler;
 use nalgebra::{Complex, DVector};
 use quasim::{
-    circuit::{Circuit, HybridCircuit, PureCircuit},
-    fmm_simulator::FullMatMulSimulator,
-    gpu_sv_simulator::GpuStateVectorSimulator,
-    product_state_simulator::ProductStateSimulator,
-    sampler::CircuitSampler,
-    simulator::Sampleable,
-    sv_simulator::StateVectorSimulator,
+    circuit::{Circuit, HybridCircuit, PureCircuit}, cube_simulator::CubeSimulator, fmm_simulator::FullMatMulSimulator, gpu_sv_simulator::GpuStateVectorSimulator, product_state_simulator::ProductStateSimulator, sampler::CircuitSampler, simulator::Sampleable, sv_simulator::StateVectorSimulator
 };
 use std::collections::BTreeMap;
 
@@ -21,7 +15,7 @@ fn main() {
 }
 
 #[divan::bench(
-    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator, CubeSimulator],
     args = [15,16,17,18,19,20,21,22],
     sample_count = 10,
 )]
@@ -35,7 +29,7 @@ where
 }
 
 #[divan::bench(
-    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator],
+    types = [FullMatMulSimulator, StateVectorSimulator, GpuStateVectorSimulator<WgpuRuntime>, ProductStateSimulator, CubeSimulator],
     args = [250, 500, 1000, 2000],
     sample_count = 10,
 )]
