@@ -344,7 +344,7 @@ mod tests {
         let rand2 = rand::random_range(-2.0 * PI..2.0 * PI);
         let zero = dvector![cart!(1.0), cart!(0.0)];
         let random_state =
-            get_gate_matrix(&Gate::new(GateType::U(rand0, rand1, rand2), &[0], &[0]).unwrap())
+            get_gate_matrix(&Gate::new(GateType::U(rand0, rand1, rand2), &[], &[0]).unwrap())
                 * zero.clone();
 
         let tot_last = StateVector::from(random_state.kronecker(&hcnot));
