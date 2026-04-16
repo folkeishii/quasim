@@ -1,5 +1,4 @@
 use cubecl::wgpu::WgpuRuntime;
-use nalgebra::{Complex, DVector};
 use quasim::{
     circuit::{Circuit, HybridCircuit, PureCircuit},
     cube_simulator::CubeSimulator,
