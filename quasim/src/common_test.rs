@@ -1,4 +1,4 @@
-use std::f64::consts::FRAC_1_SQRT_2;
+use std::f32::consts::FRAC_1_SQRT_2;
 
 use nalgebra::{Complex, DVector, dvector};
 
@@ -9,12 +9,14 @@ use crate::{
     ext::equal_state_c,
     sampler::{CircuitSampler, RegisterSampler},
     simulator::{Buildable, Debuggable, QuantumState, Sampleable, StoredRegisters},
+    state_vector::StateVector,
 };
 
 pub fn double_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
 {
+    println!("double sub");
     // Keep for sub circuits
     const N: usize = 2;
     let sub = Circuit::new(N)
@@ -35,7 +37,7 @@ where
         .h(2)
         .h(3);
 
-    const L: usize = 5; //(std::f64::consts::PI * 2f64.sqrt() / 4f64).floor() as usize;
+    const L: usize = 5; //(std::f32::consts::PI * 2f32.sqrt() / 4f32).floor() as usize;
 
     for _ in 0..L {
         circuit = circuit.call("sub", 0);
@@ -51,7 +53,7 @@ where
 
     assert!(equal_state_c(
         sim.state(),
-        &dvector![
+        &StateVector::from(dvector![
             cart!(0.25),
             cart!(0.25),
             cart!(0.25),
@@ -68,7 +70,7 @@ where
             cart!(0.25),
             cart!(0.25),
             cart!(0.25),
-        ],
+        ]),
         N,
         0.001
     ));
@@ -81,24 +83,24 @@ where
         assert_eq!(forward_steps, backward_steps);
         assert!(equal_state_c(
             sim.state(),
-            &dvector![
-                cart!(1),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-                cart!(0),
-            ],
+            &StateVector::from(dvector![
+                cart!(1.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+                cart!(0.0),
+            ]),
             N,
             0.001
         ));
@@ -107,8 +109,9 @@ where
 
 pub fn deep_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
 {
+    println!("deep sub");
     // Keep for sub circuits
     const LEVELS: usize = 5;
     let subs1 = Circuit::new(1).h(0);
@@ -136,9 +139,10 @@ where
         forward_steps += 1;
     }
 
-    let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
+    let mut correct: StateVector = DVector::<Complex<f32>>::zeros(1 << LEVELS).into();
     correct[0] = cart!(FRAC_1_SQRT_2);
     correct[1 << (LEVELS - 1)] = cart!(FRAC_1_SQRT_2);
+    println!("deep sub ok");
 
     assert!(equal_state_c(sim.state(), &correct, LEVELS, 0.001));
 
@@ -149,16 +153,16 @@ where
         }
         assert_eq!(forward_steps, backward_steps);
 
-        let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
-        correct[0] = cart!(1);
+        let correct = StateVector::zeros(LEVELS);
         assert!(equal_state_c(sim.state(), &correct, LEVELS, 0.001));
     }
 }
 
 pub fn hybrid_test<Sim: Buildable<HybridCircuit>>()
 where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
 {
+    println!("hybrid test");
     let circuit = Circuit::new(4)
         .new_reg("r0", 1)
         .new_reg("r1", 1)
@@ -185,13 +189,12 @@ where
     let mut sim = Sim::build(circuit).unwrap();
     sim.run();
 
-    let mut expected = DVector::<Complex<f64>>::zeros(16);
-    expected[0] = cart!(1.0);
-
+    let expected = StateVector::zeros(16);
     assert!(equal_state_c(sim.state(), &expected, 4, 0.001));
 }
 
 pub fn register_test<Sim: Sampleable<HybridCircuit> + StoredRegisters>() {
+    println!("register test");
     let circuit = Circuit::new(2)
         .new_reg("r0", 1)
         .x(1)
@@ -207,6 +210,7 @@ pub fn test_measure_overwrites_with_zero<Sim>()
 where
     Sim: Sampleable<HybridCircuit> + StoredRegisters,
 {
+    println!("test measure overwrites with zero");
     let circuit = Circuit::new(2)
         .new_reg("tmp", 1)
         .x(0)
@@ -223,6 +227,7 @@ pub fn test_reset<Sim>()
 where
     Sim: Buildable<HybridCircuit> + StoredRegisters,
 {
+    println!("test reset");
     let circuit = Circuit::new(4)
         .new_reg("r0", 2)
         .new_reg("r1", 2)
@@ -247,6 +252,7 @@ pub fn test_reset_with_shared_scratch_register<Sim>()
 where
     Sim: Sampleable<HybridCircuit>,
 {
+    println!("test reset with shared scratch register");
     let circuit = Circuit::new(4)
         .h(0)
         .h(1)
@@ -266,8 +272,9 @@ where
 
 pub fn deep_ctrl_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
-    Sim::State: QuantumState<BasisValue = Complex<f64>>,
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
 {
+    println!("deep ctrl sub");
     // Keep for sub circuits
     const LEVELS: usize = 5;
     let subs1 = Circuit::new(1).x(0).h(0);
@@ -283,7 +290,8 @@ where
         forward_steps += 1;
     }
 
-    let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
+    let mut correct: StateVector = DVector::<Complex<f32>>::zeros(1 << LEVELS).into();
+
     correct[0b00000] = cart!(FRAC_1_SQRT_2);
     correct[0b00001] = cart!(0.5);
     correct[0b00011] = cart!(-0.35355);
@@ -300,8 +308,102 @@ where
         }
         assert_eq!(forward_steps, backward_steps);
 
-        let mut correct = DVector::<Complex<f64>>::zeros(1 << LEVELS);
-        correct[0] = cart!(1);
+        let correct = StateVector::zeros(LEVELS);
+
         assert!(equal_state_c(sim.state(), &correct, LEVELS, 0.001));
     }
+}
+pub fn mid_measure_all<Sim: Sampleable<HybridCircuit> + StoredRegisters>() {
+    println!("mid measure all");
+    let circuit = Circuit::new(5)
+        .new_reg("a", 4)
+        .new_reg("~a", 4)
+        .h(0)
+        .h(1)
+        .h(2)
+        .h(3)
+        .measure("a")
+        .x(0)
+        .x(1)
+        .x(2)
+        .x(3)
+        .measure("~a")
+        .apply_if((r("a") + r("~a")).eq(0b1111))
+        .x(4)
+        .new_reg("res", 1)
+        .measure_bit(4, ("res", 0));
+    assert!(Sim::sample_once(circuit, RegisterSampler::new("res")).unwrap() & 1 == 1);
+}
+
+pub fn mid_measure_bit<Sim: Sampleable<HybridCircuit> + StoredRegisters>() {
+    println!("mid measure bit");
+    let circuit = Circuit::new(5)
+        .new_reg("a", 4)
+        .new_reg("~a", 4)
+        .h(0)
+        .h(1)
+        .h(2)
+        .h(3)
+        .measure_bit(0, ("a", 0))
+        .measure_bit(1, ("a", 1))
+        .measure_bit(2, ("a", 2))
+        .measure_bit(3, ("a", 3))
+        .x(0)
+        .x(1)
+        .x(2)
+        .x(3)
+        .measure_bit(0, ("~a", 0))
+        .measure_bit(1, ("~a", 1))
+        .measure_bit(2, ("~a", 2))
+        .measure_bit(3, ("~a", 3))
+        .apply_if((r("a") + r("~a")).eq(0b1111))
+        .x(4)
+        .new_reg("res", 1)
+        .measure_bit(4, ("res", 0));
+    assert!(Sim::sample_once(circuit, RegisterSampler::new("res")).unwrap() & 1 == 1);
+}
+
+pub fn interleaved<Sim: Buildable<HybridCircuit> + StoredRegisters>()
+where
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
+{
+    println!("interleaved");
+    let mut sim = Sim::build(
+        Circuit::new(4)
+            .h(0)
+            .ch(&[0], 2)
+            .swap(0, 2)
+            .h(1)
+            .ch(&[1], 3)
+            .swap(0, 3)
+            .ch(&[2], 1)
+            .swap(2, 3)
+            .ch(&[0], 3)
+            .swap(0, 1)
+            .into(),
+    )
+    .unwrap();
+    sim.run();
+
+    let expected: StateVector = dvector![
+        cart!(0.5000000293365844),
+        cart!(0.35355340368276855),
+        cart!(0.12500000042912138),
+        cart!(0.12500000042912138),
+        cart!(0.0),
+        cart!(0.0),
+        cart!(0.12500000042912138),
+        cart!(-0.12500000042912138),
+        cart!(0.4267766656533139),
+        cart!(0.07322330885223931),
+        cart!(-0.12500000042912138),
+        cart!(0.37500001339455813),
+        cart!(0.4267766656533139),
+        cart!(0.07322330885223931),
+        cart!(-0.12500000042912138),
+        cart!(0.12500000042912138),
+    ]
+    .into();
+
+    assert!(equal_state_c(sim.state(), &expected, 4, 0.001));
 }

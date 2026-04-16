@@ -155,7 +155,7 @@ mod anf_conversion_tests {
             if n <= 1 {
                 return false;
             }
-            for i in 2..=((n as f64).sqrt() as usize) {
+            for i in 2..=((n as f32).sqrt() as usize) {
                 if n % i == 0 {
                     return false;
                 }
