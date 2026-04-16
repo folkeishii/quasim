@@ -665,7 +665,7 @@ mod tests {
 
     use crate::{
         cart, common_test,
-        cube_map2::{CubeSimulator, Vertex},
+        cube_simulator::{CubeSimulator, Vertex},
         ext::BitSet,
     };
 

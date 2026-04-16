@@ -2,7 +2,7 @@
 
 pub mod circuit;
 mod common_test;
-pub mod cube_map2;
+pub mod cube_simulator;
 pub mod debug_simulator;
 pub mod debug_terminal;
 pub mod expr_dsl;
