@@ -17,6 +17,7 @@ use crate::{
     simulator::{Debuggable, QuantumState, Sampleable, Simulator, StoredCircuit, StoredRegisters},
 };
 
+type V = Complex<f32>;
 const MULTI_THREAD_MIN: usize = 16;
 
 pub struct CubeSimulator {
@@ -80,7 +81,7 @@ impl CubeSimulator {
 
 impl Simulator for CubeSimulator {
     type State = CubeVector;
-    type BasisValue = Complex<f64>;
+    type BasisValue = V;
 
     fn run(&mut self) {
         self.reset();
@@ -230,7 +231,7 @@ impl CubeVector {
         self.zero.collapse_axis(axis, r)
     }
 
-    pub fn sum_norm_sqr(&mut self) -> f64 {
+    pub fn sum_norm_sqr(&mut self) -> f32 {
         self.zero.sum_norm_sqr(0)
     }
 
@@ -238,13 +239,13 @@ impl CubeVector {
         self.zero.nullify(None, 0)
     }
 
-    fn apply_2x2(&mut self, axis: usize, filter: BitSet, matrix: Matrix2<Complex<f64>>) {
+    fn apply_2x2(&mut self, axis: usize, filter: BitSet, matrix: Matrix2<V>) {
         self.zero.filter_apply_2x2(axis, filter, 0, &matrix);
     }
 }
 
 impl QuantumState for CubeVector {
-    type BasisValue = Complex<f64>;
+    type BasisValue = V;
 
     fn collapse(&self) -> usize {
         self.zero
@@ -256,8 +257,6 @@ impl QuantumState for CubeVector {
         self.zero.at(basis.into(), 0)
     }
 }
-
-type V = Complex<f64>;
 
 #[derive(Debug)]
 pub struct SendPtr<T>(Option<NonNull<T>>);
@@ -394,8 +393,8 @@ impl Vertex {
         path: BitSet,
         path_offset: usize,
         start_axis: usize,
-        rand: f64,
-    ) -> Result<usize, f64> {
+        rand: f32,
+    ) -> Result<usize, f32> {
         let mut rand = rand;
         rand -= self.amplitude.norm_sqr();
         if rand < 0.0 {
@@ -413,7 +412,7 @@ impl Vertex {
         return Err(rand);
     }
 
-    fn collapse_axis(&mut self, axis: usize, rand: f64) -> bool {
+    fn collapse_axis(&mut self, axis: usize, rand: f32) -> bool {
         let chance_on = Self::vertex(&self.next_vertex, axis).sum_norm_sqr(0);
         let is_on = rand < chance_on;
 
@@ -430,7 +429,7 @@ impl Vertex {
         is_on
     }
 
-    fn normalize_with(&mut self, skip_axis: Option<usize>, start_axis: usize, divisor: f64) {
+    fn normalize_with(&mut self, skip_axis: Option<usize>, start_axis: usize, divisor: f32) {
         self.amplitude /= divisor;
         if let Some(skip) = skip_axis {
             for i in start_axis..skip {
@@ -462,7 +461,7 @@ impl Vertex {
         }
     }
 
-    fn sum_norm_sqr(&self, start_axis: usize) -> f64 {
+    fn sum_norm_sqr(&self, start_axis: usize) -> f32 {
         let mut s = self.amplitude.norm_sqr();
         for i in start_axis..self.dim() {
             s += Self::vertex(&self.next_vertex, i).sum_norm_sqr(i);
@@ -640,7 +639,7 @@ impl Vertex {
         self.next_vertex.push(cube);
     }
 
-    fn at(&self, path: BitSet, path_offset: usize) -> Complex<f64> {
+    fn at(&self, path: BitSet, path_offset: usize) -> V {
         let mut path = path;
         let mut path_offset = path_offset;
         while !path.is_empty() {

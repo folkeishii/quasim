@@ -1,6 +1,6 @@
 use std::{
-    f64::consts::{FRAC_1_SQRT_2, PI},
-    ops::{BitAnd, BitOr, BitOrAssign, Deref, Not, Shl, Shr, ShrAssign},
+    f32::consts::{FRAC_1_SQRT_2, PI},
+    ops::{BitAnd, BitOr, BitOrAssign, Deref, Shl, Shr, ShrAssign},
 };
 
 use nalgebra::{Complex, Matrix2, matrix};
@@ -118,13 +118,6 @@ impl BitOrAssign for QBits {
         self.0 |= rhs.0
     }
 }
-impl Not for QBits {
-    type Output = QBits;
-
-    fn not(self) -> Self::Output {
-        QBits(!self.0)
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum GateType {
@@ -133,7 +126,7 @@ pub enum GateType {
     Z,
     H,
     SWAP,
-    U(f64, f64, f64),
+    U(f32, f32, f32),
     S,
 }
 
@@ -155,7 +148,7 @@ impl GateType {
 
     /// ## Panics
     /// if matches!(self, GateType::SWAP)
-    pub fn unchecked_matrix2x2(&self) -> Matrix2<Complex<f64>> {
+    pub fn unchecked_matrix2x2(&self) -> Matrix2<Complex<f32>> {
         match *self {
             GateType::X => matrix![
                 cart!(0), cart!(1);
@@ -185,8 +178,14 @@ impl GateType {
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum GateError {
-    #[error("Invalid targete")]
+    #[error("Invalid targets")]
     InvalidTargets,
+    #[error("Target out of bounds")]
+    TargetOutOfBounds,
+    #[error("Control out of bounds")]
+    ControlOutOfBounds,
+    #[error("Targets and controls overlap")]
+    TargetControlOverlap,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -198,31 +197,31 @@ pub struct Gate {
 
 impl Gate {
     #[rustfmt::skip]
-    pub const PAULI_X_DATA: [Complex<f64>; 4] = [
+    pub const PAULI_X_DATA: [Complex<f32>; 4] = [
         cart!(0.0), cart!(1.0),
         cart!(1.0), cart!(0.0),
     ];
 
     #[rustfmt::skip]
-    pub const PAULI_Y_DATA: [Complex<f64>; 4] = [
+    pub const PAULI_Y_DATA: [Complex<f32>; 4] = [
         cart!(0.0), cart!(0.0, -1.0),
         cart!(0.0, 1.0), cart!(0.0),
     ];
 
     #[rustfmt::skip]
-    pub const PAULI_Z_DATA: [Complex<f64>; 4] = [
+    pub const PAULI_Z_DATA: [Complex<f32>; 4] = [
         cart!(1.0), cart!(0.0),
         cart!(0.0), cart!(-1.0, 0.0),
     ];
 
     #[rustfmt::skip]
-    pub const HADAMARD_DATA: [Complex<f64>; 4] = [
+    pub const HADAMARD_DATA: [Complex<f32>; 4] = [
         cart!(FRAC_1_SQRT_2, 0.0), cart!(FRAC_1_SQRT_2, 0.0),
         cart!(FRAC_1_SQRT_2, 0.0), cart!(-FRAC_1_SQRT_2, 0.0),
     ];
 
     #[rustfmt::skip]
-    pub const SWAP_DATA: [Complex<f64>; 16] = [
+    pub const SWAP_DATA: [Complex<f32>; 16] = [
         cart!(1.0), cart!(0.0), cart!(0.0), cart!(0.0),
         cart!(0.0), cart!(0.0), cart!(1.0), cart!(0.0),
         cart!(0.0), cart!(1.0), cart!(0.0), cart!(0.0),
@@ -230,7 +229,7 @@ impl Gate {
     ];
 
     #[rustfmt::skip]
-    pub const PHASE_S_DATA: [Complex<f64>; 4] = [
+    pub const PHASE_S_DATA: [Complex<f32>; 4] = [
         cart!(1.0), cart!(0.0),
         cart!(0.0), cart!(0.0, 1.0),
     ];
@@ -240,11 +239,28 @@ impl Gate {
             return Err(GateError::InvalidTargets);
         }
 
+        let control_bits = QBits::from_indices(controls);
+        let target_bits = QBits::from_indices(targets);
+
+        if control_bits.get_bitstring() & target_bits.get_bitstring() != 0 {
+            return Err(GateError::TargetControlOverlap);
+        }
+
         Ok(Self {
             ty: ty,
-            controls: QBits::from_indices(controls),
-            targets: QBits::from_indices(targets),
+            controls: control_bits,
+            targets: target_bits,
         })
+    }
+
+    pub fn check_qubits(self, n_qubits: usize) -> Result<Self, GateError> {
+        if self.targets.get_bitstring() >= 1 << n_qubits {
+            return Err(GateError::TargetOutOfBounds);
+        }
+        if self.controls.get_bitstring() >= 1 << n_qubits {
+            return Err(GateError::ControlOutOfBounds);
+        }
+        Ok(self)
     }
 
     pub fn get_type(&self) -> GateType {

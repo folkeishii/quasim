@@ -24,10 +24,6 @@ cubecl = { version = "=0.10.0-pre.3", features = ["wgpu", "cuda"], optional = tr
 tracking-allocator = "0.4.0"
 
 [[bench]]
-name = "debug-simulator"
-harness = false
-
-[[bench]]
 name = "simulator-comparison"
 harness = false
 required-features = ["gpu"]

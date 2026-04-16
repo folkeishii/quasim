@@ -9,7 +9,7 @@ mod state;
 pub use arguments::*;
 pub use command::*;
 
-use crate::debug_simulator::DebugSimulator;
+use crate::fmm_simulator::FullMatMulSimulator;
 use crate::simulator::{QuantumState, StoredRegisters};
 use crate::{
     circuit::{Circuit, CircuitBehaviour, HybridCircuit, breakpoint::IEBreakpoint, pc::CircuitPc},
@@ -21,7 +21,7 @@ use std::{
     ops::Div,
 };
 
-pub struct DebugTerminal<S = DebugSimulator> {
+pub struct DebugTerminal<S = FullMatMulSimulator> {
     simulator: S,
 }
 
@@ -581,7 +581,7 @@ where
                 c.0,
                 c.0,
                 c.1,
-                ((c.1 as f64).div(count as f64) * 100.0).round()
+                ((c.1 as f32).div(count as f32) * 100.0).round()
             )?;
         }
 

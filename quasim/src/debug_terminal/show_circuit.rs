@@ -2202,8 +2202,8 @@ mod tests {
 
     use crate::{
         circuit::Circuit,
-        debug_simulator::DebugSimulator,
         debug_terminal::show_circuit::{Column, Primitive, connects::ExtendEast, show_circuit},
+        fmm_simulator::FullMatMulSimulator,
         gate::{Gate, GateType},
         instruction::Instruction,
         simulator::{Buildable, Debuggable},
@@ -2270,7 +2270,7 @@ mod tests {
     fn measurement() {
         return;
         let w = &mut stdout();
-        let sim = DebugSimulator::build(Circuit::new(7)).unwrap();
+        let sim = FullMatMulSimulator::build(Circuit::new(7)).unwrap();
         let instruction = Instruction::MeasureBit(0, ("".into(), 0));
         let mut track_col = Column::only_tracks(10, None);
         let mut measure_col = Column::from_instruction(&sim, &instruction);
@@ -2288,7 +2288,7 @@ mod tests {
     fn with_gate() {
         return;
         let w = &mut stdout();
-        let sim = DebugSimulator::build(Circuit::new(7)).unwrap();
+        let sim = FullMatMulSimulator::build(Circuit::new(7)).unwrap();
         let instruction1 = Instruction::Gate(Gate::new(GateType::H, &[1, 5, 6], &[3]).unwrap());
         let instruction2 = Instruction::Gate(Gate::new(GateType::Y, &[], &[1]).unwrap());
         let instruction3 = Instruction::Gate(Gate::new(GateType::X, &[1, 5], &[2]).unwrap());
@@ -2348,7 +2348,7 @@ mod tests {
             .y(2)
             .swap(3, 5)
             .cswap(&[2], 3, 4);
-        let sim = DebugSimulator::build(circuit).unwrap();
+        let sim = FullMatMulSimulator::build(circuit).unwrap();
         show_circuit(w, &sim).unwrap();
     }
 
@@ -2366,7 +2366,7 @@ mod tests {
             .z(5)
             .call("Sub", 1)
             .cswap(&[2], 3, 4);
-        let mut sim = DebugSimulator::build(circuit).unwrap();
+        let mut sim = FullMatMulSimulator::build(circuit).unwrap();
         show_circuit(w, &sim).unwrap();
         sim.cont();
         show_circuit(w, &sim).unwrap();
@@ -2388,7 +2388,7 @@ mod tests {
             .z(5)
             .ccall("Sub", 2, &[0])
             .cswap(&[2], 3, 4);
-        let mut sim = DebugSimulator::build(circuit).unwrap();
+        let mut sim = FullMatMulSimulator::build(circuit).unwrap();
         show_circuit(w, &sim).unwrap();
         sim.cont();
         show_circuit(w, &sim).unwrap();

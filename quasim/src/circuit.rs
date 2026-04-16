@@ -1,4 +1,4 @@
-use std::{collections::HashMap, f64::consts::PI};
+use std::{collections::HashMap, f32::consts::PI};
 pub mod breakpoint;
 pub mod oracle;
 pub mod pc;
@@ -224,49 +224,70 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
     pub fn cx(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::X, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::X, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn y(mut self, target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::Y, &[], &[target]).unwrap().into(),
+            Gate::new(GateType::Y, &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn cy(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::Y, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::Y, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn z(mut self, target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::Z, &[], &[target]).unwrap().into(),
+            Gate::new(GateType::Z, &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn cz(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::Z, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::Z, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn h(mut self, target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::H, &[], &[target]).unwrap().into(),
+            Gate::new(GateType::H, &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn ch(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::H, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::H, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
@@ -274,6 +295,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn swap(mut self, target1: usize, target2: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::SWAP, &[], &[target1, target2])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -283,15 +305,17 @@ impl<B: CircuitBehaviour> Circuit<B> {
     pub fn cswap(mut self, controls: &[usize], target1: usize, target2: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::SWAP, controls, &[target1, target2])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
         self
     }
 
-    pub fn u(mut self, theta: f64, phi: f64, lambda: f64, target: usize) -> Self {
+    pub fn u(mut self, theta: f32, phi: f32, lambda: f32, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, phi, lambda), &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -300,14 +324,15 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
     pub fn cu(
         mut self,
-        theta: f64,
-        phi: f64,
-        lambda: f64,
+        theta: f32,
+        phi: f32,
+        lambda: f32,
         controls: &[usize],
         target: usize,
     ) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, phi, lambda), controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -316,66 +341,78 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
     pub fn s(mut self, target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::S, &[], &[target]).unwrap().into(),
+            Gate::new(GateType::S, &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
     pub fn cs(mut self, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
-            Gate::new(GateType::S, controls, &[target]).unwrap().into(),
+            Gate::new(GateType::S, controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
+                .unwrap()
+                .into(),
         ));
         self
     }
 
-    pub fn rx(mut self, theta: f64, target: usize) -> Self {
+    pub fn rx(mut self, theta: f32, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
         self
     }
 
-    pub fn crx(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+    pub fn crx(mut self, theta: f32, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, -PI / 2.0, PI / 2.0), controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
         self
     }
 
-    pub fn ry(mut self, theta: f64, target: usize) -> Self {
+    pub fn ry(mut self, theta: f32, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, 0.0, 0.0), &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
         self
     }
 
-    pub fn cry(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+    pub fn cry(mut self, theta: f32, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(theta, 0.0, 0.0), controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
         self
     }
 
-    pub fn rz(mut self, theta: f64, target: usize) -> Self {
+    pub fn rz(mut self, theta: f32, target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(0.0, 0.0, theta), &[], &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
         self
     }
 
-    pub fn crz(mut self, theta: f64, controls: &[usize], target: usize) -> Self {
+    pub fn crz(mut self, theta: f32, controls: &[usize], target: usize) -> Self {
         self.instructions.push(B::from_pure(
             Gate::new(GateType::U(0.0, 0.0, theta), controls, &[target])
+                .and_then(|g| g.check_qubits(self.n_qubits))
                 .unwrap()
                 .into(),
         ));
@@ -398,7 +435,7 @@ impl<B: CircuitBehaviour> Circuit<B> {
 
             let mut control: isize = i as isize - 1;
             for k in 2..(i + 2) {
-                let theta = PI / (1 << (k - 1)) as f64;
+                let theta = PI / (1 << (k - 1)) as f32;
                 self = self.crz(theta, &[targets[control as usize]], targets[i]);
                 control -= 1;
             }
@@ -872,14 +909,27 @@ mod tests {
         ext::{equal_matrix_c, equal_state_c, expand_matrix_from_gate},
         instruction::{Instruction, PureInstruction},
         simulator::{Buildable, Simulator},
+        state_vector::StateVector,
         sv_simulator::StateVectorSimulator,
     };
     use nalgebra::{Complex, DMatrix, dvector};
+    use std::panic::catch_unwind;
     fn concat_circuits(circuit1: &Circuit, circuit2: &Circuit) -> Circuit {
         let mut circuit_tot = Circuit::new(std::cmp::max(circuit1.n_qubits(), circuit2.n_qubits()));
         circuit_tot.instructions =
             [circuit1.instructions.clone(), circuit2.instructions.clone()].concat();
         circuit_tot
+    }
+    #[test]
+    fn error_test() {
+        let c = Circuit::new(5);
+        assert!(catch_unwind(|| c.clone().h(0)).is_ok());
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 2], 0)).is_ok());
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 3], 0)).is_ok());
+
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 0], 0)).is_err()); // Overlap
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 0], 5)).is_err()); // Target out of bounds
+        assert!(catch_unwind(|| c.clone().ch(&[3, 1, 5], 2)).is_err()); // Control out of bounds
     }
     #[test]
     fn inverse_test() {
@@ -899,8 +949,8 @@ mod tests {
             .cswap(&[0], 1, 2);
         let circ_and_inv = concat_circuits(&circ, &circ.inverse());
         let dim = 1 << 5;
-        let id = DMatrix::<Complex<f64>>::identity(dim, dim);
-        let mut res: DMatrix<Complex<f64>> = id.clone();
+        let id = DMatrix::<Complex<f32>>::identity(dim, dim);
+        let mut res: DMatrix<Complex<f32>> = id.clone();
         for instruction in circ_and_inv.instructions() {
             if let PureInstruction::Gate(gate) = instruction {
                 res = expand_matrix_from_gate(gate, 5) * res;
@@ -918,7 +968,7 @@ mod tests {
         .unwrap();
         sim.run();
 
-        let expected_vec = dvector![
+        let expected_vec: StateVector = dvector![
             cart!(0.0, 0.35355),  // |0000>
             cart!(0.0),           // |0001>
             cart!(-0.25, -0.25),  // |0010>
@@ -935,7 +985,8 @@ mod tests {
             cart!(0.0),           // |1101>
             cart!(0.25, -0.25),   // |1110>
             cart!(0.0),           // |1111>
-        ];
+        ]
+        .into();
         assert!(equal_state_c(&expected_vec, sim.state(), 4, 0.001));
     }
 

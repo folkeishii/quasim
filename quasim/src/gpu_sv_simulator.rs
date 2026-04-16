@@ -137,7 +137,7 @@ where
 
 impl<R: Runtime> Simulator for GpuStateVectorSimulator<R> {
     type State = GpuStateVector<R>;
-    type BasisValue = Complex<f64>;
+    type BasisValue = Complex<f32>;
 
     /// Runs the entire circuit on the gpu and then syncs state to cpu.
     /// Use function `run_without_sync` to avoid syncing state vector to cpu.

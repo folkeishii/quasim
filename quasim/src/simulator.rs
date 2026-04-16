@@ -169,15 +169,15 @@ mod tests {
 
     use crate::{
         circuit::Circuit,
-        debug_simulator::DebugSimulator,
         ext::equal_state_c,
+        fmm_simulator::FullMatMulSimulator,
         simulator::{Buildable, Debuggable, Simulator},
     };
 
     #[test]
     fn test_continue_until() {
         let circ = Circuit::new(3).h(0).h(1).h(2);
-        let mut sim1 = DebugSimulator::build(circ).unwrap();
+        let mut sim1 = FullMatMulSimulator::build(circ).unwrap();
         let mut sim2 = sim1.clone();
 
         sim1.next();

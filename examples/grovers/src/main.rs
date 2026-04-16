@@ -1,8 +1,8 @@
 use std::env;
 
 use quasim::circuit::{Circuit, HybridCircuit};
-use quasim::debug_simulator::DebugSimulator;
 use quasim::debug_terminal::DebugTerminal;
+use quasim::fmm_simulator::FullMatMulSimulator;
 use quasim::sampler::RegisterSampler;
 use quasim::simulator::{Buildable, Sampleable};
 use quasim::sv_simulator::StateVectorSimulator;
@@ -27,7 +27,7 @@ fn circuit(func: &[usize]) -> Circuit<HybridCircuit> {
         circuit = circuit.h(i);
     }
 
-    let iterations = (std::f64::consts::PI / 4.0 * ((n as f64).sqrt())).floor() as usize;
+    let iterations = (std::f32::consts::PI / 4.0 * ((n as f32).sqrt())).floor() as usize;
 
     for _i in 0..iterations {
         // Oracle
@@ -110,7 +110,8 @@ fn main() {
 fn debug_main() {
     let func: &[usize] = &[1, 0, 0]; // f(x) written as b_x,b_(x-1),...,b_0
     let circ = circuit(func);
-    let sim: DebugSimulator = DebugSimulator::build(circ).expect("Could not build simulator");
+    let sim: FullMatMulSimulator =
+        FullMatMulSimulator::build(circ).expect("Could not build simulator");
     let mut term = DebugTerminal::from_simulator(sim);
     term.run().unwrap()
 }

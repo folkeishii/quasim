@@ -43,7 +43,7 @@ struct ReduceLevel {
 }
 
 impl<R: Runtime> QuantumState for GpuStateVector<R> {
-    type BasisValue = Complex<f64>;
+    type BasisValue = Complex<f32>;
 
     fn collapse(&self) -> usize {
         self.sample()
@@ -56,7 +56,7 @@ impl<R: Runtime> QuantumState for GpuStateVector<R> {
 }
 
 impl<R: Runtime> Index<usize> for GpuStateVector<R> {
-    type Output = Complex<f64>;
+    type Output = Complex<f32>;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.as_slice()[index]
@@ -100,7 +100,7 @@ impl<R: Runtime> GpuStateVector<R> {
         let mut reduce_levels = Vec::new();
         let mut reduce_pass_size = state_vector_len.div_ceil(GPU_REDUCE_FACTOR);
         for _ in 0..n_reduce_passes {
-            let handle = client.empty(reduce_pass_size * size_of::<f64>());
+            let handle = client.empty(reduce_pass_size * size_of::<f32>());
             reduce_levels.push(ReduceLevel {
                 handle,
                 len: reduce_pass_size,
@@ -110,13 +110,13 @@ impl<R: Runtime> GpuStateVector<R> {
         }
 
         // State vector init
-        let mut init_state: Vec<f64> = vec![0.0; state_vector_len * 2]; // two floats for each complex number
+        let mut init_state: Vec<f32> = vec![0.0; state_vector_len * 2]; // two floats for each complex number
         init_state[0] = 1.0; // Sets first complex re = 1.0
         let init_bytes = Bytes::from_elems(init_state);
         let state_vector_handle = client.create_from_slice(&init_bytes);
 
         // Probs init
-        let mut init_probs: Vec<f64> = vec![0.0; state_vector_len];
+        let mut init_probs: Vec<f32> = vec![0.0; state_vector_len];
         init_probs[0] = 1.0; // Sets first state prob = 1.0
         let init_probs = Bytes::from_elems(init_probs);
         let probs_handle = client.create_from_slice(&init_probs);
@@ -154,11 +154,11 @@ impl<R: Runtime> GpuStateVector<R> {
         self.state_vector_handle = self.client.create(self.state_vector_cache.clone());
     }
 
-    pub fn as_slice(&self) -> &[Complex<f64>] {
+    pub fn as_slice(&self) -> &[Complex<f32>] {
         unsafe { mem_helpers::complex_from_bytes(&self.state_vector_cache) }
     }
 
-    pub fn as_slice_mut(&mut self) -> &mut [Complex<f64>] {
+    pub fn as_slice_mut(&mut self) -> &mut [Complex<f32>] {
         unsafe { mem_helpers::complex_from_bytes_mut(&mut self.state_vector_cache) }
     }
 
@@ -193,9 +193,9 @@ impl<R: Runtime> GpuStateVector<R> {
         self.launch_calculate_probs();
         self.build_prob_reduction_hierarchy();
 
-        let threshold = rand::rng().random_range(0.0..1.0f64);
+        let threshold = rand::rng().random_range(0.0..1.0f32);
         let sample_index_handle = self.client.create_from_slice(u32::as_bytes(&[0]));
-        let sample_threshold_handle = self.client.create_from_slice(f64::as_bytes(&[threshold]));
+        let sample_threshold_handle = self.client.create_from_slice(f32::as_bytes(&[threshold]));
 
         for (prob_handle, prob_len) in self
             .reduced_probs
