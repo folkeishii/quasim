@@ -1,0 +1,10 @@
+[package]
+name = "shors"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+quasim = { path = "../../quasim" }
+gcd = "2.3.0"
+rand = "0.10.0"
+num-integer = "0.1.46"
