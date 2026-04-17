@@ -1,15 +1,16 @@
-use std::f64::consts::PI;
+use std::f32::consts::PI;
+
+use rand::random;
 
 use crate::{
     circuit::Circuit,
     gate::QBits,
+    simulator::{Buildable, QuantumState},
     syntax_simulator::{
         basis::{ExtendedBasis, ExtendedQubitBasis},
         scalar::Scalar,
     },
 };
-
-use crate::simulator::BuildSimulator;
 
 use super::*;
 
@@ -67,11 +68,12 @@ fn test_expand_qubits() {
 fn test_hadamard_cnot_entanglement() {
     let circuit = Circuit::new(2).h(0).cx(&[0], 1);
     for _ in 0..1000 {
-        let sim = match SyntaxSimulator::build(circuit.clone()) {
+        let mut sim = match SyntaxSimulator::build(circuit.clone()) {
             Ok(sim) => sim,
             Err(e) => panic!("Error building simulator: {}", e),
         };
-        let result = sim.run();
+        sim.run();
+        let result = sim.state().collapse();
         assert!(result == 0b00 || result == 0b11);
     }
 }
@@ -88,7 +90,7 @@ fn probability_distribution_sums_to_one() {
         Ok(sim) => sim,
         Err(e) => panic!("Error building simulator: {}", e),
     };
-    let distribution = sim.probability_distribution();
+    let distribution = sim.state();
     let total_probability: f32 = distribution
         .iter()
         .map(|(_, scalar)| scalar.probability())
@@ -104,11 +106,12 @@ fn probability_distribution_sums_to_one() {
 fn test_ry_inversion() {
     let circuit = Circuit::new(1).ry(PI, 0);
     for _ in 0..1000 {
-        let sim = match SyntaxSimulator::build(circuit.clone()) {
+        let mut sim = match SyntaxSimulator::build(circuit.clone()) {
             Ok(sim) => sim,
             Err(e) => panic!("Error building simulator: {}", e),
         };
-        let result = sim.run();
+        sim.run();
+        let result = sim.state().collapse();
         assert_eq!(result, 1);
     }
 }
@@ -117,11 +120,12 @@ fn test_ry_inversion() {
 fn test_invert_qubit_through_rz() {
     let circuit = Circuit::new(1).h(0).rz(PI, 0).h(0);
     for _ in 0..1000 {
-        let sim = match SyntaxSimulator::build(circuit.clone()) {
+        let mut sim = match SyntaxSimulator::build(circuit.clone()) {
             Ok(sim) => sim,
             Err(e) => panic!("Error building simulator: {}", e),
         };
-        let result = sim.run();
+        sim.run();
+        let result = sim.state().collapse();
         assert_eq!(result, 1);
     }
 }
@@ -137,11 +141,12 @@ fn swap() {
 
         circuit = circuit.h(n_qubits - 1);
 
-        let sim = match SyntaxSimulator::build(circuit.clone()) {
+        let mut sim = match SyntaxSimulator::build(circuit.clone()) {
             Ok(sim) => sim,
             Err(e) => panic!("Error building simulator: {}", e),
         };
-        let result = sim.run();
+        sim.run();
+        let result = sim.state().collapse();
         assert_eq!(result, 1 << (n_qubits - 1));
     }
 }
@@ -163,11 +168,12 @@ fn test_parity_by_qft() {
             }
             j += 1;
         }
-        let sim = match SyntaxSimulator::build(circuit_with_input.qft(&qft_targets).h(n - 1)) {
+        let mut sim = match SyntaxSimulator::build(circuit_with_input.qft(&qft_targets).h(n - 1)) {
             Ok(sim) => sim,
             Err(e) => panic!("Error building simulator: {}", e),
         };
-        let result = sim.run();
+        sim.run();
+        let result = sim.state().collapse();
         assert_eq!(
             result >> (n - 1),
             i % 2,
