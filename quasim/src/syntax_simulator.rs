@@ -11,7 +11,7 @@ use log::debug;
 use crate::{
     circuit::{Circuit, PureCircuit, pc::CircuitPc},
     instruction::PureInstruction,
-    simulator::Simulator,
+    simulator::{Sampleable, Simulator},
     syntax_simulator::{
         scalar::Scalar,
         state::{ScaledState, SumOfScaledStates},
@@ -23,6 +23,8 @@ pub struct SyntaxSimulator {
     pc: CircuitPc,
     sum: SumOfScaledStates,
 }
+
+impl Sampleable<PureCircuit> for SyntaxSimulator {}
 
 #[derive(Debug, thiserror::Error)]
 pub enum SyntaxSimError {
