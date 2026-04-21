@@ -290,8 +290,12 @@ impl ExtendedBasis {
         }
     }
 
-    fn all_inherent_states_of(extended_basis: ExtendedBasis) -> Sum {
-        let mut extended_basis = match extended_basis {
+    // This function essentially does the same as expand_qubits, but it always
+    // results in binary states. There are assumptions elsewhere that this function
+    // only returns binary states, and it implicitly only ever returns
+    // the ExtendedBasis::Binary variant.
+    pub fn all_inherent_states(self) -> Sum {
+        let mut extended_basis = match self {
             ExtendedBasis::Binary(bitstring) => {
                 return vec![ScaledState(ExtendedBasis::Binary(bitstring), Scalar::ONE)];
             }
@@ -320,9 +324,8 @@ impl ExtendedBasis {
             .into_iter()
             .filter(|ScaledQubitBasis(_, s)| !s.is_zero())
             .map(|msb| {
-                let lesser_bits = Self::all_inherent_states_of(ExtendedBasis::Superposition(
-                    extended_basis.clone(),
-                ));
+                let lesser_bits =
+                    ExtendedBasis::Superposition(extended_basis.clone()).all_inherent_states();
                 lesser_bits
                     .iter()
                     .map(|lsb| {
@@ -340,10 +343,6 @@ impl ExtendedBasis {
             })
             .flatten()
             .collect()
-    }
-
-    pub fn all_inherent_states(self: ExtendedBasis) -> Sum {
-        Self::all_inherent_states_of(self.clone())
     }
 
     // Gates
