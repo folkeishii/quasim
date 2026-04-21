@@ -1,11 +1,12 @@
 use std::marker::PhantomData;
 use std::mem::replace;
-use std::ops::{Deref, Index};
+use std::ops::{Deref, DerefMut, Index};
 use std::{iter::Map, ops::Range};
 
 use nalgebra::{Complex, DMatrix, DVector, Matrix2, dmatrix};
 use rand::distr::weighted::WeightedIndex;
 use rand::prelude::Distribution;
+use serde::{Deserialize, Serialize};
 
 use crate::gate::{Gate, GateType};
 use crate::simulator::QuantumState;
@@ -370,6 +371,89 @@ pub trait OrdByKey<K: PartialOrd> {
 impl<T: Ord> OrdByKey<T> for T {
     fn key(&self) -> &T {
         self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize)]
+pub struct BitSet(pub usize);
+
+impl BitSet {
+    #[inline(always)]
+    pub const fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+
+    #[inline(always)]
+    pub const fn set(&mut self, bit: usize) {
+        self.0 |= 1usize << bit;
+    }
+
+    #[inline(always)]
+    pub const fn nul(&mut self, bit: usize) {
+        self.0 &= !(1usize << bit);
+    }
+
+    #[inline(always)]
+    /// inserts a `1` on bit offset `bit`
+    pub const fn insert(&mut self, bit: usize) {
+        let tmp = self.0 & !(usize::MAX << bit);
+        self.0 <<= 1;
+        self.0 &= usize::MAX << (bit + 1);
+        self.0 |= tmp;
+        self.0 |= 1usize << bit;
+    }
+
+    #[inline(always)]
+    /// removes the bit on bit offset `bit`
+    pub const fn erase(&mut self, bit: usize) {
+        let tmp = self.0 & !(usize::MAX << bit);
+        self.0 >>= 1;
+        self.0 &= usize::MAX << bit;
+        self.0 |= tmp;
+    }
+
+    #[inline(always)]
+    /// Swaps bit `bit1` and bit `bit2`
+    pub const fn swap(&mut self, bit1: usize, bit2: usize) {
+        let org_combined = (1 << bit1) | (1 << bit2);
+        let moved1 = ((self.0 >> bit1) & 1) << bit2;
+        let moved2 = ((self.0 >> bit2) & 1) << bit1;
+        let moved_combined = moved1 | moved2;
+
+        self.0 &= !org_combined;
+        self.0 |= moved_combined;
+    }
+}
+
+impl Index<usize> for BitSet {
+    type Output = bool;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        if (self.0 >> index) & 1 != 0 {
+            &true
+        } else {
+            &false
+        }
+    }
+}
+
+impl Deref for BitSet {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for BitSet {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<usize> for BitSet {
+    fn from(value: usize) -> Self {
+        Self(value)
     }
 }
 

@@ -645,6 +645,11 @@ mod tests {
     }
 
     #[test]
+    fn apply_gates() {
+        common_test::apply_gates::<FullMatMulSimulator>();
+    }
+
+    #[test]
     fn hybrid_test() {
         common_test::hybrid_test::<FullMatMulSimulator>();
     }
