@@ -2,6 +2,7 @@
 
 pub mod circuit;
 mod common_test;
+pub mod cube_simulator;
 pub mod debug_terminal;
 pub mod expr_dsl;
 pub mod ext;

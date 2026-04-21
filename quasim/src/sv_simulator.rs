@@ -460,6 +460,11 @@ mod tests {
     }
 
     #[test]
+    fn apply_gates() {
+        common_test::apply_gates::<StateVectorSimulator>();
+    }
+
+    #[test]
     fn double_sub() {
         common_test::double_sub::<StateVectorSimulator>();
     }

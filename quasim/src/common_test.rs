@@ -4,13 +4,159 @@ use nalgebra::{Complex, DVector, dvector};
 
 use crate::{
     cart,
-    circuit::{Circuit, HybridCircuit},
+    circuit::{Circuit, HybridCircuit, PureCircuit},
     expr_dsl::expr_helpers::r,
     ext::equal_state_c,
     sampler::{CircuitSampler, RegisterSampler},
     simulator::{Buildable, Debuggable, QuantumState, Sampleable, StoredRegisters},
     state_vector::StateVector,
 };
+
+pub fn apply_gates<Sim: Buildable<PureCircuit> + Debuggable>()
+where
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
+{
+    let mut circuit = Circuit::new(3);
+    circuit = circuit.h(0);
+    let s1 = dvector![
+        cart!(FRAC_1_SQRT_2),
+        cart!(FRAC_1_SQRT_2),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0)
+    ];
+    circuit = circuit.y(1);
+    let s2 = dvector![
+        cart!(0),
+        cart!(0),
+        cart!(0, FRAC_1_SQRT_2),
+        cart!(0, FRAC_1_SQRT_2),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0)
+    ];
+    circuit = circuit.z(2);
+    let s3 = s2.clone();
+    circuit = circuit.z(1);
+    let s4 = dvector![
+        cart!(0),
+        cart!(0),
+        cart!(0, -FRAC_1_SQRT_2),
+        cart!(0, -FRAC_1_SQRT_2),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0)
+    ];
+    circuit = circuit.ch(&[0], 1);
+    let s5 = dvector![
+        cart!(0),
+        cart!(0, -0.5),
+        cart!(0, -FRAC_1_SQRT_2),
+        cart!(0, 0.5),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0)
+    ];
+    circuit = circuit.cy(&[0, 1], 2);
+    let s6 = dvector![
+        cart!(0),
+        cart!(0, -0.5),
+        cart!(0, -FRAC_1_SQRT_2),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(-0.5),
+    ];
+    circuit = circuit.swap(0, 2);
+    let s7 = dvector![
+        cart!(0),
+        cart!(0),
+        cart!(0, -FRAC_1_SQRT_2),
+        cart!(0),
+        cart!(0, -0.5),
+        cart!(0),
+        cart!(0),
+        cart!(-0.5),
+    ];
+
+    let mut sim = Sim::build(circuit).expect("Could not build simulator");
+
+    #[rustfmt::skip]
+    assert!(equal_state_c({sim.next();sim.state()}, &StateVector::from(s1), 3, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_state_c({sim.next();sim.state()}, &StateVector::from(s2), 3, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_state_c({sim.next();sim.state()}, &StateVector::from(s3), 3, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_state_c({sim.next();sim.state()}, &StateVector::from(s4), 3, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_state_c({sim.next();sim.state()}, &StateVector::from(s5), 3, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_state_c({sim.next();sim.state()}, &StateVector::from(s6), 3, 0.000001));
+    #[rustfmt::skip]
+    assert!(equal_state_c({sim.next();sim.state()}, &StateVector::from(s7), 3, 0.000001));
+
+    apply_cswap::<Sim>();
+}
+
+fn apply_cswap<Sim: Buildable<PureCircuit> + Debuggable>()
+where
+    Sim::State: QuantumState<BasisValue = Complex<f32>>,
+{
+    let mut circuit = Circuit::new(4);
+    circuit = circuit.h(0).h(1).h(2);
+    let s1 = dvector![
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+    ];
+    circuit = circuit.cswap(&[0, 2], 1, 3);
+    let s2 = dvector![
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0.35355),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0),
+        cart!(0.35355),
+        cart!(0),
+        cart!(0),
+    ];
+    let mut sim = Sim::build(circuit).expect("Could not build simulator");
+    sim.next();
+    sim.next();
+    #[rustfmt::skip]
+    assert!(equal_state_c({sim.next();sim.state()}, &StateVector::from(s1), 4, 0.00001));
+    #[rustfmt::skip]
+    assert!(equal_state_c({sim.next();sim.state()}, &StateVector::from(s2), 4, 0.00001));
+}
 
 pub fn double_sub<Sim: Buildable<HybridCircuit> + Debuggable>()
 where
