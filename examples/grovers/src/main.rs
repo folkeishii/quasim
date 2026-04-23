@@ -1,11 +1,16 @@
 use std::env;
 
-use grovers::check_quantum;
-use quasim::debug_simulator::DebugSimulator;
-use quasim::debug_terminal::DebugTerminal;
-use quasim::simulator::BuildSimulator;
-use quasim::sv_simulator::SVSimulatorDebugger;
+use grovers::circuit;
+use quasim::{circuit::HybridCircuit, debug_terminal::DebugTerminal, fmm_simulator::FullMatMulSimulator, sampler::RegisterSampler, simulator::{Buildable, Sampleable, StoredRegisters}, sv_simulator::StateVectorSimulator};
 
+pub fn check_quantum<
+    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters
+>(
+    func: &[usize],
+) -> bool {
+    let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
+    S::sample_once(circuit(func), RegisterSampler::new("res")).unwrap() == fun_res
+}
 fn main() {
     for arg in env::args().skip(1) {
         if arg == "debug" {
@@ -20,7 +25,7 @@ fn main() {
     let mut true_count = 0;
 
     for _ in 0..iter {
-        if check_quantum::<SVSimulatorDebugger>(func) {
+        if check_quantum::<StateVectorSimulator>(func) {
             true_count += 1;
         }
     }
@@ -31,7 +36,7 @@ fn main() {
 fn debug_main() {
     let func: &[usize] = &[1, 0, 0]; // f(x) written as b_x,b_(x-1),...,b_0
     let circ = grovers::circuit(func);
-    let sim: DebugSimulator = DebugSimulator::build(circ).expect("Could not build simulator");
+    let sim = FullMatMulSimulator::build(circ).expect("Could not build simulator");
     let mut term = DebugTerminal::from_simulator(sim);
     term.run().unwrap()
 }
@@ -46,7 +51,7 @@ mod tests {
         let iter = 1000;
         let mut true_count = 0;
         for _ in 0..iter {
-            if check_quantum::<SVSimulatorDebugger>(func) {
+            if check_quantum::<StateVectorSimulator>(func) {
                 true_count += 1;
             }
         }

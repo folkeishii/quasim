@@ -1,20 +1,6 @@
 use quasim::{
     circuit::{Circuit, HybridCircuit},
-    simulator::{BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator},
 };
-
-pub fn check_quantum<
-    S: BuildSimulator<HybridCircuit> + DebuggableSimulator + StoredCircuitSimulator + HybridSimulator,
->(
-    func: &[usize],
-) -> bool {
-    let mut sim = S::build(circuit(func)).unwrap();
-    sim.cont();
-
-    let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
-
-    sim.register("res").read() == fun_res
-}
 
 pub fn circuit(func: &[usize]) -> Circuit<HybridCircuit> {
     let bits: usize = func.len();

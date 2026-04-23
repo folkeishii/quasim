@@ -1,7 +1,4 @@
 use quasim::circuit::{Circuit, HybridCircuit};
-use quasim::simulator::{
-    BuildSimulator, DebuggableSimulator, HybridSimulator, StoredCircuitSimulator,
-};
 
 #[derive(PartialEq, Debug)]
 pub enum FunctionType {
@@ -10,12 +7,7 @@ pub enum FunctionType {
     Balanced,
 }
 
-pub fn find_function_type_quantum<S>(n: usize, function_type: FunctionType) -> bool
-where
-    S: BuildSimulator<HybridCircuit>
-        + DebuggableSimulator
-        + StoredCircuitSimulator
-        + HybridSimulator,
+pub fn circuit(n: usize, function_type: FunctionType) -> Circuit<HybridCircuit>
 {
     let mut circuit = Circuit::new(n + 1).new_reg("res", n);
     circuit = circuit.x(n);
@@ -39,9 +31,5 @@ where
         circuit = circuit.h(i);
     }
 
-    circuit = circuit.measure_bits(&(0..n).collect::<Vec<_>>(), "res");
-    let mut sim = S::build(circuit).unwrap();
-    sim.cont();
-
-    sim.register("res").read() == 0
+    circuit.measure_bits(&(0..n).collect::<Vec<_>>(), "res")
 }

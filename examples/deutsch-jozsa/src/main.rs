@@ -1,10 +1,19 @@
-use deutsch_jozsa::{FunctionType, find_function_type_quantum};
-use quasim::sv_simulator::SVSimulatorDebugger;
+use deutsch_jozsa::{FunctionType, circuit};
+use quasim::{circuit::HybridCircuit, sampler::RegisterSampler, simulator::{Buildable, Sampleable, StoredRegisters}, sv_simulator::StateVectorSimulator};
+
+
+
+pub fn find_function_type_quantum<S>(n: usize, function_type: FunctionType) -> bool
+where
+    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters
+{
+    S::sample_once(circuit(n, function_type), RegisterSampler::new("res")).unwrap() == 0
+}
 
 fn main() {
     println!(
         "{}",
-        find_function_type_quantum::<SVSimulatorDebugger>(8, FunctionType::Constant0)
+        find_function_type_quantum::<StateVectorSimulator>(8, FunctionType::Constant0)
     );
 }
 
@@ -45,19 +54,19 @@ mod tests {
         for n in 2..6 {
             assert_eq!(
                 check_classic(f_constant, n),
-                find_function_type_quantum::<SVSimulatorDebugger>(n, FunctionType::Constant0)
+                find_function_type_quantum::<StateVectorSimulator>(n, FunctionType::Constant0)
             );
             assert_eq!(
                 check_classic(f_constant_2, n),
-                find_function_type_quantum::<SVSimulatorDebugger>(n, FunctionType::Constant1)
+                find_function_type_quantum::<StateVectorSimulator>(n, FunctionType::Constant1)
             );
             assert_eq!(
                 check_classic(|c| f_balanced(c, n), n),
-                find_function_type_quantum::<SVSimulatorDebugger>(n, FunctionType::Balanced)
+                find_function_type_quantum::<StateVectorSimulator>(n, FunctionType::Balanced)
             );
             assert_eq!(
                 check_classic(f_balanced_2, n),
-                find_function_type_quantum::<SVSimulatorDebugger>(n, FunctionType::Balanced)
+                find_function_type_quantum::<StateVectorSimulator>(n, FunctionType::Balanced)
             );
         }
     }
