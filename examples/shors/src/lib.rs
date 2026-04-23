@@ -266,10 +266,12 @@ pub fn mod_inv(a: isize, n: isize) -> isize {
 
 #[cfg(test)]
 mod tests {
-    use quasim::{circuit::Circuit, sampler::RegisterSampler, simulator::Sampleable, sv_simulator::StateVectorSimulator};
+    use quasim::{
+        circuit::Circuit, sampler::RegisterSampler, simulator::Sampleable,
+        sv_simulator::StateVectorSimulator,
+    };
 
     use crate::{create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv};
-
 
     #[test]
     fn test_adder() {

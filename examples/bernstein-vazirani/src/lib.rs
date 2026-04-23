@@ -1,6 +1,4 @@
-use quasim::{
-    circuit::{Circuit, HybridCircuit},
-};
+use quasim::circuit::{Circuit, HybridCircuit};
 
 pub fn circuit(n: usize, secret: usize) -> Circuit<HybridCircuit> {
     assert_eq!(secret & !(usize::MAX << n), secret);

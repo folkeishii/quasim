@@ -7,8 +7,7 @@ pub enum FunctionType {
     Balanced,
 }
 
-pub fn circuit(n: usize, function_type: FunctionType) -> Circuit<HybridCircuit>
-{
+pub fn circuit(n: usize, function_type: FunctionType) -> Circuit<HybridCircuit> {
     let mut circuit = Circuit::new(n + 1).new_reg("res", n);
     circuit = circuit.x(n);
 

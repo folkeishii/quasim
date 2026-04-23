@@ -2,7 +2,11 @@ use std::time::Duration;
 
 use grovers::circuit;
 use quasim::{
-    circuit::HybridCircuit, fmm_simulator::FullMatMulSimulator, sampler::CircuitSampler, simulator::{Buildable, Sampleable}, sv_simulator::StateVectorSimulator
+    circuit::HybridCircuit,
+    fmm_simulator::FullMatMulSimulator,
+    sampler::CircuitSampler,
+    simulator::{Buildable, Sampleable},
+    sv_simulator::StateVectorSimulator,
 };
 
 extern crate quasim;

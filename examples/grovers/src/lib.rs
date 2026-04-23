@@ -1,6 +1,4 @@
-use quasim::{
-    circuit::{Circuit, HybridCircuit},
-};
+use quasim::circuit::{Circuit, HybridCircuit};
 
 pub fn circuit(func: &[usize]) -> Circuit<HybridCircuit> {
     let bits: usize = func.len();

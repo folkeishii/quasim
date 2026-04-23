@@ -1,11 +1,14 @@
 use deutsch_jozsa::{FunctionType, circuit};
-use quasim::{circuit::HybridCircuit, sampler::RegisterSampler, simulator::{Buildable, Sampleable, StoredRegisters}, sv_simulator::StateVectorSimulator};
-
-
+use quasim::{
+    circuit::HybridCircuit,
+    sampler::RegisterSampler,
+    simulator::{Buildable, Sampleable, StoredRegisters},
+    sv_simulator::StateVectorSimulator,
+};
 
 pub fn find_function_type_quantum<S>(n: usize, function_type: FunctionType) -> bool
 where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters
+    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters,
 {
     S::sample_once(circuit(n, function_type), RegisterSampler::new("res")).unwrap() == 0
 }

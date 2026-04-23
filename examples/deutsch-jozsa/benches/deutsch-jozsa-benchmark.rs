@@ -1,10 +1,15 @@
 use std::time::Duration;
 
 use deutsch_jozsa::{FunctionType, circuit};
-use quasim::{circuit::HybridCircuit, fmm_simulator::FullMatMulSimulator, sampler::CircuitSampler, simulator::{Buildable, Sampleable, StoredRegisters}, sv_simulator::StateVectorSimulator};
+use quasim::{
+    circuit::HybridCircuit,
+    fmm_simulator::FullMatMulSimulator,
+    sampler::CircuitSampler,
+    simulator::{Buildable, Sampleable, StoredRegisters},
+    sv_simulator::StateVectorSimulator,
+};
 
 extern crate quasim;
-
 
 fn main() {
     divan::Divan::from_args().main();
@@ -18,7 +23,7 @@ fn main() {
 )]
 fn deutsch_jozsa_constant0<S>(n_qubits: usize)
 where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit>
+    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit>,
 {
     S::sample_once(circuit(n_qubits, FunctionType::Constant0), CircuitSampler).unwrap();
 }
@@ -31,7 +36,7 @@ where
 )]
 fn deutsch_jozsa_constant1<S>(n_qubits: usize)
 where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters
+    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters,
 {
     S::sample_once(circuit(n_qubits, FunctionType::Constant1), CircuitSampler).unwrap();
 }
@@ -44,7 +49,7 @@ where
 )]
 fn deutsch_jozsa_balanced<S>(n_qubits: usize)
 where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit>
+    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit>,
 {
     S::sample_once(circuit(n_qubits, FunctionType::Balanced), CircuitSampler).unwrap();
 }

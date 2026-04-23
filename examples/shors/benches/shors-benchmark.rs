@@ -1,7 +1,12 @@
 use std::time::Duration;
 
+use quasim::{
+    circuit::HybridCircuit,
+    sampler::CircuitSampler,
+    simulator::{Buildable, Sampleable},
+    sv_simulator::StateVectorSimulator,
+};
 use shors::circuit;
-use quasim::{circuit::HybridCircuit, sampler::CircuitSampler, simulator::{Buildable, Sampleable}, sv_simulator::StateVectorSimulator};
 
 extern crate quasim;
 
@@ -17,8 +22,8 @@ fn main() {
 )]
 fn shors<S>(n: usize)
 where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit>
+    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit>,
 {
-    let a = n-1;
+    let a = n - 1;
     S::sample_once(circuit(n, a), CircuitSampler).unwrap();
 }

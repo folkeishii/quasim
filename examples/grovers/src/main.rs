@@ -1,11 +1,16 @@
 use std::env;
 
 use grovers::circuit;
-use quasim::{circuit::HybridCircuit, debug_terminal::DebugTerminal, fmm_simulator::FullMatMulSimulator, sampler::RegisterSampler, simulator::{Buildable, Sampleable, StoredRegisters}, sv_simulator::StateVectorSimulator};
+use quasim::{
+    circuit::HybridCircuit,
+    debug_terminal::DebugTerminal,
+    fmm_simulator::FullMatMulSimulator,
+    sampler::RegisterSampler,
+    simulator::{Buildable, Sampleable, StoredRegisters},
+    sv_simulator::StateVectorSimulator,
+};
 
-pub fn check_quantum<
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters
->(
+pub fn check_quantum<S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters>(
     func: &[usize],
 ) -> bool {
     let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
