@@ -6,6 +6,10 @@ edition = "2024"
 [features]
 default = []
 gpu = ["dep:cubecl"]
+wgpu = ["gpu", "cubecl/wgpu"]
+cuda = ["gpu", "cubecl/cuda"]
+cpu = ["gpu", "cubecl/cpu"]
+hip = ["gpu", "cubecl/hip"]
 
 [dependencies]
 crossterm = "0.29.0"
