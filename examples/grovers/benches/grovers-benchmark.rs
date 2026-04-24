@@ -2,10 +2,16 @@ use divan::Bencher;
 use grovers::circuit;
 extern crate quasim;
 use quasim::{
-    circuit::HybridCircuit, cube_simulator::CubeSimulator, fmm_simulator::FullMatMulSimulator, product_state_simulator::ProductStateSimulator, sampler::{RegisterSampler, Sampler}, simulator::{Buildable, Sampleable, StoredRegisters}, sv_simulator::StateVectorSimulator
+    circuit::HybridCircuit,
+    cube_simulator::CubeSimulator,
+    fmm_simulator::FullMatMulSimulator,
+    product_state_simulator::ProductStateSimulator,
+    sampler::{RegisterSampler, Sampler},
+    simulator::{Buildable, Sampleable, StoredRegisters},
+    sv_simulator::StateVectorSimulator,
 };
-#[cfg(feature="gpu")]
-use quasim::{gpu_sv_simulator::GpuStateVectorSimulator, cubecl::wgpu::WgpuRuntime,};
+#[cfg(feature = "gpu")]
+use quasim::{cubecl::wgpu::WgpuRuntime, gpu_sv_simulator::GpuStateVectorSimulator};
 
 macro_rules! bench {
     ($($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr $(;)?) => {
@@ -29,7 +35,7 @@ macro_rules! bench {
     };
 }
 
-const QUBITS: &[usize] = &[2,4,8,12,16];
+const QUBITS: &[usize] = &[2, 4, 8, 12, 16];
 bench!(
     state_vector_simulator, StateVectorSimulator, QUBITS;
     "gpu" => gpu_accelerated, GpuStateVectorSimulator<WgpuRuntime>, QUBITS;
@@ -58,7 +64,10 @@ where
 {
     let mut ret = false;
     bencher.bench_local(|| {
-        ret = divan::black_box(RegisterSampler::new("res").sample({sim.run(); sim})) == correct;
+        ret = divan::black_box(RegisterSampler::new("res").sample({
+            sim.run();
+            sim
+        })) == correct;
     });
     ret
 }
