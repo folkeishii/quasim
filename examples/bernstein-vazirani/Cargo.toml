@@ -6,6 +6,10 @@ edition = "2024"
 [features]
 default = []
 gpu = ["quasim/gpu"]
+wgpu = ["gpu", "quasim/wgpu"]
+cuda = ["gpu", "quasim/cuda"]
+cpu = ["gpu", "quasim/cpu"]
+hip = ["gpu", "quasim/hip"]
 
 [dependencies]
 quasim = { path="../../quasim" }

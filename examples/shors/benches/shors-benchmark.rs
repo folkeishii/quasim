@@ -11,7 +11,15 @@ use quasim::{
     sv_simulator::StateVectorSimulator,
 };
 #[cfg(feature = "gpu")]
-use quasim::{cubecl::wgpu::WgpuRuntime, gpu_sv_simulator::GpuStateVectorSimulator};
+use quasim::{gpu_sv_simulator::GpuStateVectorSimulator};
+#[cfg(feature = "wgpu")]
+use quasim::{cubecl::wgpu::WgpuRuntime};
+#[cfg(feature = "cuda")]
+use quasim::{cubecl::cuda::CudaRuntime};
+#[cfg(feature = "cpu")]
+use quasim::{cubecl::cpu::CpuRuntime};
+#[cfg(feature = "hip")]
+use quasim::{cubecl::hip::HipRuntime};
 
 macro_rules! bench {
     ($($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr $(;)?) => {
@@ -39,7 +47,10 @@ const NS: &[usize] = &[0x3, 0x7, 0xF, 0x3F, 0x7F, 0xFF];
 const FMM_NS: &[usize] = &[0x3, 0x7];
 bench!(
     state_vector_simulator, StateVectorSimulator, NS;
-    "gpu" => gpu_accelerated, GpuStateVectorSimulator<WgpuRuntime>, NS;
+    "wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, NS;
+    "cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, NS;
+    "cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, NS;
+    "hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, NS;
     full_mat_mul_simulator, FullMatMulSimulator, FMM_NS;
     product_state_simulator, ProductStateSimulator, NS;
     cube_simulator, CubeSimulator, NS;
