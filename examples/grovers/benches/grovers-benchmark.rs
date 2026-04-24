@@ -1,50 +1,64 @@
-
-use std::time::Duration;
-
 use divan::Bencher;
 use grovers::circuit;
-use quasim::{
-    circuit::HybridCircuit,
-    fmm_simulator::FullMatMulSimulator,
-    sampler::CircuitSampler,
-    simulator::{Buildable, Sampleable},
-    sv_simulator::StateVectorSimulator,
-};
-
 extern crate quasim;
+use quasim::{
+    circuit::HybridCircuit, cube_simulator::CubeSimulator, fmm_simulator::FullMatMulSimulator, product_state_simulator::ProductStateSimulator, sampler::{RegisterSampler, Sampler}, simulator::{Buildable, Sampleable, StoredRegisters}, sv_simulator::StateVectorSimulator
+};
+#[cfg(feature="gpu")]
+use quasim::{gpu_sv_simulator::GpuStateVectorSimulator, cubecl::wgpu::WgpuRuntime,};
 
-const QUBITS: [usize; 2] = [
-    22,
-    22
-];
+macro_rules! bench {
+    ($($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr $(;)?) => {
+        $(#[cfg(feature = $feat)])?
+        #[divan::bench(
+            consts = $qubits
+        )]
+        fn $name<const N: usize>(bencher: Bencher) {
+            let (mut sim, correct) = build::<$sim, N>();
+            bench(bencher, &mut sim, correct);
+        }
+    };
+
+    (
+        $($ffeat:literal =>)? $first:ident, $fsim:ty, $fqubits:expr $(;
+            $($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr
+        )+ $(;)?
+    ) => {
+        bench!($($ffeat =>)? $first, $fsim, $fqubits);
+        bench!($($($feat =>)? $name, $sim, $qubits);+);
+    };
+}
+
+const QUBITS: &[usize] = &[2,4,8,12,16];
+bench!(
+    state_vector_simulator, StateVectorSimulator, QUBITS;
+    "gpu" => gpu_accelerated, GpuStateVectorSimulator<WgpuRuntime>, QUBITS;
+    full_mat_mul_simulator, FullMatMulSimulator, QUBITS;
+    product_state_simulator, ProductStateSimulator, QUBITS;
+    cube_simulator, CubeSimulator, QUBITS;
+);
 
 fn main() {
     divan::Divan::from_args().main();
 }
 
-#[divan::bench(
-    types = [StateVectorSimulator, FullMatMulSimulator],
-    args = [2,3,4,5,6],//,7,8,9,10,11],
-    sample_count = 10,
-    max_time = Duration::from_secs(1)
-)]
-fn grovers<S>(n_qubits: usize)
+fn build<S, const N: usize>() -> (S, usize)
 where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit>,
+    S: Buildable<HybridCircuit>,
 {
-    let mut func = vec![0; n_qubits];
+    let mut func = [0; N];
     func[0] = 1;
-    S::sample_once(circuit(&func), CircuitSampler).unwrap();
+    let fun_res: usize = func.iter().rev().enumerate().map(|(i, &b)| b << i).sum();
+    (S::build(circuit(&func)).unwrap(), fun_res)
 }
 
-#[divan::bench(
-    args = [2,3,4,5,6],//,7,8,9,10,11],
-)]
-fn grovers2(bencher: Bencher, arg: usize)
+fn bench<S>(bencher: Bencher, sim: &mut S, correct: usize) -> bool
+where
+    S: Sampleable<HybridCircuit> + StoredRegisters,
 {
-    let mut func = vec![0; arg];
-    func[0] = 1;
+    let mut ret = false;
     bencher.bench_local(|| {
-        StateVectorSimulator::sample_once(circuit(&func), CircuitSampler).unwrap();
+        ret = divan::black_box(RegisterSampler::new("res").sample({sim.run(); sim})) == correct;
     });
+    ret
 }

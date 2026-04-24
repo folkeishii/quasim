@@ -18,3 +18,6 @@ pub mod sampler;
 pub mod simulator;
 pub mod state_vector;
 pub mod sv_simulator;
+
+#[cfg(feature = "gpu")]
+pub use cubecl;
