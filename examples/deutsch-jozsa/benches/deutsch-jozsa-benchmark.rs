@@ -1,55 +1,73 @@
-use std::time::Duration;
-
-use deutsch_jozsa::{FunctionType, circuit};
+use deutsch_jozsa::FunctionType;
+use divan::Bencher;
+use deutsch_jozsa::circuit;
+extern crate quasim;
 use quasim::{
     circuit::HybridCircuit,
+    cube_simulator::CubeSimulator,
     fmm_simulator::FullMatMulSimulator,
-    sampler::CircuitSampler,
+    product_state_simulator::ProductStateSimulator,
+    sampler::{RegisterSampler, Sampler},
     simulator::{Buildable, Sampleable, StoredRegisters},
     sv_simulator::StateVectorSimulator,
 };
+#[cfg(feature = "gpu")]
+use quasim::{cubecl::wgpu::WgpuRuntime, gpu_sv_simulator::GpuStateVectorSimulator};
 
-extern crate quasim;
+macro_rules! bench {
+    ($($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr $(;)?) => {
+        $(#[cfg(feature = $feat)])?
+        #[divan::bench(
+            args = [FunctionType::Constant0, FunctionType::Constant1, FunctionType::Balanced],
+            consts = $qubits
+        )]
+        fn $name<const N: usize>(bencher: Bencher, ft: FunctionType) {
+            let mut sim = build::<$sim, N>(ft);
+            bench(bencher, &mut sim);
+        }
+    };
+
+    (
+        $($ffeat:literal =>)? $first:ident, $fsim:ty, $fqubits:expr $(;
+            $($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr
+        )+ $(;)?
+    ) => {
+        bench!($($ffeat =>)? $first, $fsim, $fqubits);
+        bench!($($($feat =>)? $name, $sim, $qubits);+);
+    };
+}
+
+const QUBITS: &[usize] = &[2, 4, 6, 8, 10, 12, 14, 16];
+const FMM_QUBITS: &[usize] = &[2, 4, 6, 8, 10];
+bench!(
+    state_vector_simulator, StateVectorSimulator, QUBITS;
+    "gpu" => gpu_accelerated, GpuStateVectorSimulator<WgpuRuntime>, QUBITS;
+    full_mat_mul_simulator, FullMatMulSimulator, FMM_QUBITS;
+    product_state_simulator, ProductStateSimulator, QUBITS;
+    cube_simulator, CubeSimulator, QUBITS;
+);
 
 fn main() {
     divan::Divan::from_args().main();
 }
 
-#[divan::bench(
-    types = [StateVectorSimulator, FullMatMulSimulator],
-    args = [2,3,4,5,6,7,8,9,10,11],
-    sample_count = 10,
-    max_time = Duration::from_secs(1)
-)]
-fn deutsch_jozsa_constant0<S>(n_qubits: usize)
+fn build<S, const N: usize>(ft: FunctionType) -> S
 where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit>,
+    S: Buildable<HybridCircuit>,
 {
-    S::sample_once(circuit(n_qubits, FunctionType::Constant0), CircuitSampler).unwrap();
+    S::build(circuit(N, ft)).unwrap()
 }
 
-#[divan::bench(
-    types = [StateVectorSimulator, FullMatMulSimulator],
-    args = [2,3,4,5,6,7,8,9,10,11],
-    sample_count = 10,
-    max_time = Duration::from_secs(1)
-)]
-fn deutsch_jozsa_constant1<S>(n_qubits: usize)
+fn bench<S>(bencher: Bencher, sim: &mut S) -> bool
 where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters,
+    S: Sampleable<HybridCircuit> + StoredRegisters,
 {
-    S::sample_once(circuit(n_qubits, FunctionType::Constant1), CircuitSampler).unwrap();
-}
-
-#[divan::bench(
-    types = [StateVectorSimulator, FullMatMulSimulator],
-    args = [2,3,4,5,6,7,8,9,10,11],
-    sample_count = 10,
-    max_time = Duration::from_secs(1)
-)]
-fn deutsch_jozsa_balanced<S>(n_qubits: usize)
-where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit>,
-{
-    S::sample_once(circuit(n_qubits, FunctionType::Balanced), CircuitSampler).unwrap();
+    let mut ret = false;
+    bencher.bench_local(|| {
+        ret = divan::black_box(RegisterSampler::new("res").sample({
+            sim.run();
+            sim
+        })) == 0;
+    });
+    ret
 }

@@ -35,11 +35,12 @@ macro_rules! bench {
     };
 }
 
-const QUBITS: &[usize] = &[2, 4, 8, 12, 16];
+const QUBITS: &[usize] = &[2, 4, 6, 8, 10, 12, 14, 16];
+const FMM_QUBITS: &[usize] = &[2, 4, 6, 8, 10];
 bench!(
     state_vector_simulator, StateVectorSimulator, QUBITS;
     "gpu" => gpu_accelerated, GpuStateVectorSimulator<WgpuRuntime>, QUBITS;
-    full_mat_mul_simulator, FullMatMulSimulator, QUBITS;
+    full_mat_mul_simulator, FullMatMulSimulator, FMM_QUBITS;
     product_state_simulator, ProductStateSimulator, QUBITS;
     cube_simulator, CubeSimulator, QUBITS;
 );

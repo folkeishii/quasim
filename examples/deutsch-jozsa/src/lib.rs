@@ -1,6 +1,6 @@
 use quasim::circuit::{Circuit, HybridCircuit};
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum FunctionType {
     Constant0,
     Constant1,
