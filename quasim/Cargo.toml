@@ -28,6 +28,33 @@ cubecl = { version = "=0.10.0-pre.3", features = ["wgpu", "cuda"], optional = tr
 tracking-allocator = "0.4.0"
 
 [[bench]]
-name = "simulator-comparison"
+name = "circuit-size"
 harness = false
-required-features = ["gpu"]
+
+[[bench]]
+name = "circuit-size-full-entanglement"
+harness = false
+
+[[bench]]
+name = "circuit-size-measurement"
+harness = false
+
+[[bench]]
+name = "circuit-size-mid-measure-all"
+harness = false
+
+[[bench]]
+name = "circuit-size-mid-measurements"
+harness = false
+
+[[bench]]
+name = "num-gates"
+harness = false
+
+[[bench]]
+name = "num-measurements"
+harness = false
+
+[[bench]]
+name = "system-size-entanglement"
+harness = false
