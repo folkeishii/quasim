@@ -21,6 +21,7 @@ impl Simulator for ProductStateSimulator {
     type State = ProductState;
     type BasisValue = Complex<f32>;
     fn run(&mut self) {
+        self.reset();
         while self.next() {}
     }
 
