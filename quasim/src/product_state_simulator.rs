@@ -238,6 +238,12 @@ where
 impl Debuggable for ProductStateSimulator {
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // End of (sub) circuit: Try to return
+            if self.pc_mut().ret() {
+                return true;
+            }
+
+            // Could not return: End of circuit
             return false;
         };
 
