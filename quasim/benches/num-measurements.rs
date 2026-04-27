@@ -21,51 +21,54 @@ use quasim::{
 };
 
 macro_rules! bench {
-    ($($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr $(;)?) => {
+    ($($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr, $arg0:expr $(;)?) => {
         $(#[cfg(feature = $feat)])?
         #[divan::bench(
+            args = $arg0,
             consts = $qubits
         )]
-        fn $name<const N: usize>(bencher: Bencher) {
-            let mut sim = build::<$sim, N>();
+        fn $name<const N: usize>(bencher: Bencher, num_gates: usize) {
+            let mut sim = build::<$sim, N>(num_gates);
             bench(bencher, &mut sim);
         }
     };
 
     (
-        $($ffeat:literal =>)? $first:ident, $fsim:ty, $fqubits:expr $(;
-            $($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr
+        $($ffeat:literal =>)? $first:ident, $fsim:ty, $fqubits:expr, $farg0:expr  $(;
+            $($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr, $arg0:expr
         )+ $(;)?
     ) => {
-        bench!($($ffeat =>)? $first, $fsim, $fqubits);
-        bench!($($($feat =>)? $name, $sim, $qubits);+);
+        bench!($($ffeat =>)? $first, $fsim, $fqubits, $farg0);
+        bench!($($($feat =>)? $name, $sim, $qubits, $arg0);+);
     };
 }
 
-const QUBITS: &[usize] = &[40, 80, 160, 320];
+const QUBITS: &[usize] = &[12, 18];
+const FMM_QUBITS: &[usize] = &[12];
+const NUM: &[usize] = &[40, 80, 160, 320];
 bench!(
-    state_vector_simulator, StateVectorSimulator, QUBITS;
-    "wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, QUBITS;
-    "cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, QUBITS;
-    "cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, QUBITS;
-    "hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, QUBITS;
-    full_mat_mul_simulator, FullMatMulSimulator, QUBITS;
-    product_state_simulator, ProductStateSimulator, QUBITS;
-    cube_simulator, CubeSimulator, QUBITS;
+    state_vector_simulator, StateVectorSimulator, QUBITS, NUM;
+    "wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, QUBITS, NUM;
+    "cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, QUBITS, NUM;
+    "cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, QUBITS, NUM;
+    "hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, QUBITS, NUM;
+    full_mat_mul_simulator, FullMatMulSimulator, FMM_QUBITS, NUM;
+    product_state_simulator, ProductStateSimulator, QUBITS, NUM;
+    cube_simulator, CubeSimulator, QUBITS, NUM;
 );
 
 fn main() {
     divan::Divan::from_args().main();
 }
 
-fn build<S, const N: usize>() -> S
+fn build<S, const N: usize>(num_measurements: usize) -> S
 where
     S: Buildable<HybridCircuit>,
 {
     S::build({
-        let mut circuit = Circuit::new(18).new_reg("r0", 1);
+        let mut circuit = Circuit::new(N).new_reg("r0", 1);
 
-        for _ in 0..N {
+        for _ in 0..num_measurements {
             circuit = circuit.measure_bit(0, ("r0", 0));
         }
 

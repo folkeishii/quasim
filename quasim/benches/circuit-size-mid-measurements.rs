@@ -28,6 +28,10 @@ macro_rules! bench {
             consts = $qubits
         )]
         fn $name<const N: usize>(bencher: Bencher, measurements: usize) {
+            if measurements > N {
+                // Skip bench
+                return;
+            }
             let mut sim = build::<$sim, N>(measurements);
             bench(bencher, &mut sim);
         }
@@ -43,9 +47,9 @@ macro_rules! bench {
     };
 }
 
-const QUBITS: &[usize] = &[16, 22];
+const QUBITS: &[usize] = &[12, 16, 22];
 const MEASUREMENTS: &[usize] = &[2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
-const FMM_QUBITS: &[usize] = &[16];
+const FMM_QUBITS: &[usize] = &[12];
 bench!(
     state_vector_simulator, StateVectorSimulator, QUBITS, MEASUREMENTS;
     "wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, QUBITS, MEASUREMENTS;
