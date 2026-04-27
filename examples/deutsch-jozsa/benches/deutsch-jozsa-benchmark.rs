@@ -1,7 +1,17 @@
 use deutsch_jozsa::FunctionType;
-use divan::Bencher;
 use deutsch_jozsa::circuit;
+use divan::Bencher;
 extern crate quasim;
+#[cfg(feature = "cpu")]
+use quasim::cubecl::cpu::CpuRuntime;
+#[cfg(feature = "cuda")]
+use quasim::cubecl::cuda::CudaRuntime;
+#[cfg(feature = "hip")]
+use quasim::cubecl::hip::HipRuntime;
+#[cfg(feature = "wgpu")]
+use quasim::cubecl::wgpu::WgpuRuntime;
+#[cfg(feature = "gpu")]
+use quasim::gpu_sv_simulator::GpuStateVectorSimulator;
 use quasim::{
     circuit::HybridCircuit,
     cube_simulator::CubeSimulator,
@@ -11,16 +21,6 @@ use quasim::{
     simulator::{Buildable, Sampleable, StoredRegisters},
     sv_simulator::StateVectorSimulator,
 };
-#[cfg(feature = "gpu")]
-use quasim::{gpu_sv_simulator::GpuStateVectorSimulator};
-#[cfg(feature = "wgpu")]
-use quasim::{cubecl::wgpu::WgpuRuntime};
-#[cfg(feature = "cuda")]
-use quasim::{cubecl::cuda::CudaRuntime};
-#[cfg(feature = "cpu")]
-use quasim::{cubecl::cpu::CpuRuntime};
-#[cfg(feature = "hip")]
-use quasim::{cubecl::hip::HipRuntime};
 
 macro_rules! bench {
     ($($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr $(;)?) => {

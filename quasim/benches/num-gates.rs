@@ -73,7 +73,8 @@ where
         }
 
         circuit
-    }).unwrap()
+    })
+    .unwrap()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)
