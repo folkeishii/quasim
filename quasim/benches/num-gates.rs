@@ -8,7 +8,7 @@ use quasim::cubecl::cuda::CudaRuntime;
 use quasim::cubecl::hip::HipRuntime;
 #[cfg(feature = "wgpu")]
 use quasim::cubecl::wgpu::WgpuRuntime;
-#[cfg(feature = "gpu")]
+#[cfg(any(feature = "cpu", feature = "cuda", feature = "hip", feature = "wgpu"))]
 use quasim::gpu_sv_simulator::GpuStateVectorSimulator;
 use quasim::{
     circuit::{Circuit, PureCircuit},
