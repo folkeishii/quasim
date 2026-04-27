@@ -16,7 +16,10 @@ pub struct BatchedCircuit<const MAX_QUBITS_PER_BATCH: usize = 3> {
 
 #[derive(Debug, Clone)]
 pub enum BatchedCircuitOp {
-    BatchCommands(Vec<BatchCommand>),
+    BatchCommands {
+        commands: Vec<BatchCommand>,
+        next_pc: usize,
+    },
     Instruction(Instruction),
 }
 
@@ -36,7 +39,7 @@ impl<const MAX_QUBITS_PER_BATCH: usize> BatchedCircuit<MAX_QUBITS_PER_BATCH> {
         self.n_qubits
     }
 
-    fn flush_batches(&mut self, to_inst_index: usize) {
+    fn flush_batches(&mut self, to_inst_index: usize, next_pc: usize) {
         let batch_commands = self.batcher.flush_batches();
 
         if batch_commands.is_empty() {
@@ -45,7 +48,10 @@ impl<const MAX_QUBITS_PER_BATCH: usize> BatchedCircuit<MAX_QUBITS_PER_BATCH> {
 
         self.instruction_lookup.insert(
             to_inst_index,
-            BatchedCircuitOp::BatchCommands(batch_commands),
+            BatchedCircuitOp::BatchCommands {
+                commands: batch_commands,
+                next_pc,
+            },
         );
     }
 }
@@ -66,11 +72,12 @@ where
 
         let mut batch_start_inst_index = 0;
         let flat_instructions = flattened_instructions(&circuit);
+        let flat_instruction_count = flat_instructions.len();
         let jump_targets = collect_jump_targets(&flat_instructions);
 
         for (inst_index, inst) in flat_instructions.into_iter().enumerate() {
             if jump_targets.contains(&inst_index) {
-                batched_circuit.flush_batches(batch_start_inst_index);
+                batched_circuit.flush_batches(batch_start_inst_index, inst_index);
                 batch_start_inst_index = inst_index;
             }
 
@@ -79,7 +86,7 @@ where
                     batched_circuit.batcher.add_gate(&gate);
                 }
                 _ => {
-                    batched_circuit.flush_batches(batch_start_inst_index);
+                    batched_circuit.flush_batches(batch_start_inst_index, inst_index);
                     batched_circuit
                         .instruction_lookup
                         .insert(inst_index, BatchedCircuitOp::Instruction(inst));
@@ -88,7 +95,7 @@ where
             }
         }
 
-        batched_circuit.flush_batches(batch_start_inst_index);
+        batched_circuit.flush_batches(batch_start_inst_index, flat_instruction_count);
 
         batched_circuit
     }
@@ -203,6 +210,25 @@ mod tests {
         assert!(matches!(
             batched.operation(4),
             Some(BatchedCircuitOp::Instruction(Instruction::JumpIf(_, 6)))
+        ));
+    }
+
+    #[test]
+    fn batch_commands_track_original_instruction_span() {
+        let circuit = Circuit::new(1).new_reg("m", 1).h(0).h(0).measure("m");
+        let batched = <BatchedCircuit>::from(circuit);
+
+        let Some(BatchedCircuitOp::BatchCommands { commands, next_pc }) = batched.operation(0)
+        else {
+            panic!("expected initial batch commands");
+        };
+
+        assert_eq!(*next_pc, 2);
+        assert_eq!(commands.len(), 1);
+        assert_eq!(commands[0].size, 1);
+        assert!(matches!(
+            batched.operation(*next_pc),
+            Some(BatchedCircuitOp::Instruction(Instruction::MeasureAll(_)))
         ));
     }
 }
