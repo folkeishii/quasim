@@ -43,8 +43,8 @@ macro_rules! bench {
     };
 }
 
-const QUBITS: &[usize] = &[12, 18];
-const FMM_QUBITS: &[usize] = &[12];
+const QUBITS: &[usize] = &[10, 18];
+const FMM_QUBITS: &[usize] = &[10];
 const NUM: &[usize] = &[250, 500, 1000, 2000];
 bench!(
     state_vector_simulator, StateVectorSimulator, QUBITS, NUM;
