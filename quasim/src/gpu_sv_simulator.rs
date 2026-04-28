@@ -34,11 +34,11 @@ impl<R: Runtime> GpuStateVectorSimulator<R> {
 
         while let Some(op) = self.batched_circuit.operation(self.pc) {
             match op {
-                BatchedCircuitOp::BatchCommands(commands) => {
+                BatchedCircuitOp::BatchCommands { commands, next_pc } => {
                     for command in commands {
                         self.gpu_state_vector.apply_batch_command(command);
-                        self.pc += command.size as usize;
                     }
+                    self.pc = *next_pc;
                 }
                 BatchedCircuitOp::Instruction(instruction) => {
                     self.apply_instruction(&instruction.clone());
