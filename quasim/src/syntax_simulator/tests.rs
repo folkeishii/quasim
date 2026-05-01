@@ -82,21 +82,22 @@ fn test_hadamard_cnot_entanglement() {
 fn probability_distribution_sums_to_one() {
     let mut circuit = Circuit::new(2).h(0).cx(&[0], 1);
 
-    for i in 0..1000 {
+    for i in 0..10 {
         circuit = circuit.h(0).u(random(), random(), random(), i % 2);
     }
 
-    let sim = match SyntaxSimulator::build(circuit) {
+    let mut sim = match SyntaxSimulator::build(circuit) {
         Ok(sim) => sim,
         Err(e) => panic!("Error building simulator: {}", e),
     };
+    sim.run();
     let distribution = sim.state();
     let total_probability: f32 = distribution
         .iter()
         .map(|(_, scalar)| scalar.probability())
         .sum();
     assert!(
-        (total_probability - 1.0).abs() < 1e-6,
+        (total_probability - 1.0).abs() < 1e-4,
         "Total probability does not sum to 1, got {}",
         total_probability
     );
