@@ -83,11 +83,14 @@ impl Simulator for SyntaxSimulator {
     type State = HashMap<usize, Scalar>;
 
     fn run(&mut self) {
+        self.reset();
         self.step_all();
     }
 
     fn reset(&mut self) {
-        todo!()
+        self.pc = CircuitPc::default();
+        // Old probability cache gets destroyed when old sum gets destroyed
+        self.sum = SumOfScaledStates::guaranteed_full_zero(self.circuit.n_qubits());
     }
 
     fn state(&self) -> &Self::State {
