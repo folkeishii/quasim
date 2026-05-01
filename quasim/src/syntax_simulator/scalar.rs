@@ -60,8 +60,8 @@ impl Add for Scalar {
             }
         } else {
             Self {
-                frac_1_sqrt_2_power: self.frac_1_sqrt_2_power,
-                number: self.number + Into::<Complex<f32>>::into(rhs),
+                frac_1_sqrt_2_power: 0,
+                number: Into::<Complex<f32>>::into(self) + Into::<Complex<f32>>::into(rhs),
             }
         }
     }
