@@ -5,7 +5,10 @@ use nalgebra::Complex;
 
 use crate::{
     gate::QBits,
-    syntax_simulator::{ScaledState, scalar::Scalar, state::Sum},
+    syntax_simulator::{
+        scalar::Scalar,
+        state::{ScaledState, Sum},
+    },
 };
 
 pub type TrueQubitBasis = bool;
