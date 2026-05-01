@@ -160,9 +160,13 @@ impl ExtendedBasis {
         match self {
             Binary(_) => [Some(ScaledState(self, Scalar::ONE)), None],
             Superposition(bases) => {
-                let qubit_basis_to_expand = bases
-                    .get(qubit_to_expand)
-                    .expect("Tried to expand a qubit out of bounds");
+                let Some(qubit_basis_to_expand) = bases.get(qubit_to_expand) else {
+                    // If the qubit to expand is out of bounds, it is effectively in the |0⟩ state, so there is nothing to expand.
+                    return [
+                        Some(ScaledState(Self::Superposition(bases), Scalar::ONE)),
+                        None,
+                    ];
+                };
 
                 use ExtendedQubitBasis::*;
                 match *qubit_basis_to_expand {
@@ -447,20 +451,27 @@ impl ExtendedBasis {
                 angle,
             ),
             Superposition(_) => {
-                let angle = Complex::from(angle / 2f32);
+                let half_angle = Complex::from(angle / 2f32);
                 let expanded = self.expand_qubit(target);
 
-                let Some(ScaledState(ref zero_basis, ref zero_scalar)) = expanded[0] else {
+                let Some(ScaledState(ref guaranteed_basis, ref guaranteed_scalar)) = expanded[0]
+                else {
                     panic!("Would expect at least one state after expansion");
                 };
 
-                let top_left = Scalar::from(angle.cos()) * *zero_scalar;
-                let bottom_left = Scalar::from(angle.sin()) * *zero_scalar;
-
+                let top_left = Scalar::from(half_angle.cos());
+                let bottom_left = Scalar::from(half_angle.sin());
+                let top_right = Scalar::from(-half_angle.sin());
+                let bottom_right = top_left;
                 let r: [Option<ScaledState>; 2] =
                     if let Some(ScaledState(ref one_basis, ref one_scalar)) = expanded[1] {
-                        let top_right = Scalar::from(-angle.sin()) * *one_scalar;
-                        let bottom_right = Scalar::from(angle.cos()) * *one_scalar;
+                        // If there are two states after expansion, guaranteed_basis is the |0⟩ case and one_basis is the |1⟩ case
+                        let zero_basis = guaranteed_basis;
+                        let zero_scalar = guaranteed_scalar;
+                        let top_left = top_left * *zero_scalar;
+                        let bottom_left = bottom_left * *zero_scalar;
+                        let top_right = top_right * *one_scalar;
+                        let bottom_right = bottom_right * *one_scalar;
 
                         [
                             Some(ScaledState(zero_basis.clone(), top_left + top_right)),
@@ -468,14 +479,47 @@ impl ExtendedBasis {
                         ]
                     } else {
                         // Zero case only expands into one state, so the target is already binary
-                        let mut one_basis = zero_basis.clone();
-                        one_basis.x(target);
+                        let guaranteed_basis_vec = guaranteed_basis.clone().vec_form();
+                        use ExtendedQubitBasis::*;
+                        let old_target_basis = match guaranteed_basis_vec.get(target) {
+                            None => {
+                                // If the target qubit is out of bounds, it is effectively in the |0⟩ state
+                                &Zero
+                            }
+                            Some(basis) => basis,
+                        };
 
-                        [
-                            // Top right and bottom right are zero because there is no one case
-                            Some(ScaledState(zero_basis.clone(), top_left)),
-                            Some(ScaledState(one_basis.clone(), bottom_left)),
-                        ]
+                        match old_target_basis {
+                            Zero => {
+                                // |0⟩ case only expands into |0⟩, so the target is in the |0⟩ state
+                                // After R_y, the |0⟩ state becomes cos(θ/2)|0⟩ + sin(θ/2)|1⟩
+
+                                let zero_basis = guaranteed_basis.clone();
+                                let mut one_basis = guaranteed_basis.clone();
+                                one_basis.x(target);
+
+                                [
+                                    Some(*guaranteed_scalar * ScaledState(zero_basis, top_left)),
+                                    Some(*guaranteed_scalar * ScaledState(one_basis, bottom_left)),
+                                ]
+                            }
+                            One => {
+                                // |1⟩ case only expands into |1⟩, so the target is in the |1⟩ state
+                                // After R_y, the |1⟩ state becomes -sin(θ/2)|0⟩ + cos(θ/2)|1⟩
+
+                                let mut zero_basis = guaranteed_basis.clone();
+                                zero_basis.x(target);
+                                let one_basis = guaranteed_basis.clone();
+
+                                [
+                                    Some(*guaranteed_scalar * ScaledState(zero_basis, top_right)),
+                                    Some(*guaranteed_scalar * ScaledState(one_basis, bottom_right)),
+                                ]
+                            }
+                            _ => panic!(
+                                "Target qubit should have already been expanded into binary!"
+                            ),
+                        }
                     };
 
                 r
