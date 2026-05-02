@@ -7,15 +7,13 @@ mod tests;
 use std::collections::HashMap;
 
 use log::debug;
+use nalgebra::Complex;
 
 use crate::{
     circuit::{Circuit, PureCircuit, pc::CircuitPc},
     instruction::PureInstruction,
     simulator::{Debuggable, Sampleable, Simulator},
-    syntax_simulator::{
-        scalar::Scalar,
-        state::{ScaledState, SumOfScaledStates},
-    },
+    syntax_simulator::state::{ScaledState, SumOfScaledStates},
 };
 
 pub struct SyntaxSimulator {
@@ -79,8 +77,8 @@ impl TryFrom<Circuit<PureCircuit>> for SyntaxSimulator {
 }
 
 impl Simulator for SyntaxSimulator {
-    type BasisValue = Scalar;
-    type State = HashMap<usize, Scalar>;
+    type BasisValue = Complex<f32>;
+    type State = HashMap<usize, Complex<f32>>;
 
     fn run(&mut self) {
         self.reset();

@@ -1,6 +1,7 @@
 use std::{cell::OnceCell, collections::HashMap, fmt::Debug};
 
 use log::debug;
+use nalgebra::Complex;
 use rand::random;
 
 use crate::{
@@ -53,7 +54,7 @@ pub type Sum = Vec<ScaledState>;
 pub struct SumOfScaledStates {
     pub n_qubits: usize,
     pub sum: Sum,
-    probability_distribution_cache: OnceCell<HashMap<usize, Scalar>>,
+    probability_distribution_cache: OnceCell<HashMap<usize, Complex<f32>>>,
 }
 
 impl SumOfScaledStates {
@@ -288,24 +289,25 @@ impl SumOfScaledStates {
             .flat_map(|s| s.all_inherent_states())
     }
 
-    pub fn calculate_probability_distribution(&self) -> &HashMap<usize, Scalar> {
+    pub fn calculate_probability_distribution(&self) -> &HashMap<usize, Complex<f32>> {
         self.probability_distribution_cache.get_or_init(|| {
-            let mut summed_scalars: HashMap<usize, Scalar> = HashMap::new();
+            let mut summed_scalars: HashMap<usize, Complex<f32>> = HashMap::new();
             let non_zero_states = self.all_states_unsugared().filter(|s| !s.has_zero_coef());
             for ScaledState(basis, scalar) in non_zero_states {
                 let basis = basis.into_binary(); // Unsugaring guarantees binary state here
 
                 if let Some(old_scalar) = summed_scalars.get(&basis) {
                     // There already was a scalar for this basis
+                    let scalar: Complex<f32> = scalar.into();
                     let new_scalar = *old_scalar + scalar;
-                    if new_scalar.probability() == 0f32 {
+                    if new_scalar.norm_sqr() == 0f32 {
                         summed_scalars.remove(&basis);
                     } else {
                         summed_scalars.insert(basis, new_scalar);
                     }
                 } else {
                     // This basis has no previous terms
-                    summed_scalars.insert(basis, scalar);
+                    summed_scalars.insert(basis, scalar.into());
                 }
             }
 
@@ -315,14 +317,14 @@ impl SumOfScaledStates {
     }
 }
 
-impl QuantumState for HashMap<usize, Scalar> {
-    type BasisValue = Scalar;
+impl QuantumState for HashMap<usize, Complex<f32>> {
+    type BasisValue = Complex<f32>;
 
     fn collapse(&self) -> usize {
         let mut probability_so_far = 0f32;
         let guess = random::<f32>();
         for (state, scalar) in self {
-            probability_so_far += scalar.probability();
+            probability_so_far += scalar.norm_sqr();
             if probability_so_far >= guess {
                 return *state;
             }
@@ -336,9 +338,10 @@ impl QuantumState for HashMap<usize, Scalar> {
 
     fn basis_value(&self, basis: usize) -> Self::BasisValue {
         let Some(s) = self.get(&basis) else {
-            return Scalar::ZERO;
+            return Complex::from(0.0);
         };
 
-        *s
+        let s: Complex<f32> = (*s).into();
+        s
     }
 }

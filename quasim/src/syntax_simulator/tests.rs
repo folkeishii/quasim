@@ -97,7 +97,7 @@ fn probability_distribution_sums_to_one() {
     let distribution = sim.state();
     let total_probability: f32 = distribution
         .iter()
-        .map(|(_, scalar)| scalar.probability())
+        .map(|(_, scalar)| scalar.norm_sqr())
         .sum();
     assert!(
         (total_probability - 1.0).abs() < 1e-4,
