@@ -188,24 +188,36 @@ impl ExtendedBasis {
                     ExtendedQubitBasis::Minus | ExtendedQubitBasis::MinusI
                 );
 
+                let apply_i: bool = matches!(
+                    qubit_basis_to_expand,
+                    ExtendedQubitBasis::I | ExtendedQubitBasis::MinusI
+                );
+
                 let mut zero_case = bases.clone();
                 zero_case[qubit_to_expand] = Zero;
                 let mut one_case = bases;
                 one_case[qubit_to_expand] = One;
+                let one_scalar = if apply_i {
+                    Scalar::I
+                        * if apply_minus {
+                            -Scalar::FRAC_1_SQRT_2
+                        } else {
+                            Scalar::FRAC_1_SQRT_2
+                        }
+                } else {
+                    if apply_minus {
+                        -Scalar::FRAC_1_SQRT_2
+                    } else {
+                        Scalar::FRAC_1_SQRT_2
+                    }
+                };
 
                 [
                     Some(ScaledState(
                         Self::Superposition(zero_case),
                         Scalar::FRAC_1_SQRT_2,
                     )),
-                    Some(ScaledState(
-                        Self::Superposition(one_case),
-                        if apply_minus {
-                            -Scalar::FRAC_1_SQRT_2
-                        } else {
-                            Scalar::FRAC_1_SQRT_2
-                        },
-                    )),
+                    Some(ScaledState(Self::Superposition(one_case), one_scalar)),
                 ]
             }
         }
