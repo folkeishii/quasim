@@ -117,7 +117,7 @@ impl Display for Scalar {
         if self.frac_1_sqrt_2_power == 0 {
             write!(f, "{}", self.number)
         } else {
-            write!(f, "({} / √2^{}))", self.number, self.frac_1_sqrt_2_power)
+            write!(f, "({} / √2^{})", self.number, self.frac_1_sqrt_2_power)
         }
     }
 }
