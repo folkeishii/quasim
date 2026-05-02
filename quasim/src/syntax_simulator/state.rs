@@ -90,11 +90,14 @@ impl SumOfScaledStates {
 
         use GateType::*;
         if matches!(gate.get_type(), GateType::SWAP) {
+            // TODO: Implement more efficient SWAP that doesn't require 3 CNOTs
             let lsb = [targets[0]];
             let msb = [targets[1]];
-            self.apply_gate(&Gate::new(X, &msb, &lsb).unwrap());
-            self.apply_gate(&Gate::new(X, &lsb, &msb).unwrap());
-            self.apply_gate(&Gate::new(X, &msb, &lsb).unwrap());
+            let lsb_with_controls = controls.union(QBits::from_indices(&lsb)).get_indices();
+            let msb_with_controls = controls.union(QBits::from_indices(&msb)).get_indices();
+            self.apply_gate(&Gate::new(X, &msb_with_controls, &lsb).unwrap());
+            self.apply_gate(&Gate::new(X, &lsb_with_controls, &msb).unwrap());
+            self.apply_gate(&Gate::new(X, &msb_with_controls, &lsb).unwrap());
             return;
         }
 
