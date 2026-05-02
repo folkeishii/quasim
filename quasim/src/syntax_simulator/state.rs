@@ -67,6 +67,11 @@ impl SumOfScaledStates {
         }
     }
 
+    pub fn collapse_to_binary_state(&mut self, basis: usize) {
+        self.probability_distribution_cache.take();
+        self.sum = vec![ScaledState(ExtendedBasis::Binary(basis), Scalar::ONE)];
+    }
+
     /// Returns the scaled states over all basis states
     /// that exist at this point. Extended bases (eg, |+⟩, |−⟩, |i⟩, |−i⟩)
     /// will not be expanded, so the resulting states may still contain extended bases.

@@ -545,3 +545,65 @@ fn random_circuits_match_matrix_multiplication() {
         );
     }
 }
+
+// Common tests
+#[cfg(test)]
+mod common_tests {
+    use crate::common_test;
+    use crate::syntax_simulator::SyntaxSimulator;
+
+    #[test]
+    fn double_sub() {
+        common_test::double_sub::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn deep_sub() {
+        common_test::deep_sub::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn hybrid_test() {
+        common_test::hybrid_test::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn register_test() {
+        common_test::register_test::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn test_measure_overwrites_with_zero() {
+        common_test::test_measure_overwrites_with_zero::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn test_reset() {
+        common_test::test_reset::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn test_reset_with_shared_scratch_register() {
+        common_test::test_reset_with_shared_scratch_register::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn deep_ctrl_sub() {
+        common_test::deep_ctrl_sub::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn mid_measure_all() {
+        common_test::mid_measure_all::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn mid_measure_bit() {
+        common_test::mid_measure_bit::<SyntaxSimulator>();
+    }
+
+    #[test]
+    fn interleaved() {
+        common_test::interleaved::<SyntaxSimulator>();
+    }
+}
