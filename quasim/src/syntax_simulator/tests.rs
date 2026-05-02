@@ -340,3 +340,208 @@ fn matches_matrix_multiplication_for_swap() {
 
     assert!(equal_state_c(&actual, &expected, 2, 0.001));
 }
+
+fn next_random_u64(state: &mut u64) -> u64 {
+    *state = state
+        .wrapping_mul(6364136223846793005)
+        .wrapping_add(1442695040888963407);
+    *state
+}
+
+fn random_index(state: &mut u64, upper_bound: usize) -> usize {
+    next_random_u64(state) as usize % upper_bound
+}
+
+fn random_angle(state: &mut u64) -> f32 {
+    let unit = next_random_u64(state) as f32 / u64::MAX as f32;
+    (unit * 2.0 - 1.0) * PI
+}
+
+#[test]
+fn random_circuits_match_matrix_multiplication() {
+    const N_QUBITS: usize = 3;
+    const N_TRIALS: usize = 16;
+    const N_STEPS: usize = 12;
+
+    let seed = random::<u64>();
+    let mut rng_state = seed;
+
+    for trial in 0..N_TRIALS {
+        let mut circuit = Circuit::new(N_QUBITS).x(0).x(1).x(2);
+        let mut expected = StateVector::zeros(N_QUBITS);
+        let mut sequence = vec![
+            String::from("x(0)"),
+            String::from("x(1)"),
+            String::from("x(2)"),
+        ];
+        for gate in [
+            Gate::new(GateType::X, &[], &[0]).unwrap(),
+            Gate::new(GateType::X, &[], &[1]).unwrap(),
+            Gate::new(GateType::X, &[], &[2]).unwrap(),
+        ] {
+            expected.apply_matrix(&expand_matrix_from_gate(&gate, N_QUBITS));
+        }
+
+        for _ in 0..N_STEPS {
+            let choice = random_index(&mut rng_state, 14);
+            let target = random_index(&mut rng_state, N_QUBITS);
+
+            match choice {
+                0 => {
+                    circuit = circuit.x(target);
+                    sequence.push(format!("x({})", target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::X, &[], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                1 => {
+                    circuit = circuit.y(target);
+                    sequence.push(format!("y({})", target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::Y, &[], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                2 => {
+                    circuit = circuit.z(target);
+                    sequence.push(format!("z({})", target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::Z, &[], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                3 => {
+                    circuit = circuit.h(target);
+                    sequence.push(format!("h({})", target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::H, &[], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                4 => {
+                    circuit = circuit.s(target);
+                    sequence.push(format!("s({})", target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::S, &[], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                5 => {
+                    let theta = random_angle(&mut rng_state);
+                    let phi = random_angle(&mut rng_state);
+                    let lambda = random_angle(&mut rng_state);
+                    circuit = circuit.u(theta, phi, lambda, target);
+                    sequence.push(format!(
+                        "u({:.3}, {:.3}, {:.3}, {})",
+                        theta, phi, lambda, target
+                    ));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::U(theta, phi, lambda), &[], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                6 => {
+                    let control = (target + 1) % N_QUBITS;
+                    circuit = circuit.cx(&[control], target);
+                    sequence.push(format!("cx([{}], {})", control, target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::X, &[control], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                7 => {
+                    let control = (target + 1) % N_QUBITS;
+                    circuit = circuit.cy(&[control], target);
+                    sequence.push(format!("cy([{}], {})", control, target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::Y, &[control], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                8 => {
+                    let control = (target + 1) % N_QUBITS;
+                    circuit = circuit.cz(&[control], target);
+                    sequence.push(format!("cz([{}], {})", control, target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::Z, &[control], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                9 => {
+                    let control = (target + 1) % N_QUBITS;
+                    circuit = circuit.ch(&[control], target);
+                    sequence.push(format!("ch([{}], {})", control, target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::H, &[control], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                10 => {
+                    let control = (target + 1) % N_QUBITS;
+                    circuit = circuit.cs(&[control], target);
+                    sequence.push(format!("cs([{}], {})", control, target));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::S, &[control], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                11 => {
+                    let control = (target + 1) % N_QUBITS;
+                    let theta = random_angle(&mut rng_state);
+                    let phi = random_angle(&mut rng_state);
+                    let lambda = random_angle(&mut rng_state);
+                    circuit = circuit.cu(theta, phi, lambda, &[control], target);
+                    sequence.push(format!(
+                        "cu({:.3}, {:.3}, {:.3}, [{}], {})",
+                        theta, phi, lambda, control, target
+                    ));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::U(theta, phi, lambda), &[control], &[target]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                12 => {
+                    let other = (target + 1) % N_QUBITS;
+                    circuit = circuit.swap(target, other);
+                    sequence.push(format!("swap({}, {})", target, other));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::SWAP, &[], &[target, other]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+                _ => {
+                    let control = (target + 1) % N_QUBITS;
+                    let t1 = control;
+                    let t2 = (target + 2) % N_QUBITS;
+                    circuit = circuit.cswap(&[target], t1, t2);
+                    sequence.push(format!("cswap([{}], {}, {})", target, t1, t2));
+                    expected.apply_matrix(&expand_matrix_from_gate(
+                        &Gate::new(GateType::SWAP, &[target], &[t1, t2]).unwrap(),
+                        N_QUBITS,
+                    ));
+                }
+            }
+        }
+
+        let mut syntax_simulator = match SyntaxSimulator::build(circuit) {
+            Ok(simulator) => simulator,
+            Err(error) => panic!("Error building simulator: {}", error),
+        };
+        syntax_simulator.run();
+
+        let mut actual = StateVector::zeros(N_QUBITS);
+        let syntax_state = syntax_simulator.state();
+        for basis in 0..(1 << N_QUBITS) {
+            actual[basis] = syntax_state.basis_value(basis).into();
+        }
+
+        assert!(
+            equal_state_c(&actual, &expected, N_QUBITS, 0.01),
+            "Random circuit mismatch on trial {} with seed 0x{:016X}: {:?}",
+            trial,
+            seed,
+            sequence
+        );
+    }
+}
