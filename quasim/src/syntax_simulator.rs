@@ -11,7 +11,7 @@ use log::debug;
 use crate::{
     circuit::{Circuit, PureCircuit, pc::CircuitPc},
     instruction::PureInstruction,
-    simulator::{Sampleable, Simulator},
+    simulator::{Debuggable, Sampleable, Simulator},
     syntax_simulator::{
         scalar::Scalar,
         state::{ScaledState, SumOfScaledStates},
@@ -95,5 +95,22 @@ impl Simulator for SyntaxSimulator {
 
     fn state(&self) -> &Self::State {
         &self.sum.calculate_probability_distribution()
+    }
+}
+
+impl Debuggable for SyntaxSimulator {
+    fn next(&mut self) -> bool {
+        self.step().is_some()
+    }
+
+    fn double_ended(&self) -> bool {
+        false
+    }
+
+    fn current_instruction(&self) -> (&CircuitPc, Option<crate::instruction::Instruction>) {
+        (
+            &self.pc,
+            self.circuit.instruction(&self.pc).map(|i| i.clone().into()),
+        )
     }
 }
