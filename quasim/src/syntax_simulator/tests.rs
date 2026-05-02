@@ -184,3 +184,23 @@ fn test_parity_by_qft() {
         );
     }
 }
+
+#[test]
+fn swap_respects_controls() {
+    let circuit = Circuit::new(3).x(1).h(0).cswap(&[0], 1, 2);
+    for _ in 0..1000 {
+        let mut sim = match SyntaxSimulator::build(circuit.clone()) {
+            Ok(sim) => sim,
+            Err(e) => panic!("Error building simulator: {}", e),
+        };
+        sim.run();
+        let result = sim.state().collapse();
+        // If the least significant bit is 0, the swap should not happen and we should get 0b010,
+        // but if it's 1, the swap should happen and we should get 0b101.
+        assert!(
+            result == 0b010 || result == 0b101,
+            "Failed with result {:03b}",
+            result
+        );
+    }
+}
