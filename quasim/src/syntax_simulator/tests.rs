@@ -204,3 +204,43 @@ fn swap_respects_controls() {
         );
     }
 }
+
+#[test]
+fn qubit_expansion_respects_i() {
+    let basis_to_expand = ExtendedBasis::Superposition(vec![ExtendedQubitBasis::I]);
+
+    use ExtendedQubitBasis::*;
+    assert_eq!(
+        basis_to_expand.clone().expand_qubit(0),
+        [
+            Some(ScaledState(
+                ExtendedBasis::Superposition(vec![Zero]),
+                Scalar::FRAC_1_SQRT_2
+            )),
+            Some(ScaledState(
+                ExtendedBasis::Superposition(vec![One]),
+                Scalar::I * Scalar::FRAC_1_SQRT_2
+            )),
+        ]
+    );
+}
+
+#[test]
+fn qubit_expansion_respects_minus() {
+    let basis_to_expand = ExtendedBasis::Superposition(vec![ExtendedQubitBasis::Minus]);
+
+    use ExtendedQubitBasis::*;
+    assert_eq!(
+        basis_to_expand.clone().expand_qubit(0),
+        [
+            Some(ScaledState(
+                ExtendedBasis::Superposition(vec![Zero]),
+                Scalar::FRAC_1_SQRT_2
+            )),
+            Some(ScaledState(
+                ExtendedBasis::Superposition(vec![One]),
+                -Scalar::FRAC_1_SQRT_2
+            )),
+        ]
+    );
+}
