@@ -4,8 +4,11 @@ use rand::random;
 
 use crate::{
     circuit::Circuit,
+    ext::{equal_state_c, expand_matrix_from_gate},
     gate::QBits,
+    gate::{Gate, GateType},
     simulator::{Buildable, QuantumState},
+    state_vector::StateVector,
     syntax_simulator::{
         basis::{ExtendedBasis, ExtendedQubitBasis},
         scalar::Scalar,
@@ -243,4 +246,97 @@ fn qubit_expansion_respects_minus() {
             )),
         ]
     );
+}
+
+#[test]
+fn respects_global_phase_against_matrix_multiplication() {
+    let circuit = Circuit::new(1).x(0).s(0).h(0);
+
+    let mut syntax_simulator = match SyntaxSimulator::build(circuit.clone()) {
+        Ok(simulator) => simulator,
+        Err(error) => panic!("Error building simulator: {}", error),
+    };
+    syntax_simulator.run();
+
+    let mut expected = StateVector::zeros(1);
+    for gate in [
+        Gate::new(GateType::X, &[], &[0]).unwrap(),
+        Gate::new(GateType::S, &[], &[0]).unwrap(),
+        Gate::new(GateType::H, &[], &[0]).unwrap(),
+    ] {
+        expected.apply_matrix(&expand_matrix_from_gate(&gate, 1));
+    }
+
+    let mut actual = StateVector::zeros(1);
+    let syntax_state = syntax_simulator.state();
+    for basis in 0..2 {
+        actual[basis] = syntax_state.basis_value(basis).into();
+    }
+
+    assert!(equal_state_c(&actual, &expected, 1, 0.001));
+}
+
+#[test]
+fn matches_matrix_multiplication_for_single_qubit_gate_types() {
+    let circuit = Circuit::new(1)
+        .x(0)
+        .y(0)
+        .z(0)
+        .h(0)
+        .s(0)
+        .u(PI / 3.0, PI / 4.0, -PI / 5.0, 0);
+
+    let mut syntax_simulator = match SyntaxSimulator::build(circuit.clone()) {
+        Ok(simulator) => simulator,
+        Err(error) => panic!("Error building simulator: {}", error),
+    };
+    syntax_simulator.run();
+
+    let mut expected = StateVector::zeros(1);
+    for gate in [
+        Gate::new(GateType::X, &[], &[0]).unwrap(),
+        Gate::new(GateType::Y, &[], &[0]).unwrap(),
+        Gate::new(GateType::Z, &[], &[0]).unwrap(),
+        Gate::new(GateType::H, &[], &[0]).unwrap(),
+        Gate::new(GateType::S, &[], &[0]).unwrap(),
+        Gate::new(GateType::U(PI / 3.0, PI / 4.0, -PI / 5.0), &[], &[0]).unwrap(),
+    ] {
+        expected.apply_matrix(&expand_matrix_from_gate(&gate, 1));
+    }
+
+    let mut actual = StateVector::zeros(1);
+    let syntax_state = syntax_simulator.state();
+    for basis in 0..2 {
+        actual[basis] = syntax_state.basis_value(basis).into();
+    }
+
+    assert!(equal_state_c(&actual, &expected, 1, 0.001));
+}
+
+#[test]
+fn matches_matrix_multiplication_for_swap() {
+    let circuit = Circuit::new(2).x(0).h(1).swap(0, 1);
+
+    let mut syntax_simulator = match SyntaxSimulator::build(circuit.clone()) {
+        Ok(simulator) => simulator,
+        Err(error) => panic!("Error building simulator: {}", error),
+    };
+    syntax_simulator.run();
+
+    let mut expected = StateVector::zeros(2);
+    for gate in [
+        Gate::new(GateType::X, &[], &[0]).unwrap(),
+        Gate::new(GateType::H, &[], &[1]).unwrap(),
+        Gate::new(GateType::SWAP, &[], &[0, 1]).unwrap(),
+    ] {
+        expected.apply_matrix(&expand_matrix_from_gate(&gate, 2));
+    }
+
+    let mut actual = StateVector::zeros(2);
+    let syntax_state = syntax_simulator.state();
+    for basis in 0..4 {
+        actual[basis] = syntax_state.basis_value(basis).into();
+    }
+
+    assert!(equal_state_c(&actual, &expected, 2, 0.001));
 }
