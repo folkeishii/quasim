@@ -88,6 +88,7 @@ impl SumOfScaledStates {
             targets
         );
 
+        use GateType::*;
         if matches!(gate.get_type(), GateType::SWAP) {
             let lsb = [targets[0]];
             let msb = [targets[1]];
@@ -100,7 +101,6 @@ impl SumOfScaledStates {
         assert_eq!(targets.len(), 1);
         let only_target = targets[0];
 
-        use GateType::*;
         self.sum = match gate.get_type() {
             X => self.apply_controlled_gate(ExtendedBasis::x, controls, only_target),
             Y => self.apply_controlled_gate(ExtendedBasis::y, controls, only_target),
