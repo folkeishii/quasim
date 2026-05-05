@@ -12,6 +12,7 @@ use quasim::cubecl::hip::HipRuntime;
 use quasim::cubecl::wgpu::WgpuRuntime;
 #[cfg(any(feature = "cpu", feature = "cuda", feature = "hip", feature = "wgpu"))]
 use quasim::gpu_sv_simulator::GpuStateVectorSimulator;
+use quasim::syntax_simulator::SyntaxSimulator;
 use quasim::{
     circuit::HybridCircuit,
     cube_simulator::CubeSimulator,
@@ -56,6 +57,7 @@ bench!(
     full_mat_mul_simulator, FullMatMulSimulator, FMM_QUBITS;
     product_state_simulator, ProductStateSimulator, QUBITS;
     cube_simulator, CubeSimulator, QUBITS;
+    syntax_simulator, SyntaxSimulator, QUBITS;
 );
 
 fn main() {

@@ -18,7 +18,7 @@ use quasim::{
     product_state_simulator::ProductStateSimulator,
     sampler::{RegisterSampler, Sampler},
     simulator::{Buildable, Sampleable, StoredRegisters},
-    sv_simulator::StateVectorSimulator,
+    sv_simulator::StateVectorSimulator, syntax_simulator::SyntaxSimulator,
 };
 
 macro_rules! bench {
@@ -54,6 +54,7 @@ bench!(
     full_mat_mul_simulator, FullMatMulSimulator, FMM_QUBITS;
     product_state_simulator, ProductStateSimulator, QUBITS;
     cube_simulator, CubeSimulator, QUBITS;
+    syntax_simulator, SyntaxSimulator, QUBITS;
 );
 
 fn main() {
