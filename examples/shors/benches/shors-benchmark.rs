@@ -18,7 +18,8 @@ use quasim::{
     product_state_simulator::ProductStateSimulator,
     sampler::{CircuitSampler, Sampler},
     simulator::{Buildable, Sampleable},
-    sv_simulator::StateVectorSimulator, syntax_simulator::SyntaxSimulator,
+    sv_simulator::StateVectorSimulator,
+    syntax_simulator::SyntaxSimulator,
 };
 
 macro_rules! bench {

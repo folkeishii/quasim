@@ -17,7 +17,8 @@ use quasim::{
     product_state_simulator::ProductStateSimulator,
     sampler::{CircuitSampler, Sampler},
     simulator::{Buildable, Sampleable},
-    sv_simulator::StateVectorSimulator, syntax_simulator::SyntaxSimulator,
+    sv_simulator::StateVectorSimulator,
+    syntax_simulator::SyntaxSimulator,
 };
 
 macro_rules! bench {
@@ -71,9 +72,10 @@ where
     S: Buildable<HybridCircuit>,
 {
     S::build({
-        let mut circuit = Circuit::new(N)
-            .new_reg("dummy", measurements)
-            .call_new("qft", Circuit::new_qft(N), 0);
+        let mut circuit =
+            Circuit::new(N)
+                .new_reg("dummy", measurements)
+                .call_new("qft", Circuit::new_qft(N), 0);
 
         for m in 0..measurements {
             circuit = circuit.measure_bit(m, ("dummy", m));
