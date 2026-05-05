@@ -18,3 +18,4 @@ pub mod sampler;
 pub mod simulator;
 pub mod state_vector;
 pub mod sv_simulator;
+pub mod syntax_simulator;
