@@ -70,21 +70,15 @@ where
     S: Buildable<HybridCircuit>,
 {
     S::build({
-        let mut circuit = Circuit::new(N).new_reg("dummy", measurements);
-
-        for q in 0..N {
-            circuit = circuit.h(q).cx(&[q], (q + 1) % N);
-        }
+        let mut circuit = Circuit::new(N)
+            .new_reg("dummy", measurements)
+            .call_new("qft", Circuit::new_qft(N), 0);
 
         for m in 0..measurements {
             circuit = circuit.measure_bit(m, ("dummy", m));
         }
 
-        for q in 0..N {
-            circuit = circuit.h(q).cx(&[q], (q + 1) % N);
-        }
-
-        circuit
+        circuit.call("qft", 0)
     })
     .unwrap()
 }

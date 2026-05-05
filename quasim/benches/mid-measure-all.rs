@@ -63,7 +63,14 @@ fn build<S, const N: usize>() -> S
 where
     S: Buildable<HybridCircuit>,
 {
-    S::build(Circuit::new(N).new_reg("r0", 1).measure_bit(0, ("r0", 0))).unwrap()
+    S::build(
+        Circuit::new(N)
+            .new_reg("res", N)
+            .call_new("qft", Circuit::new_qft(N), 0)
+            .measure("res")
+            .call("qft", 0),
+    )
+    .unwrap()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)
