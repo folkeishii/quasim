@@ -22,35 +22,35 @@ use quasim::{
 };
 
 #[rustfmt::skip]
-bench_utils::bench!(state_vector_simulator, StateVectorSimulator, "num-gates", "state_vector_simulator");
+bench_utils::bench!(state_vector_simulator, StateVectorSimulator, "shors-benchmark", "state_vector_simulator");
 #[rustfmt::skip]
-bench_utils::bench!("wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, "num-gates", "gpu_accelerated_wgpu");
+bench_utils::bench!("wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, "shors-benchmark", "gpu_accelerated_wgpu");
 #[rustfmt::skip]
-bench_utils::bench!("cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, "num-gates", "gpu_accelerated_cuda");
+bench_utils::bench!("cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, "shors-benchmark", "gpu_accelerated_cuda");
 #[rustfmt::skip]
-bench_utils::bench!("cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, "num-gates", "gpu_accelerated_cpu");
+bench_utils::bench!("cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, "shors-benchmark", "gpu_accelerated_cpu");
 #[rustfmt::skip]
-bench_utils::bench!("hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, "num-gates", "gpu_accelerated_hip");
+bench_utils::bench!("hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, "shors-benchmark", "gpu_accelerated_hip");
 #[rustfmt::skip]
-bench_utils::bench!(full_mat_mul_simulator, FullMatMulSimulator, "num-gates", "full_mat_mul_simulator");
+bench_utils::bench!(full_mat_mul_simulator, FullMatMulSimulator, "shors-benchmark", "full_mat_mul_simulator");
 #[rustfmt::skip]
-bench_utils::bench!(product_state_simulator, ProductStateSimulator, "num-gates", "product_state_simulator");
+bench_utils::bench!(product_state_simulator, ProductStateSimulator, "shors-benchmark", "product_state_simulator");
 #[rustfmt::skip]
-bench_utils::bench!(cube_simulator, CubeSimulator, "num-gates", "cube_simulator");
+bench_utils::bench!(cube_simulator, CubeSimulator, "shors-benchmark", "cube_simulator");
 #[rustfmt::skip]
-bench_utils::bench!(syntax_simulator, SyntaxSimulator, "num-gates", "syntax_simulator");
+bench_utils::bench!(syntax_simulator, SyntaxSimulator, "shors-benchmark", "syntax_simulator");
 
 fn main() {
     divan::Divan::from_args().main();
 }
 
-fn build<S, const N: usize>() -> S
+fn build<S, const N: usize>() -> Option<S>
 where
     S: Buildable<HybridCircuit>,
 {
     let n = (1usize << N) - 1;
     let a = n - 1;
-    S::build(circuit(n, a)).unwrap()
+    S::build(circuit(n, a)).ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)

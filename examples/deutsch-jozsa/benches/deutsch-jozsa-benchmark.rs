@@ -24,33 +24,33 @@ use quasim::{
 };
 
 #[rustfmt::skip]
-bench_utils::bench!(state_vector_simulator, StateVectorSimulator, "num-gates", "state_vector_simulator");
+bench_utils::bench!(state_vector_simulator, StateVectorSimulator, "deutsch-jozsa-benchmark", "state_vector_simulator", use_args);
 #[rustfmt::skip]
-bench_utils::bench!("wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, "num-gates", "gpu_accelerated_wgpu");
+bench_utils::bench!("wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, "deutsch-jozsa-benchmark", "gpu_accelerated_wgpu", use_args);
 #[rustfmt::skip]
-bench_utils::bench!("cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, "num-gates", "gpu_accelerated_cuda");
+bench_utils::bench!("cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, "deutsch-jozsa-benchmark", "gpu_accelerated_cuda", use_args);
 #[rustfmt::skip]
-bench_utils::bench!("cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, "num-gates", "gpu_accelerated_cpu");
+bench_utils::bench!("cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, "deutsch-jozsa-benchmark", "gpu_accelerated_cpu", use_args);
 #[rustfmt::skip]
-bench_utils::bench!("hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, "num-gates", "gpu_accelerated_hip");
+bench_utils::bench!("hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, "deutsch-jozsa-benchmark", "gpu_accelerated_hip", use_args);
 #[rustfmt::skip]
-bench_utils::bench!(full_mat_mul_simulator, FullMatMulSimulator, "num-gates", "full_mat_mul_simulator");
+bench_utils::bench!(full_mat_mul_simulator, FullMatMulSimulator, "deutsch-jozsa-benchmark", "full_mat_mul_simulator", use_args);
 #[rustfmt::skip]
-bench_utils::bench!(product_state_simulator, ProductStateSimulator, "num-gates", "product_state_simulator");
+bench_utils::bench!(product_state_simulator, ProductStateSimulator, "deutsch-jozsa-benchmark", "product_state_simulator", use_args);
 #[rustfmt::skip]
-bench_utils::bench!(cube_simulator, CubeSimulator, "num-gates", "cube_simulator");
+bench_utils::bench!(cube_simulator, CubeSimulator, "deutsch-jozsa-benchmark", "cube_simulator", use_args);
 #[rustfmt::skip]
-bench_utils::bench!(syntax_simulator, SyntaxSimulator, "num-gates", "syntax_simulator");
+bench_utils::bench!(syntax_simulator, SyntaxSimulator, "deutsch-jozsa-benchmark", "syntax_simulator", use_args);
 
 fn main() {
     divan::Divan::from_args().main();
 }
 
-fn build<S, const N: usize>(ft: FunctionType) -> S
+fn build<S, const N: usize>(ft: FunctionType) -> Option<S>
 where
     S: Buildable<HybridCircuit>,
 {
-    S::build(circuit(N, ft)).unwrap()
+    S::build(circuit(N, ft)).ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S) -> bool

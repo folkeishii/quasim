@@ -21,32 +21,35 @@ use quasim::{
 };
 
 #[rustfmt::skip]
-bench_utils::bench!(state_vector_simulator, StateVectorSimulator, "num-gates", "state_vector_simulator", use_args);
+bench_utils::bench!(state_vector_simulator, StateVectorSimulator, "mid-measurements", "state_vector_simulator", use_args);
 #[rustfmt::skip]
-bench_utils::bench!("wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, "num-gates", "gpu_accelerated_wgpu", use_args);
+bench_utils::bench!("wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, "mid-measurements", "gpu_accelerated_wgpu", use_args);
 #[rustfmt::skip]
-bench_utils::bench!("cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, "num-gates", "gpu_accelerated_cuda", use_args);
+bench_utils::bench!("cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, "mid-measurements", "gpu_accelerated_cuda", use_args);
 #[rustfmt::skip]
-bench_utils::bench!("cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, "num-gates", "gpu_accelerated_cpu", use_args);
+bench_utils::bench!("cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, "mid-measurements", "gpu_accelerated_cpu", use_args);
 #[rustfmt::skip]
-bench_utils::bench!("hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, "num-gates", "gpu_accelerated_hip", use_args);
+bench_utils::bench!("hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, "mid-measurements", "gpu_accelerated_hip", use_args);
 #[rustfmt::skip]
-bench_utils::bench!(full_mat_mul_simulator, FullMatMulSimulator, "num-gates", "full_mat_mul_simulator", use_args);
+bench_utils::bench!(full_mat_mul_simulator, FullMatMulSimulator, "mid-measurements", "full_mat_mul_simulator", use_args);
 #[rustfmt::skip]
-bench_utils::bench!(product_state_simulator, ProductStateSimulator, "num-gates", "product_state_simulator", use_args);
+bench_utils::bench!(product_state_simulator, ProductStateSimulator, "mid-measurements", "product_state_simulator", use_args);
 #[rustfmt::skip]
-bench_utils::bench!(cube_simulator, CubeSimulator, "num-gates", "cube_simulator", use_args);
+bench_utils::bench!(cube_simulator, CubeSimulator, "mid-measurements", "cube_simulator", use_args);
 #[rustfmt::skip]
-bench_utils::bench!(syntax_simulator, SyntaxSimulator, "num-gates", "syntax_simulator", use_args);
+bench_utils::bench!(syntax_simulator, SyntaxSimulator, "mid-measurements", "syntax_simulator", use_args);
 
 fn main() {
     divan::Divan::from_args().main();
 }
 
-fn build<S, const N: usize>(measurements: usize) -> S
+fn build<S, const N: usize>(measurements: usize) -> Option<S>
 where
     S: Buildable<HybridCircuit>,
 {
+    if N < measurements {
+        return None;
+    }
     S::build({
         let mut circuit = Circuit::new(N)
             .new_reg("dummy", measurements)
@@ -57,8 +60,7 @@ where
         }
 
         circuit.call("qft", 0)
-    })
-    .unwrap()
+    }).ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)

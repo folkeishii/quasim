@@ -45,7 +45,7 @@ fn main() {
     divan::Divan::from_args().main();
 }
 
-fn build<S, const N: usize>(num_gates: usize) -> S
+fn build<S, const N: usize>(num_gates: usize) -> Option<S>
 where
     S: Buildable<PureCircuit>,
 {
@@ -57,8 +57,7 @@ where
         }
 
         circuit
-    })
-    .unwrap()
+    }).ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)

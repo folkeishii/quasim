@@ -16,7 +16,7 @@ quasim = { path = "../../quasim" }
 
 [dev-dependencies]
 divan = "0.1.21"
-bench_utils = { path = "../bench_utils" }
+bench_utils = { path = "../../bench_utils" }
 
 [[bench]]
 name = "deutsch-jozsa-benchmark"

@@ -8,7 +8,7 @@ macro_rules! bench {
             consts = $crate::sim_qubits($bench, $sim_name)
         )]
         fn $name<const N: usize>(bencher: Bencher) {
-            let mut sim = build::<$sim, N>();
+            let Some(mut sim) = build::<$sim, N>() else {return;};
             bench(bencher, &mut sim);
         }
     };
@@ -19,7 +19,7 @@ macro_rules! bench {
             consts = $crate::sim_qubits($bench, $sim_name)
         )]
         fn $name<const N: usize>(bencher: Bencher, arg: usize) {
-            let mut sim = build::<$sim, N>(arg);
+            let Some(mut sim) = build::<$sim, N>(arg.into()) else {return;};
             bench(bencher, &mut sim);
         }
     };
