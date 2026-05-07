@@ -2,6 +2,7 @@
 members = [
   "examples/*",
   "quasim",
+  "bench_utils"
 ]
 resolver = "2"
 
