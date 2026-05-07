@@ -3,13 +3,17 @@ use std::{env, error::Error, fmt, fs, ops::Index, path::PathBuf};
 use json::{JsonValue, number::Number, object::Object};
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=BENCH_PARAMETERS_TAKE");
     println!("cargo:rerun-if-env-changed=BENCH_PARAMETERS");
     println!("cargo:rerun-if-env-changed=QUBITS");
     println!("cargo:rerun-if-env-changed=ARGS");
     let mut rs: Vec<String> = vec![];
+    let take = env::var("BENCH_PARAMETERS_TAKE")
+        .map(|s| str::parse(&s).unwrap_or(usize::MAX))
+        .unwrap_or(usize::MAX);
     let json_path_str = env::var("BENCH_PARAMETERS").ok();
     if let Some(path) = json_path_str.as_ref() {
-        println!("cargo:rerun-if-changed={}",path);
+        println!("cargo:rerun-if-changed={}", path);
     }
     let json_path = json_path_str.map(PathBuf::from);
     let json_str = json_path
@@ -88,13 +92,18 @@ fn main() {
     let mut benchmark_args: Vec<Vec<usize>> = vec![];
     let mut simulator_qubits: Vec<Vec<Vec<usize>>> = vec![];
     let mut simulator_args: Vec<Vec<Vec<usize>>> = vec![];
+    let mut simulator_run: Vec<Vec<bool>> = vec![];
     benchmark_qubits.resize(benchmarks.len(), vec![]);
     benchmark_args.resize(benchmarks.len(), vec![]);
     simulator_qubits.resize(benchmarks.len(), vec![]);
     simulator_args.resize(benchmarks.len(), vec![]);
+    simulator_run.resize(benchmarks.len(), vec![]);
     for (qubits, args) in simulator_qubits.iter_mut().zip(simulator_args.iter_mut()) {
         qubits.resize(simulators.len(), vec![]);
         args.resize(simulators.len(), vec![]);
+    }
+    for run in simulator_run.iter_mut() {
+        run.resize(simulators.len(), true);
     }
 
     if let Some(data) = json_data
@@ -107,33 +116,59 @@ fn main() {
             &mut benchmark_args,
             &mut simulator_qubits,
             &mut simulator_args,
+            &mut simulator_run,
             parameter_data,
             &benchmarks,
             &simulators,
+            take,
         );
     }
 
     if qubits.is_empty() {
         qubits = env::var("QUBITS").format(vec![2, 4, 6, 8]);
+        while qubits.len() > take {
+            qubits.pop();
+        }
     }
 
     if args.is_empty() {
         args = env::var("ARGS").format(vec![1]);
+        while args.len() > take {
+            args.pop();
+        }
     }
 
-    rs.push(format!("pub const QUBITS: [usize; {}] = {:?};", qubits.len(), qubits));
-    rs.push(format!("pub const ARGS: [usize; {}] = {:?};", args.len(), args));
-    rs.push(format!("pub const BENCHMARK_QUBITS: [&[usize]; {}] = [", benchmarks.len()));
+    rs.push(format!(
+        "pub const QUBITS: [usize; {}] = {:?};",
+        qubits.len(),
+        qubits
+    ));
+    rs.push(format!(
+        "pub const ARGS: [usize; {}] = {:?};",
+        args.len(),
+        args
+    ));
+    rs.push(format!(
+        "pub const BENCHMARK_QUBITS: [&[usize]; {}] = [",
+        benchmarks.len()
+    ));
     for bench in benchmark_qubits.iter() {
         rs.push(format!("    &{:?},", bench));
     }
     rs.push("];".into());
-    rs.push(format!("pub const BENCHMARK_ARGS: [&[usize]; {}] = [", benchmarks.len()));
+    rs.push(format!(
+        "pub const BENCHMARK_ARGS: [&[usize]; {}] = [",
+        benchmarks.len()
+    ));
     for bench in benchmark_args.iter() {
         rs.push(format!("    &{:?},", bench));
     }
     rs.push("];".into());
-    rs.push(format!("pub const SIMULATOR_QUBITS: [[&[usize]; {}]; {}] = [", simulators.len(), benchmarks.len()));
+    rs.push(format!(
+        "pub const SIMULATOR_QUBITS: [[&[usize]; {}]; {}] = [",
+        simulators.len(),
+        benchmarks.len()
+    ));
     for bench in simulator_qubits.iter() {
         rs.push("    [".into());
         for sim in bench {
@@ -142,7 +177,11 @@ fn main() {
         rs.push("    ],".into());
     }
     rs.push("];".into());
-    rs.push(format!("pub const SIMULATOR_ARGS: [[&[usize]; {}]; {}] = [", simulators.len(), benchmarks.len()));
+    rs.push(format!(
+        "pub const SIMULATOR_ARGS: [[&[usize]; {}]; {}] = [",
+        simulators.len(),
+        benchmarks.len()
+    ));
     for bench in simulator_args.iter() {
         rs.push("    [".into());
         for sim in bench {
@@ -151,7 +190,19 @@ fn main() {
         rs.push("    ],".into());
     }
     rs.push("];".into());
-
+    rs.push(format!(
+        "pub const SIMULATOR_RUN: [[bool; {}]; {}] = [",
+        simulators.len(),
+        benchmarks.len()
+    ));
+    for bench in simulator_run.iter() {
+        rs.push("    [".into());
+        for sim in bench {
+            rs.push(format!("        {:?},", sim));
+        }
+        rs.push("    ],".into());
+    }
+    rs.push("];".into());
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     fs::write(out_dir.join("bench_consts.rs"), rs.join("\n"))
         .unwrap_or_else(|e| eprintln!("error: {}", e));
@@ -186,12 +237,14 @@ fn maybe_push_parameters(
     bench_out_args: &mut Vec<Vec<usize>>,
     sim_out_qubits: &mut Vec<Vec<Vec<usize>>>,
     sim_out_args: &mut Vec<Vec<Vec<usize>>>,
+    sim_out_run: &mut Vec<Vec<bool>>,
     obj: &Object,
     benchmarks: &[String],
     simulators: &[String],
+    take: usize
 ) {
-    maybe_push_item(out_qubits, obj, "qubits");
-    maybe_push_item(out_args, obj, "args");
+    maybe_push_item(out_qubits, obj, "qubits", take);
+    maybe_push_item(out_args, obj, "args", take);
 
     let Some(JsonValue::Array(bench_array)) = obj.get("benchmarks") else {
         return;
@@ -203,9 +256,11 @@ fn maybe_push_parameters(
             bench_out_args,
             sim_out_qubits,
             sim_out_args,
+            sim_out_run,
             bench_data,
             &benchmarks,
             &simulators,
+            take
         );
     }
 }
@@ -215,9 +270,11 @@ fn maybe_push_bench(
     out_args: &mut Vec<Vec<usize>>,
     sim_out_qubits: &mut Vec<Vec<Vec<usize>>>,
     sim_out_args: &mut Vec<Vec<Vec<usize>>>,
+    sim_out_run: &mut Vec<Vec<bool>>,
     obj: &Object,
     benchmarks: &[String],
     simulators: &[String],
+    take: usize
 ) {
     let Some(bench_name) = filtered(obj.get("name"), string_filter) else {
         return;
@@ -227,10 +284,10 @@ fn maybe_push_bench(
     };
 
     if out_qubits[bench_i].is_empty() {
-        maybe_push_item(&mut out_qubits[bench_i], obj, "qubits");
+        maybe_push_item(&mut out_qubits[bench_i], obj, "qubits", take);
     }
     if out_args[bench_i].is_empty() {
-        maybe_push_item(&mut out_args[bench_i], obj, "args");
+        maybe_push_item(&mut out_args[bench_i], obj, "args", take);
     }
 
     let Some(JsonValue::Array(sim_array)) = obj.get("simulators") else {
@@ -241,8 +298,10 @@ fn maybe_push_bench(
         maybe_push_sim(
             &mut sim_out_qubits[bench_i],
             &mut sim_out_args[bench_i],
+            &mut sim_out_run[bench_i],
             sim_data,
             &simulators,
+            take
         );
     }
 }
@@ -250,8 +309,10 @@ fn maybe_push_bench(
 fn maybe_push_sim(
     out_qubits: &mut Vec<Vec<usize>>,
     out_args: &mut Vec<Vec<usize>>,
+    out_run: &mut Vec<bool>,
     obj: &Object,
     simulators: &[String],
+    take: usize
 ) {
     let Some(sim_name) = filtered(obj.get("name"), string_filter) else {
         return;
@@ -260,39 +321,54 @@ fn maybe_push_sim(
         return;
     };
 
+    if matches!(obj.get("run"), Some(JsonValue::Boolean(false))) {
+        out_qubits[sim_i] = Vec::with_capacity(0);
+        out_args[sim_i] = Vec::with_capacity(0);
+        out_run[sim_i] = false;
+
+        return
+    }
+
     if out_qubits[sim_i].is_empty() {
-        maybe_push_item(&mut out_qubits[sim_i], obj, "qubits");
+        maybe_push_item(&mut out_qubits[sim_i], obj, "qubits", take);
     }
     if out_args[sim_i].is_empty() {
-        maybe_push_item(&mut out_args[sim_i], obj, "args");
+        maybe_push_item(&mut out_args[sim_i], obj, "args", take);
     }
 }
 
-fn maybe_push_item(out: &mut Vec<usize>, obj: &Object, item: &str) {
+fn maybe_push_item(out: &mut Vec<usize>, obj: &Object, item: &str, take: usize) -> usize {
     let vals = match obj.get(item) {
         Some(JsonValue::Array(vals)) => vals,
         _ => &Vec::with_capacity(0),
     };
-    maybe_push_array(out, vals);
+    maybe_push_array(out, vals, take)
 }
 
-fn maybe_push_array(out: &mut Vec<usize>, vals: &[JsonValue]) {
+fn maybe_push_array(out: &mut Vec<usize>, vals: &[JsonValue], take: usize) -> usize {
+    let mut it = 0;
     for val in vals {
-        maybe_push_value(out, val);
+        if maybe_push_value(out, val) {
+            it += 1
+        }
+        if it >= take {
+            return it;
+        }
     }
+    return it;
 }
 
-fn maybe_push_value(out: &mut Vec<usize>, val: &JsonValue) {
+fn maybe_push_value(out: &mut Vec<usize>, val: &JsonValue) -> bool {
     match val {
         JsonValue::Number(number) => maybe_push_number(out, number),
-        _ => {}
+        _ => false
     }
 }
 
-fn maybe_push_number(out: &mut Vec<usize>, val: &Number) {
+fn maybe_push_number(out: &mut Vec<usize>, val: &Number) -> bool {
     match val.as_fixed_point_u64(0) {
-        Some(u) => out.push(u as usize),
-        None => {}
+        Some(u) => {out.push(u as usize); true},
+        None => false
     }
 }
 

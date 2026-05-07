@@ -38,6 +38,10 @@ pub const fn sim_qubits(bench: &str, sim: &str) -> &'static [usize] {
         return bench_qubits(bench);
     };
 
+    if !SIMULATOR_RUN[bench_i][sim_i] {
+        return &[1];
+    }
+
     if SIMULATOR_QUBITS[bench_i][sim_i].is_empty() {
         bench_qubits(bench)
     } else {
@@ -68,6 +72,10 @@ pub fn sim_args(bench: &str, sim: &str) -> &'static [usize] {
     let Some(sim_i) = sim_id(sim) else {
         return bench_args(bench);
     };
+
+    if !SIMULATOR_RUN[bench_i][sim_i] {
+        return &[1];
+    }
 
     if SIMULATOR_ARGS[bench_i][sim_i].is_empty() {
         bench_args(bench)
