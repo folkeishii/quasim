@@ -21,41 +21,24 @@ use quasim::{
     sv_simulator::StateVectorSimulator, syntax_simulator::SyntaxSimulator,
 };
 
-macro_rules! bench {
-    ($($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr $(;)?) => {
-        $(#[cfg(feature = $feat)])?
-        #[divan::bench(
-            consts = $qubits
-        )]
-        fn $name<const N: usize>(bencher: Bencher) {
-            let (mut sim, correct) = build::<$sim, N>();
-            bench(bencher, &mut sim, correct);
-        }
-    };
-
-    (
-        $($ffeat:literal =>)? $first:ident, $fsim:ty, $fqubits:expr $(;
-            $($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr
-        )+ $(;)?
-    ) => {
-        bench!($($ffeat =>)? $first, $fsim, $fqubits);
-        bench!($($($feat =>)? $name, $sim, $qubits);+);
-    };
-}
-
-const QUBITS: &[usize] = &[2, 4, 6, 8, 10, 12, 14, 16];
-const FMM_QUBITS: &[usize] = &[2, 4, 6, 8, 10];
-bench!(
-    state_vector_simulator, StateVectorSimulator, QUBITS;
-    "wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, QUBITS;
-    "cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, QUBITS;
-    "cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, QUBITS;
-    "hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, QUBITS;
-    full_mat_mul_simulator, FullMatMulSimulator, FMM_QUBITS;
-    product_state_simulator, ProductStateSimulator, QUBITS;
-    cube_simulator, CubeSimulator, QUBITS;
-    syntax_simulator, SyntaxSimulator, QUBITS;
-);
+#[rustfmt::skip]
+bench_utils::bench!(state_vector_simulator, StateVectorSimulator, "num-gates", "state_vector_simulator");
+#[rustfmt::skip]
+bench_utils::bench!("wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, "num-gates", "gpu_accelerated_wgpu");
+#[rustfmt::skip]
+bench_utils::bench!("cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, "num-gates", "gpu_accelerated_cuda");
+#[rustfmt::skip]
+bench_utils::bench!("cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, "num-gates", "gpu_accelerated_cpu");
+#[rustfmt::skip]
+bench_utils::bench!("hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, "num-gates", "gpu_accelerated_hip");
+#[rustfmt::skip]
+bench_utils::bench!(full_mat_mul_simulator, FullMatMulSimulator, "num-gates", "full_mat_mul_simulator");
+#[rustfmt::skip]
+bench_utils::bench!(product_state_simulator, ProductStateSimulator, "num-gates", "product_state_simulator");
+#[rustfmt::skip]
+bench_utils::bench!(cube_simulator, CubeSimulator, "num-gates", "cube_simulator");
+#[rustfmt::skip]
+bench_utils::bench!(syntax_simulator, SyntaxSimulator, "num-gates", "syntax_simulator");
 
 fn main() {
     divan::Divan::from_args().main();

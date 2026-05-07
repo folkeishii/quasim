@@ -19,6 +19,7 @@ num-integer = "0.1.46"
 
 [dev-dependencies]
 divan = "0.1.21"
+bench_utils = { path = "../bench_utils" }
 
 [[bench]]
 name = "shors-benchmark"
