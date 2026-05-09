@@ -21,7 +21,7 @@ where
     S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters,
 {
     let res = S::sample_once(circuit(n, secret), RegisterSampler::new("res")).unwrap();
-    // Output is reversed
+    // Output is reversed and ancilla discarded
     (res).reverse_bits() >> (size_of::<usize>() * 8 - n)
 }
 

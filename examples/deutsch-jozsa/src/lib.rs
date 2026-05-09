@@ -8,7 +8,7 @@ pub enum FunctionType {
 }
 
 pub fn circuit(n: usize, function_type: FunctionType) -> Circuit<HybridCircuit> {
-    let mut circuit = Circuit::new(n + 1).new_reg("res", n);
+    let mut circuit = Circuit::new(n + 1).new_reg("res", n + 1);
     circuit = circuit.x(n);
 
     for i in 0..=n {
@@ -30,5 +30,5 @@ pub fn circuit(n: usize, function_type: FunctionType) -> Circuit<HybridCircuit> 
         circuit = circuit.h(i);
     }
 
-    circuit.measure_bits(&(0..n).collect::<Vec<_>>(), "res")
+    circuit.measure("res")
 }

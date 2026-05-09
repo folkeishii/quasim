@@ -10,7 +10,9 @@ pub fn find_function_type_quantum<S>(n: usize, function_type: FunctionType) -> b
 where
     S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters,
 {
-    S::sample_once(circuit(n, function_type), RegisterSampler::new("res")).unwrap() == 0
+    let res = S::sample_once(circuit(n, function_type), RegisterSampler::new("res")).unwrap();
+    let not_ancilla_mask = (1 << n) - 1;
+    res & not_ancilla_mask == 0
 }
 
 fn main() {
