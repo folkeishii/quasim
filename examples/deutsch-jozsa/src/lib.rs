@@ -1,4 +1,4 @@
-use quasim::circuit::{Circuit, HybridCircuit};
+use quasim::circuit::Circuit;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum FunctionType {
@@ -7,8 +7,8 @@ pub enum FunctionType {
     Balanced,
 }
 
-pub fn circuit(n: usize, function_type: FunctionType) -> Circuit<HybridCircuit> {
-    let mut circuit = Circuit::new(n + 1).new_reg("res", n + 1);
+pub fn circuit(n: usize, function_type: FunctionType) -> Circuit {
+    let mut circuit = Circuit::new(n + 1);
     circuit = circuit.x(n);
 
     for i in 0..=n {
@@ -30,5 +30,5 @@ pub fn circuit(n: usize, function_type: FunctionType) -> Circuit<HybridCircuit> 
         circuit = circuit.h(i);
     }
 
-    circuit.measure("res")
+    circuit
 }

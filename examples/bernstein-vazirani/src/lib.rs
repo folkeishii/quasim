@@ -1,9 +1,9 @@
-use quasim::circuit::{Circuit, HybridCircuit};
+use quasim::circuit::Circuit;
 
-pub fn circuit(n: usize, secret: usize) -> Circuit<HybridCircuit> {
+pub fn circuit(n: usize, secret: usize) -> Circuit {
     assert_eq!(secret & !(usize::MAX << n), secret);
 
-    let mut circuit = Circuit::new(n + 1).new_reg("res", n + 1);
+    let mut circuit = Circuit::new(n + 1);
     circuit = circuit.x(n);
 
     for i in 0..=n {
@@ -20,5 +20,5 @@ pub fn circuit(n: usize, secret: usize) -> Circuit<HybridCircuit> {
         circuit = circuit.h(i);
     }
 
-    circuit.measure("res")
+    circuit
 }
