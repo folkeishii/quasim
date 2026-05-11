@@ -25,10 +25,6 @@ macro_rules! bench {
     };
 }
 
-pub fn ttt() {
-    println!("{:?}", BENCHMARKS);
-    println!("{:?}", SIMULATORS);
-}
 
 pub const fn sim_qubits(bench: &str, sim: &str) -> &'static [usize] {
     let Some(bench_i) = bench_id(bench) else {

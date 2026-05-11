@@ -41,7 +41,6 @@ bench_utils::bench!(cube_simulator, CubeSimulator, "num-gates", "cube_simulator"
 bench_utils::bench!(syntax_simulator, SyntaxSimulator, "num-gates", "syntax_simulator", use_args);
 
 fn main() {
-    bench_utils::ttt();
     divan::Divan::from_args().main();
 }
 
