@@ -2,6 +2,8 @@ use std::{env, error::Error, fmt, fs, ops::Index, path::PathBuf};
 
 use json::{JsonValue, number::Number, object::Object};
 
+const DEFAULT_JSON_STR: &str = include_str!("../bench-parameters.json");
+
 fn main() {
     println!("cargo:rerun-if-env-changed=BENCH_PARAMETERS_TAKE");
     println!("cargo:rerun-if-env-changed=BENCH_PARAMETERS");
@@ -20,12 +22,10 @@ fn main() {
         .map(fs::read_to_string)
         .map(Result::ok)
         .unwrap_or(None);
-    let json_data = json_str
-        .as_ref()
+    let json_str = json_str.as_ref()
         .map(String::as_str)
-        .map(json::parse)
-        .map(Result::ok)
-        .unwrap_or(None);
+        .unwrap_or(DEFAULT_JSON_STR);
+    let json_data = json::parse(json_str).ok();
 
     let json_data = json_data
         .map(|j| match j {
