@@ -21,56 +21,36 @@ use quasim::{
     syntax_simulator::SyntaxSimulator,
 };
 
-macro_rules! bench {
-    ($($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr, $arg0:expr $(;)?) => {
-        $(#[cfg(feature = $feat)])?
-        #[divan::bench(
-            args = $arg0,
-            consts = $qubits
-        )]
-        fn $name<const N: usize>(bencher: Bencher, entangle_size: usize) {
-            if entangle_size > N {
-                // Skip bench
-                return;
-            }
-            let mut sim = build::<$sim, N>(entangle_size);
-            bench(bencher, &mut sim);
-        }
-    };
-
-    (
-        $($ffeat:literal =>)? $first:ident, $fsim:ty, $fqubits:expr, $farg0:expr  $(;
-            $($feat:literal =>)? $name:ident, $sim:ty, $qubits:expr, $arg0:expr
-        )+ $(;)?
-    ) => {
-        bench!($($ffeat =>)? $first, $fsim, $fqubits, $farg0);
-        bench!($($($feat =>)? $name, $sim, $qubits, $arg0);+);
-    };
-}
-
-const QUBITS: &[usize] = &[10, 16, 22];
-const ENTANGLE_SIZE: &[usize] = &[1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
-const FMM_QUBITS: &[usize] = &[8, 10];
-bench!(
-    state_vector_simulator, StateVectorSimulator, QUBITS, ENTANGLE_SIZE;
-    "wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, QUBITS, ENTANGLE_SIZE;
-    "cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, QUBITS, ENTANGLE_SIZE;
-    "cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, QUBITS, ENTANGLE_SIZE;
-    "hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, QUBITS, ENTANGLE_SIZE;
-    full_mat_mul_simulator, FullMatMulSimulator, FMM_QUBITS, ENTANGLE_SIZE;
-    product_state_simulator, ProductStateSimulator, QUBITS, ENTANGLE_SIZE;
-    cube_simulator, CubeSimulator, QUBITS, ENTANGLE_SIZE;
-    syntax_simulator, SyntaxSimulator, QUBITS, ENTANGLE_SIZE;
-);
+#[rustfmt::skip]
+bench_utils::bench!(state_vector_simulator, StateVectorSimulator, "system-size-entanglement", "state_vector_simulator", use_args);
+#[rustfmt::skip]
+bench_utils::bench!("wgpu" => gpu_accelerated_wgpu, GpuStateVectorSimulator<WgpuRuntime>, "system-size-entanglement", "gpu_accelerated_wgpu", use_args);
+#[rustfmt::skip]
+bench_utils::bench!("cuda" => gpu_accelerated_cuda, GpuStateVectorSimulator<CudaRuntime>, "system-size-entanglement", "gpu_accelerated_cuda", use_args);
+#[rustfmt::skip]
+bench_utils::bench!("cpu" => gpu_accelerated_cpu, GpuStateVectorSimulator<CpuRuntime>, "system-size-entanglement", "gpu_accelerated_cpu", use_args);
+#[rustfmt::skip]
+bench_utils::bench!("hip" => gpu_accelerated_hip, GpuStateVectorSimulator<HipRuntime>, "system-size-entanglement", "gpu_accelerated_hip", use_args);
+#[rustfmt::skip]
+bench_utils::bench!(full_mat_mul_simulator, FullMatMulSimulator, "system-size-entanglement", "full_mat_mul_simulator", use_args);
+#[rustfmt::skip]
+bench_utils::bench!(product_state_simulator, ProductStateSimulator, "system-size-entanglement", "product_state_simulator", use_args);
+#[rustfmt::skip]
+bench_utils::bench!(cube_simulator, CubeSimulator, "system-size-entanglement", "cube_simulator", use_args);
+#[rustfmt::skip]
+bench_utils::bench!(syntax_simulator, SyntaxSimulator, "system-size-entanglement", "syntax_simulator", use_args);
 
 fn main() {
     divan::Divan::from_args().main();
 }
 
-fn build<S, const N: usize>(entangle_size: usize) -> S
+fn build<S, const N: usize>(entangle_size: usize) -> Option<S>
 where
     S: Buildable<PureCircuit>,
 {
+    if entangle_size > N {
+        return None;
+    }
     S::build({
         let n_systems = N / entangle_size;
 
@@ -87,8 +67,7 @@ where
             Circuit::new_qft(remainder),
             n_systems * entangle_size,
         )
-    })
-    .unwrap()
+    }).ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)

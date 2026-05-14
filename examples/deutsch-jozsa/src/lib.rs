@@ -2,9 +2,19 @@ use quasim::circuit::Circuit;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum FunctionType {
-    Constant0,
+    Constant0 = 0,
     Constant1,
     Balanced,
+}
+impl From<usize> for FunctionType {
+    fn from(value: usize) -> Self {
+        match value {
+            0 => Self::Constant0,
+            1 => Self::Constant1,
+            2 => Self::Balanced,
+            _ => panic!("Cannot construct FunctionType from {}", value)
+        }
+    }
 }
 
 pub fn circuit(n: usize, function_type: FunctionType) -> Circuit {

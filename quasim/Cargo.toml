@@ -26,6 +26,7 @@ cubecl = { version = "=0.10.0-pre.3", features = ["wgpu", "cuda"], optional = tr
 
 [dev-dependencies]
 tracking-allocator = "0.4.0"
+bench_utils = { path = "../bench_utils" }
 
 [[bench]]
 name = "qft"
