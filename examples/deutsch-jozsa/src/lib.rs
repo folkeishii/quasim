@@ -12,7 +12,7 @@ impl From<usize> for FunctionType {
             0 => Self::Constant0,
             1 => Self::Constant1,
             2 => Self::Balanced,
-            _ => panic!("Cannot construct FunctionType from {}", value)
+            _ => panic!("Cannot construct FunctionType from {}", value),
         }
     }
 }

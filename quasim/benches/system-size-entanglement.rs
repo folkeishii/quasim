@@ -67,7 +67,8 @@ where
             Circuit::new_qft(remainder),
             n_systems * entangle_size,
         )
-    }).ok()
+    })
+    .ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)

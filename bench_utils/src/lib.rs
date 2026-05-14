@@ -25,7 +25,6 @@ macro_rules! bench {
     };
 }
 
-
 pub const fn sim_qubits(bench: &str, sim: &str) -> &'static [usize] {
     let Some(bench_i) = bench_id(bench) else {
         return env_qubits();
@@ -123,10 +122,10 @@ pub const fn indexed_id(name: &str, indexed: &[&str]) -> Option<usize> {
             j += 1;
         }
         if e {
-            return Some(i)
+            return Some(i);
         }
 
-        i+=1;
+        i += 1;
     }
     None
 }

@@ -56,7 +56,8 @@ where
         }
 
         circuit
-    }).ok()
+    })
+    .ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)

@@ -54,7 +54,8 @@ where
             .call_new("qft", Circuit::new_qft(N), 0)
             .measure("res")
             .call("qft", 0),
-    ).ok()
+    )
+    .ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)

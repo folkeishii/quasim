@@ -62,7 +62,8 @@ where
         }
 
         circuit.call("qft", 0)
-    }).ok()
+    })
+    .ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S)

@@ -22,7 +22,8 @@ fn main() {
         .map(fs::read_to_string)
         .map(Result::ok)
         .unwrap_or(None);
-    let json_str = json_str.as_ref()
+    let json_str = json_str
+        .as_ref()
         .map(String::as_str)
         .unwrap_or(DEFAULT_JSON_STR);
     let json_data = json::parse(json_str).ok();
@@ -241,7 +242,7 @@ fn maybe_push_parameters(
     obj: &Object,
     benchmarks: &[String],
     simulators: &[String],
-    take: usize
+    take: usize,
 ) {
     maybe_push_item(out_qubits, obj, "qubits", take);
     maybe_push_item(out_args, obj, "args", take);
@@ -260,7 +261,7 @@ fn maybe_push_parameters(
             bench_data,
             &benchmarks,
             &simulators,
-            take
+            take,
         );
     }
 }
@@ -274,7 +275,7 @@ fn maybe_push_bench(
     obj: &Object,
     benchmarks: &[String],
     simulators: &[String],
-    take: usize
+    take: usize,
 ) {
     let Some(bench_name) = filtered(obj.get("name"), string_filter) else {
         return;
@@ -301,7 +302,7 @@ fn maybe_push_bench(
             &mut sim_out_run[bench_i],
             sim_data,
             &simulators,
-            take
+            take,
         );
     }
 }
@@ -312,7 +313,7 @@ fn maybe_push_sim(
     out_run: &mut Vec<bool>,
     obj: &Object,
     simulators: &[String],
-    take: usize
+    take: usize,
 ) {
     let Some(sim_name) = filtered(obj.get("name"), string_filter) else {
         return;
@@ -326,7 +327,7 @@ fn maybe_push_sim(
         out_args[sim_i] = Vec::with_capacity(0);
         out_run[sim_i] = false;
 
-        return
+        return;
     }
 
     if out_qubits[sim_i].is_empty() {
@@ -361,14 +362,17 @@ fn maybe_push_array(out: &mut Vec<usize>, vals: &[JsonValue], take: usize) -> us
 fn maybe_push_value(out: &mut Vec<usize>, val: &JsonValue) -> bool {
     match val {
         JsonValue::Number(number) => maybe_push_number(out, number),
-        _ => false
+        _ => false,
     }
 }
 
 fn maybe_push_number(out: &mut Vec<usize>, val: &Number) -> bool {
     match val.as_fixed_point_u64(0) {
-        Some(u) => {out.push(u as usize); true},
-        None => false
+        Some(u) => {
+            out.push(u as usize);
+            true
+        }
+        None => false,
     }
 }
 
