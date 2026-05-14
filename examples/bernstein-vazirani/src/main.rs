@@ -1,7 +1,7 @@
 use bernstein_vazirani::circuit;
 use quasim::{
-    circuit::HybridCircuit,
-    sampler::RegisterSampler,
+    circuit::PureCircuit,
+    sampler::CircuitSampler,
     simulator::{Buildable, Sampleable, StoredRegisters},
     sv_simulator::StateVectorSimulator,
 };
@@ -18,10 +18,10 @@ pub fn find_secret_string_classical(n: usize, f: impl Fn(usize) -> usize) -> usi
 
 pub fn find_secret_string_quantum<S>(n: usize, secret: usize) -> usize
 where
-    S: Buildable<HybridCircuit> + Sampleable<HybridCircuit> + StoredRegisters,
+    S: Buildable<PureCircuit> + Sampleable<PureCircuit> + StoredRegisters,
 {
-    let res = S::sample_once(circuit(n, secret), RegisterSampler::new("res")).unwrap();
-    // Output is reversed
+    let res = S::sample_once(circuit(n, secret), CircuitSampler).unwrap();
+    // Output is reversed and ancilla discarded
     (res).reverse_bits() >> (size_of::<usize>() * 8 - n)
 }
 
