@@ -12,13 +12,14 @@ use quasim::cubecl::wgpu::WgpuRuntime;
 #[cfg(any(feature = "cpu", feature = "cuda", feature = "hip", feature = "wgpu"))]
 use quasim::gpu_sv_simulator::GpuStateVectorSimulator;
 use quasim::{
-    circuit::HybridCircuit,
+    circuit::PureCircuit,
     cube_simulator::CubeSimulator,
     fmm_simulator::FullMatMulSimulator,
     product_state_simulator::ProductStateSimulator,
     sampler::{CircuitSampler, Sampler},
     simulator::{Buildable, Sampleable},
-    sv_simulator::StateVectorSimulator, syntax_simulator::SyntaxSimulator,
+    sv_simulator::StateVectorSimulator,
+    syntax_simulator::SyntaxSimulator,
 };
 
 #[rustfmt::skip]
@@ -46,7 +47,7 @@ fn main() {
 
 fn build<S, const N: usize>() -> Option<S>
 where
-    S: Buildable<HybridCircuit>,
+    S: Buildable<PureCircuit>,
 {
     let secret = !(usize::MAX << N);
     S::build(circuit(N, secret)).ok()
@@ -54,7 +55,7 @@ where
 
 fn bench<S>(bencher: Bencher, sim: &mut S)
 where
-    S: Sampleable<HybridCircuit>,
+    S: Sampleable<PureCircuit>,
 {
     bencher.bench_local(|| {
         divan::black_box(CircuitSampler.sample({

@@ -2,6 +2,7 @@ use deutsch_jozsa::FunctionType;
 use deutsch_jozsa::circuit;
 use divan::Bencher;
 extern crate quasim;
+use quasim::circuit::PureCircuit;
 #[cfg(feature = "cpu")]
 use quasim::cubecl::cpu::CpuRuntime;
 #[cfg(feature = "cuda")]
@@ -12,13 +13,13 @@ use quasim::cubecl::hip::HipRuntime;
 use quasim::cubecl::wgpu::WgpuRuntime;
 #[cfg(any(feature = "cpu", feature = "cuda", feature = "hip", feature = "wgpu"))]
 use quasim::gpu_sv_simulator::GpuStateVectorSimulator;
+use quasim::sampler::CircuitSampler;
 use quasim::syntax_simulator::SyntaxSimulator;
 use quasim::{
-    circuit::HybridCircuit,
     cube_simulator::CubeSimulator,
     fmm_simulator::FullMatMulSimulator,
     product_state_simulator::ProductStateSimulator,
-    sampler::{RegisterSampler, Sampler},
+    sampler::Sampler,
     simulator::{Buildable, Sampleable, StoredRegisters},
     sv_simulator::StateVectorSimulator,
 };
@@ -48,18 +49,18 @@ fn main() {
 
 fn build<S, const N: usize>(ft: FunctionType) -> Option<S>
 where
-    S: Buildable<HybridCircuit>,
+    S: Buildable<PureCircuit>,
 {
     S::build(circuit(N, ft)).ok()
 }
 
 fn bench<S>(bencher: Bencher, sim: &mut S) -> bool
 where
-    S: Sampleable<HybridCircuit> + StoredRegisters,
+    S: Sampleable<PureCircuit> + StoredRegisters,
 {
     let mut ret = false;
     bencher.bench_local(|| {
-        ret = divan::black_box(RegisterSampler::new("res").sample({
+        ret = divan::black_box(CircuitSampler.sample({
             sim.run();
             sim
         })) == 0;

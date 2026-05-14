@@ -17,7 +17,8 @@ use quasim::{
     product_state_simulator::ProductStateSimulator,
     sampler::{CircuitSampler, Sampler},
     simulator::{Buildable, Sampleable},
-    sv_simulator::StateVectorSimulator, syntax_simulator::SyntaxSimulator,
+    sv_simulator::StateVectorSimulator,
+    syntax_simulator::SyntaxSimulator,
 };
 
 #[rustfmt::skip]
@@ -53,20 +54,19 @@ where
     S::build({
         let n_systems = N / entangle_size;
 
-        let mut circuit = Circuit::new(N);
-
-        for q in 0..N {
-            circuit = circuit.h(q);
-        }
+        let mut circuit = Circuit::new(N).new_sub_circuit("QFT", Circuit::new_qft(entangle_size));
 
         for s in 0..n_systems {
-            circuit = circuit.cx(
-                &Vec::from_iter((s * entangle_size..(s + 1) * entangle_size).skip(1)),
-                s,
-            );
+            circuit = circuit.call("QFT", s * entangle_size);
         }
 
-        circuit
+        let remainder = N % n_systems;
+
+        circuit.call_new(
+            "QFT remainder",
+            Circuit::new_qft(remainder),
+            n_systems * entangle_size,
+        )
     }).ok()
 }
 
