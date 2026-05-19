@@ -245,7 +245,7 @@ where
             break;
         }
 
-        let g = gcd(a, n);
+        let g = gcd(p, n);
 
         if g > 1 {
             return Some(vec![g, n / g]);
