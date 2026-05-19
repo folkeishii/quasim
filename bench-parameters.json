@@ -28,49 +28,57 @@
     "benchmarks": [
       {
         "name": "mid-measure-all",
-        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22],
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
         "simulators": [
           {
+            "name": "cube_simulator",
+            "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18]
+          },
+          {
             "name": "full_mat_mul_simulator",
-            "qubits": [2, 4, 6, 8, 10]
+            "qubits": [2, 4, 6, 8]
+          },
+          {
+            "name": "syntax_simulator",
+            "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18]
           }
         ]
       },
       {
         "name": "mid-measurements",
-        "qubits": [10, 16, 22],
-        "args": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22],
+        "qubits": [8, 16],
+        "args": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
         "simulators": [
           {
             "name": "full_mat_mul_simulator",
-            "qubits": [10]
+            "qubits": [4, 8]
           }
         ]
       },
       {
         "name": "num-gates",
-        "qubits": [10, 18],
+        "qubits": [8, 16],
         "args": [250, 500, 1000, 2000],
         "simulators": [
           {
             "name": "full_mat_mul_simulator",
-            "qubits": [10]
+            "qubits": [4, 8]
           }
         ]
       },
       {
         "name": "qft",
-        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22],
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
         "simulators": [
           {
             "name": "full_mat_mul_simulator",
-            "qubits": [2, 4, 6, 8, 10]
+            "qubits": [2, 4, 6, 8]
           }
         ]
       },
       {
         "name": "system-size",
-        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22],
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
         "simulators": [
           {
             "name": "full_mat_mul_simulator",
@@ -80,28 +88,32 @@
       },
       {
         "name": "system-size-entanglement",
-        "qubits": [10, 16, 22],
-        "args": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22],
+        "qubits": [8, 16],
+        "args": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
         "simulators": [
           {
             "name": "full_mat_mul_simulator",
-            "qubits": [8, 10]
+            "qubits": [4, 8]
           }
         ]
       },
       {
         "name": "bernstein-vazirani-benchmark",
-        "qubits": [2, 4, 8, 10, 12, 16],
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
         "simulators": [
           {
             "name": "full_mat_mul_simulator",
-            "qubits": [2, 4, 8, 10]
+            "qubits": [2, 4, 6, 8, 10]
+          },
+          {
+            "name": "syntax_simulator",
+            "qubits": [2, 4, 6, 8, 10]
           }
         ]
       },
       {
         "name": "deutsch-jozsa-benchmark",
-        "qubits": [2, 4, 6, 8, 10, 12, 14, 16],
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
         "simulators": [
           {
             "name": "full_mat_mul_simulator",
@@ -114,8 +126,24 @@
         "qubits": [2, 4, 6, 8, 10, 12, 14, 16],
         "simulators": [
           {
+            "name": "cube_simulator",
+            "qubits": [2, 4, 6, 8, 10, 12, 14]
+          },
+          {
+            "name": "gpu_accelerated_cuda",
+            "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+          },
+          {
+            "name": "gpu_accelerated_wgpu",
+            "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+          },
+          {
             "name": "full_mat_mul_simulator",
-            "qubits": [2, 4, 6, 8, 10]
+            "qubits": [2, 4, 6, 8]
+          },
+          {
+            "name": "syntax_simulator",
+            "qubits": [2, 4]
           }
         ]
       },
