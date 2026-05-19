@@ -192,6 +192,8 @@ where
         circuit = circuit.call("sub", 2);
     }
 
+    circuit = circuit.z(2 * N - 1);
+
     let mut sim = Sim::build(circuit.into()).expect("Could not build simulator");
 
     let mut forward_steps = 0;
@@ -210,16 +212,16 @@ where
             cart!(0.25),
             cart!(0.25),
             cart!(0.25),
-            cart!(0.25),
-            cart!(0.25),
-            cart!(0.25),
-            cart!(0.25),
-            cart!(0.25),
-            cart!(0.25),
-            cart!(0.25),
-            cart!(0.25),
+            cart!(-0.25),
+            cart!(-0.25),
+            cart!(-0.25),
+            cart!(-0.25),
+            cart!(-0.25),
+            cart!(-0.25),
+            cart!(-0.25),
+            cart!(-0.25),
         ]),
-        N,
+        2 * N,
         0.001
     ));
 

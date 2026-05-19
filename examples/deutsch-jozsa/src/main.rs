@@ -1,106 +1,78 @@
-use quasim::circuit::Circuit;
-use quasim::sampler::RegisterSampler;
-use quasim::simulator::Sampleable;
-use quasim::sv_simulator::StateVectorSimulator;
+use deutsch_jozsa::{FunctionType, circuit};
+use quasim::{
+    circuit::PureCircuit,
+    sampler::CircuitSampler,
+    simulator::{Buildable, Sampleable, StoredRegisters},
+    sv_simulator::StateVectorSimulator,
+};
 
-const N: usize = 8;
-
-#[allow(dead_code)]
-#[derive(PartialEq, Debug)]
-enum FunctionType {
-    Constant0,
-    Constant1,
-    Balanced,
-}
-
-#[allow(dead_code)]
-fn f_constant(_: u8) -> bool {
-    false
-}
-
-#[allow(dead_code)]
-fn f_constant_2(_: u8) -> bool {
-    true
-}
-
-#[allow(dead_code)]
-fn f_balanced(x: u8) -> bool {
-    (x >> (N - 1)) == 1
-}
-
-#[allow(dead_code)]
-fn f_balanced_2(x: u8) -> bool {
-    x % 2 == 0
-}
-
-/// Check if a function is constant or balanced
-#[allow(dead_code)]
-fn check_classic(f: fn(u8) -> bool) -> FunctionType {
-    let first = f(0);
-    for i in 1..=(1 << (N - 1)) {
-        if f(i) != first {
-            return FunctionType::Balanced;
-        }
-    }
-
-    if first {
-        FunctionType::Constant1
-    } else {
-        FunctionType::Constant0
-    }
-}
-
-/// Check if a function is constant or balanced
-///
-/// Return true if constant, false if balanced
-fn check_quantum(function_type: FunctionType) -> bool {
-    let mut circuit = Circuit::new(N + 1).new_reg("res", N);
-    circuit = circuit.x(N);
-
-    for i in 0..=N {
-        circuit = circuit.h(i);
-    }
-
-    // Simple oracle
-    match function_type {
-        FunctionType::Constant0 => {}
-        FunctionType::Constant1 => {
-            circuit = circuit.x(N);
-        }
-        FunctionType::Balanced => {
-            circuit = circuit.cx(&[0], N);
-        }
-    }
-
-    for i in 0..N {
-        circuit = circuit.h(i);
-    }
-
-    circuit = circuit.measure_bits(&[0, 1, 2, 3, 4, 5, 6, 7], "res");
-
-    StateVectorSimulator::sample_once(circuit, RegisterSampler::new("res")).unwrap() == 0
+pub fn find_function_type_quantum<S>(n: usize, function_type: FunctionType) -> bool
+where
+    S: Buildable<PureCircuit> + Sampleable<PureCircuit> + StoredRegisters,
+{
+    let res = S::sample_once(circuit(n, function_type), CircuitSampler).unwrap();
+    let not_ancilla_mask = (1 << n) - 1;
+    res & not_ancilla_mask == 0
 }
 
 fn main() {
-    println!("{}", check_quantum(FunctionType::Constant0));
+    println!(
+        "{}",
+        find_function_type_quantum::<StateVectorSimulator>(8, FunctionType::Constant0)
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_quantum() {
-        assert!(check_quantum(FunctionType::Constant0));
-        assert!(check_quantum(FunctionType::Constant1));
-        assert!(!check_quantum(FunctionType::Balanced));
+    fn f_constant(_: usize) -> bool {
+        false
+    }
+
+    fn f_constant_2(_: usize) -> bool {
+        true
+    }
+
+    fn f_balanced(x: usize, n: usize) -> bool {
+        (x >> (n - 1)) == 1
+    }
+
+    fn f_balanced_2(x: usize) -> bool {
+        x % 2 == 0
+    }
+
+    /// Check if a function is constant or balanced
+    fn check_classic(f: impl Fn(usize) -> bool, n: usize) -> bool {
+        let first = f(0);
+        for i in 1..=(1 << (n - 1)) {
+            if f(i) != first {
+                return false;
+            }
+        }
+
+        true
     }
 
     #[test]
-    fn test_classic() {
-        assert_eq!(check_classic(f_constant), FunctionType::Constant0);
-        assert_eq!(check_classic(f_constant_2), FunctionType::Constant1);
-        assert_eq!(check_classic(f_balanced), FunctionType::Balanced);
-        assert_eq!(check_classic(f_balanced_2), FunctionType::Balanced);
+    fn test_deutsch_jozsa() {
+        for n in 2..6 {
+            assert_eq!(
+                check_classic(f_constant, n),
+                find_function_type_quantum::<StateVectorSimulator>(n, FunctionType::Constant0)
+            );
+            assert_eq!(
+                check_classic(f_constant_2, n),
+                find_function_type_quantum::<StateVectorSimulator>(n, FunctionType::Constant1)
+            );
+            assert_eq!(
+                check_classic(|c| f_balanced(c, n), n),
+                find_function_type_quantum::<StateVectorSimulator>(n, FunctionType::Balanced)
+            );
+            assert_eq!(
+                check_classic(f_balanced_2, n),
+                find_function_type_quantum::<StateVectorSimulator>(n, FunctionType::Balanced)
+            );
+        }
     }
 }

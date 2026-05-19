@@ -6,6 +6,10 @@ edition = "2024"
 [features]
 default = []
 gpu = ["dep:cubecl"]
+wgpu = ["gpu", "cubecl/wgpu"]
+cuda = ["gpu", "cubecl/cuda"]
+cpu = ["gpu", "cubecl/cpu"]
+hip = ["gpu", "cubecl/hip"]
 
 [dependencies]
 crossterm = "0.29.0"
@@ -22,8 +26,28 @@ cubecl = { version = "=0.10.0-pre.3", features = ["wgpu", "cuda"], optional = tr
 
 [dev-dependencies]
 tracking-allocator = "0.4.0"
+bench_utils = { path = "../bench_utils" }
 
 [[bench]]
-name = "simulator-comparison"
+name = "qft"
 harness = false
-required-features = ["gpu"]
+
+[[bench]]
+name = "system-size"
+harness = false
+
+[[bench]]
+name = "mid-measure-all"
+harness = false
+
+[[bench]]
+name = "mid-measurements"
+harness = false
+
+[[bench]]
+name = "num-gates"
+harness = false
+
+[[bench]]
+name = "system-size-entanglement"
+harness = false

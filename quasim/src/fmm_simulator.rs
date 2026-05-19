@@ -50,6 +50,7 @@ impl Simulator for FullMatMulSimulator {
     type BasisValue = Complex<f32>;
 
     fn run(&mut self) {
+        self.reset();
         while self.next() {}
     }
 

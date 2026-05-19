@@ -1,51 +1,73 @@
-use num_integer::{Integer, gcd};
-use quasim::circuit::{Circuit, HybridCircuit};
-use quasim::expr_dsl::expr_helpers::rb;
+use num_integer::{Roots, gcd};
+use quasim::circuit::HybridCircuit;
 use quasim::sampler::RegisterSampler;
 use quasim::simulator::{Sampleable, StoredRegisters};
 use rand::RngExt;
-use std::f32::consts::PI;
+use shors::{circuit, modpow};
 
-/// Computes the modular inverse of `a` mod `n`.
-///
-/// # Arguments
-/// * `a` - Number to compute modular inverse of
-/// * `n` -  Number Modulo
-///
-/// # Returns
-/// * `isize`, representing the inverse of `a` mod `n`
-pub fn mod_inv(a: isize, n: isize) -> isize {
-    let egcd = a.extended_gcd(&n);
-
-    let mut inv = egcd.x % n;
-    if inv < 0 {
-        inv += n;
-    }
-
-    inv
-}
-
-/// Computes the exponential power of a number modulo.
-///
-/// # Arguments
-/// * `b` - The base of the exponential
-/// * `ex` -  The power to raise the `base` to
-/// * `n` - The modulo number
-///
-/// # Returns
-/// * `usize`, representing (`b`^`ex`) mod `n`
-pub fn modpow(mut b: usize, mut ex: usize, n: usize) -> usize {
-    let mut result = 1;
-    b %= n;
-    while ex > 0 {
-        if ex % 2 == 1 {
-            result = (result * b) % n;
-        }
-        b = (b * b) % n;
-        ex /= 2;
-    }
-    result
-}
+const PRIMES: [usize; 1000] = [
+    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71, 73, 79, 83, 89, 97,
+    101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151, 157, 163, 167, 173, 179, 181, 191, 193,
+    197, 199, 211, 223, 227, 229, 233, 239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307,
+    311, 313, 317, 331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419, 421,
+    431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503, 509, 521, 523, 541, 547,
+    557, 563, 569, 571, 577, 587, 593, 599, 601, 607, 613, 617, 619, 631, 641, 643, 647, 653, 659,
+    661, 673, 677, 683, 691, 701, 709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797,
+    809, 811, 821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887, 907, 911, 919, 929,
+    937, 941, 947, 953, 967, 971, 977, 983, 991, 997, 1009, 1013, 1019, 1021, 1031, 1033, 1039,
+    1049, 1051, 1061, 1063, 1069, 1087, 1091, 1093, 1097, 1103, 1109, 1117, 1123, 1129, 1151, 1153,
+    1163, 1171, 1181, 1187, 1193, 1201, 1213, 1217, 1223, 1229, 1231, 1237, 1249, 1259, 1277, 1279,
+    1283, 1289, 1291, 1297, 1301, 1303, 1307, 1319, 1321, 1327, 1361, 1367, 1373, 1381, 1399, 1409,
+    1423, 1427, 1429, 1433, 1439, 1447, 1451, 1453, 1459, 1471, 1481, 1483, 1487, 1489, 1493, 1499,
+    1511, 1523, 1531, 1543, 1549, 1553, 1559, 1567, 1571, 1579, 1583, 1597, 1601, 1607, 1609, 1613,
+    1619, 1621, 1627, 1637, 1657, 1663, 1667, 1669, 1693, 1697, 1699, 1709, 1721, 1723, 1733, 1741,
+    1747, 1753, 1759, 1777, 1783, 1787, 1789, 1801, 1811, 1823, 1831, 1847, 1861, 1867, 1871, 1873,
+    1877, 1879, 1889, 1901, 1907, 1913, 1931, 1933, 1949, 1951, 1973, 1979, 1987, 1993, 1997, 1999,
+    2003, 2011, 2017, 2027, 2029, 2039, 2053, 2063, 2069, 2081, 2083, 2087, 2089, 2099, 2111, 2113,
+    2129, 2131, 2137, 2141, 2143, 2153, 2161, 2179, 2203, 2207, 2213, 2221, 2237, 2239, 2243, 2251,
+    2267, 2269, 2273, 2281, 2287, 2293, 2297, 2309, 2311, 2333, 2339, 2341, 2347, 2351, 2357, 2371,
+    2377, 2381, 2383, 2389, 2393, 2399, 2411, 2417, 2423, 2437, 2441, 2447, 2459, 2467, 2473, 2477,
+    2503, 2521, 2531, 2539, 2543, 2549, 2551, 2557, 2579, 2591, 2593, 2609, 2617, 2621, 2633, 2647,
+    2657, 2659, 2663, 2671, 2677, 2683, 2687, 2689, 2693, 2699, 2707, 2711, 2713, 2719, 2729, 2731,
+    2741, 2749, 2753, 2767, 2777, 2789, 2791, 2797, 2801, 2803, 2819, 2833, 2837, 2843, 2851, 2857,
+    2861, 2879, 2887, 2897, 2903, 2909, 2917, 2927, 2939, 2953, 2957, 2963, 2969, 2971, 2999, 3001,
+    3011, 3019, 3023, 3037, 3041, 3049, 3061, 3067, 3079, 3083, 3089, 3109, 3119, 3121, 3137, 3163,
+    3167, 3169, 3181, 3187, 3191, 3203, 3209, 3217, 3221, 3229, 3251, 3253, 3257, 3259, 3271, 3299,
+    3301, 3307, 3313, 3319, 3323, 3329, 3331, 3343, 3347, 3359, 3361, 3371, 3373, 3389, 3391, 3407,
+    3413, 3433, 3449, 3457, 3461, 3463, 3467, 3469, 3491, 3499, 3511, 3517, 3527, 3529, 3533, 3539,
+    3541, 3547, 3557, 3559, 3571, 3581, 3583, 3593, 3607, 3613, 3617, 3623, 3631, 3637, 3643, 3659,
+    3671, 3673, 3677, 3691, 3697, 3701, 3709, 3719, 3727, 3733, 3739, 3761, 3767, 3769, 3779, 3793,
+    3797, 3803, 3821, 3823, 3833, 3847, 3851, 3853, 3863, 3877, 3881, 3889, 3907, 3911, 3917, 3919,
+    3923, 3929, 3931, 3943, 3947, 3967, 3989, 4001, 4003, 4007, 4013, 4019, 4021, 4027, 4049, 4051,
+    4057, 4073, 4079, 4091, 4093, 4099, 4111, 4127, 4129, 4133, 4139, 4153, 4157, 4159, 4177, 4201,
+    4211, 4217, 4219, 4229, 4231, 4241, 4243, 4253, 4259, 4261, 4271, 4273, 4283, 4289, 4297, 4327,
+    4337, 4339, 4349, 4357, 4363, 4373, 4391, 4397, 4409, 4421, 4423, 4441, 4447, 4451, 4457, 4463,
+    4481, 4483, 4493, 4507, 4513, 4517, 4519, 4523, 4547, 4549, 4561, 4567, 4583, 4591, 4597, 4603,
+    4621, 4637, 4639, 4643, 4649, 4651, 4657, 4663, 4673, 4679, 4691, 4703, 4721, 4723, 4729, 4733,
+    4751, 4759, 4783, 4787, 4789, 4793, 4799, 4801, 4813, 4817, 4831, 4861, 4871, 4877, 4889, 4903,
+    4909, 4919, 4931, 4933, 4937, 4943, 4951, 4957, 4967, 4969, 4973, 4987, 4993, 4999, 5003, 5009,
+    5011, 5021, 5023, 5039, 5051, 5059, 5077, 5081, 5087, 5099, 5101, 5107, 5113, 5119, 5147, 5153,
+    5167, 5171, 5179, 5189, 5197, 5209, 5227, 5231, 5233, 5237, 5261, 5273, 5279, 5281, 5297, 5303,
+    5309, 5323, 5333, 5347, 5351, 5381, 5387, 5393, 5399, 5407, 5413, 5417, 5419, 5431, 5437, 5441,
+    5443, 5449, 5471, 5477, 5479, 5483, 5501, 5503, 5507, 5519, 5521, 5527, 5531, 5557, 5563, 5569,
+    5573, 5581, 5591, 5623, 5639, 5641, 5647, 5651, 5653, 5657, 5659, 5669, 5683, 5689, 5693, 5701,
+    5711, 5717, 5737, 5741, 5743, 5749, 5779, 5783, 5791, 5801, 5807, 5813, 5821, 5827, 5839, 5843,
+    5849, 5851, 5857, 5861, 5867, 5869, 5879, 5881, 5897, 5903, 5923, 5927, 5939, 5953, 5981, 5987,
+    6007, 6011, 6029, 6037, 6043, 6047, 6053, 6067, 6073, 6079, 6089, 6091, 6101, 6113, 6121, 6131,
+    6133, 6143, 6151, 6163, 6173, 6197, 6199, 6203, 6211, 6217, 6221, 6229, 6247, 6257, 6263, 6269,
+    6271, 6277, 6287, 6299, 6301, 6311, 6317, 6323, 6329, 6337, 6343, 6353, 6359, 6361, 6367, 6373,
+    6379, 6389, 6397, 6421, 6427, 6449, 6451, 6469, 6473, 6481, 6491, 6521, 6529, 6547, 6551, 6553,
+    6563, 6569, 6571, 6577, 6581, 6599, 6607, 6619, 6637, 6653, 6659, 6661, 6673, 6679, 6689, 6691,
+    6701, 6703, 6709, 6719, 6733, 6737, 6761, 6763, 6779, 6781, 6791, 6793, 6803, 6823, 6827, 6829,
+    6833, 6841, 6857, 6863, 6869, 6871, 6883, 6899, 6907, 6911, 6917, 6947, 6949, 6959, 6961, 6967,
+    6971, 6977, 6983, 6991, 6997, 7001, 7013, 7019, 7027, 7039, 7043, 7057, 7069, 7079, 7103, 7109,
+    7121, 7127, 7129, 7151, 7159, 7177, 7187, 7193, 7207, 7211, 7213, 7219, 7229, 7237, 7243, 7247,
+    7253, 7283, 7297, 7307, 7309, 7321, 7331, 7333, 7349, 7351, 7369, 7393, 7411, 7417, 7433, 7451,
+    7457, 7459, 7477, 7481, 7487, 7489, 7499, 7507, 7517, 7523, 7529, 7537, 7541, 7547, 7549, 7559,
+    7561, 7573, 7577, 7583, 7589, 7591, 7603, 7607, 7621, 7639, 7643, 7649, 7669, 7673, 7681, 7687,
+    7691, 7699, 7703, 7717, 7723, 7727, 7741, 7753, 7757, 7759, 7789, 7793, 7817, 7823, 7829, 7841,
+    7853, 7867, 7873, 7877, 7879, 7883, 7901, 7907, 7919,
+];
 
 /// Performs continued fractions using `num` and `den`
 ///
@@ -114,13 +136,13 @@ fn convergents(cf: &[usize]) -> Vec<(usize, usize)> {
     result
 }
 
-/// Refines a candidate period `r` by finding the smallest divisor `d`
-/// such that `a^d ≡ 1 (mod n)`.
+/// Refines a candidate period `k` by finding the smallest divisor `r`
+/// such that `a^r ≡ 1 (mod n)`.
 ///
 /// # Arguments
 /// * `a` - The base used in modular exponentiation
 /// * `n` -  The modulo number
-/// * `init_r` - The initial period
+/// * `k` - The initial period
 /// * `t` - The number of bits of precision
 ///
 /// # Returns
@@ -162,188 +184,6 @@ fn extract_period(a: usize, n: usize, k: usize, t: usize) -> Option<usize> {
     None
 }
 
-/// Constructs an adder gate that sums two numbers and stores the
-/// result in `n_bits` qubits.
-///
-/// The gate is intended to operate on a circuit that has already been
-/// transformed by a Quantum Fourier Transform (QFT). The input state
-/// is therefore assumed to be in the QFT basis.
-///
-/// The gate performs the transformation:
-///
-/// `|ϕ(b)⟩ --> |ϕ(a+b)⟩`
-///
-/// # Arguments
-/// * `a` - First number to add
-/// * `b` - Second number to add
-///
-/// # Returns
-/// * `PureCircuit` representing the adder operation
-fn create_adder(a: usize, b: usize) -> Circuit {
-    // Number of bits needed to represent n and one overflow bit
-    let n_bits = 1 + ((a as f32) + 1.0).log2().ceil() as usize;
-
-    // Bitwise representation of a
-    let a_bit_array = (0..n_bits)
-        .map(|i| b & (1 << i) != 0)
-        .collect::<Vec<bool>>();
-
-    let mut circuit = Circuit::new(n_bits);
-
-    // Apply rz to the qubits based on the bits of a
-    for i in 0..n_bits {
-        for j in 0..=i {
-            if a_bit_array[j] {
-                let bitshift = 1 << (i - j + 1);
-                let theta = 2.0 * PI / bitshift as f32;
-                circuit = circuit.rz(theta, n_bits - 1 - i)
-            }
-        }
-    }
-
-    circuit
-}
-
-/// Constructs a modular adder gate that adds the value `a` to the circuit mod `n`.
-///
-/// The gate is intended to operate on a circuit that has already been
-/// transformed by a Quantum Fourier Transform (QFT). The input state
-/// is therefore assumed to be in the QFT basis.
-///
-/// The gate performs the transformation:
-///
-/// `|ϕ(b)⟩ --> |ϕ((a+b) mod n)⟩`
-///
-/// # Arguments
-/// * `n` - Modulo number
-/// * `a` - Number to add
-///
-/// # Returns
-/// * `PureCircuit` representing the modular adder operation
-fn create_mod_adder(n: usize, a: usize) -> Circuit {
-    // n-bits to represent the number being added to
-    let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-    // Circuit has n-bits for the number, aswell as an overflow bit and a control bit, in that order
-    let mut circuit = Circuit::new(n_bits + 2)
-        .new_sub_circuit("adder_a", create_adder(n, a))
-        .new_sub_circuit("adder_n", create_adder(n, n))
-        .new_sub_circuit("adder_n_inv", create_adder(n, n).inverse())
-        .new_sub_circuit("adder_a_inverse", create_adder(n, a).inverse())
-        .new_sub_circuit("qft", Circuit::new_qft(n_bits + 1))
-        .new_sub_circuit("qft_inv", Circuit::new_qft(n_bits + 1).inverse());
-
-    circuit = circuit.call("adder_a", 0);
-    circuit = circuit.call("adder_n_inv", 0);
-
-    circuit = circuit.call("qft_inv", 0);
-    circuit = circuit.cx(&[n_bits], n_bits + 1);
-    circuit = circuit.call("qft", 0);
-
-    circuit = circuit.ccall("adder_n", 0, &[n_bits + 1]);
-    circuit = circuit.call("adder_a_inverse", 0);
-
-    circuit = circuit.call("qft_inv", 0);
-    circuit = circuit.x(n_bits);
-    circuit = circuit.cx(&[n_bits], n_bits + 1);
-    circuit = circuit.x(n_bits);
-    circuit = circuit.call("qft", 0);
-
-    circuit = circuit.call("adder_a", 0);
-
-    circuit
-}
-
-/// Constructs a controlled multiplier gate that multiplies `a`
-/// with the value of the first set of `n_bits` qubits and adds it
-/// to the value of the second set of `n_bits` qubits, everything mod `n`.
-///
-/// The gate performs the transformation:
-///
-/// `|x|b⟩ --> |x|(b+a*x) mod n⟩`
-///
-/// # Arguments
-/// * `n` - Modulo number
-/// * `a` - Number to multiply with
-///
-/// # Returns
-/// * `PureCircuit` representing the controlled multiplier operation
-fn create_cmult(n: usize, a: usize) -> Circuit {
-    let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-    let mut circuit = Circuit::new(2 * n_bits + 2);
-
-    circuit = circuit.call_new("qft", Circuit::new_qft(n_bits + 1), n_bits);
-
-    for i in 0..n_bits {
-        circuit = circuit.ccall_new(
-            format!("mod_adder{}", i),
-            create_mod_adder(n, (a * (1 << i)) % n),
-            n_bits,
-            &[i],
-        );
-    }
-
-    circuit = circuit.call_new("qft-inv", Circuit::new_qft(n_bits + 1).inverse(), n_bits);
-
-    circuit
-}
-
-/// Constructs a swap gate that swaps the first set of
-/// `n_bits` qubits with the second set of `n_bits` qubits.
-///
-/// The gate performs the transformation:
-///
-/// `|x|b⟩ --> |b|x⟩`
-///
-/// # Arguments
-/// * `n` - Number with size `n_bits`, determines what qubits to target
-///
-/// # Returns
-/// * `PureCircuit` representing the swap operation
-fn create_swap(n: usize) -> Circuit {
-    let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-    let mut circuit = Circuit::new(2 * n_bits);
-
-    for i in 0..n_bits {
-        circuit = circuit.swap(i, i + n_bits);
-    }
-
-    circuit
-}
-
-/// Constructs a controlled unitary gate that multiplies `a`
-/// with the first set of `n_bits` qubits mod `n`.
-///
-/// The gate performs the transformation:
-///
-/// `|x⟩ --> |(a*x) mod n⟩`
-///
-/// # Arguments
-/// * `n` - Modulo number
-/// * `a` - Number to multiply with
-///
-/// # Returns
-/// * `PureCircuit` representing the controlled multiplier operation
-fn create_u_a(n: usize, a: usize) -> Circuit {
-    let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-    let mut circuit = Circuit::new(2 * n_bits + 2)
-        .new_sub_circuit("cmult", create_cmult(n, a))
-        .new_sub_circuit("swap", create_swap(n))
-        .new_sub_circuit(
-            "inv_cmult",
-            create_cmult(n, mod_inv(a as isize, n as isize) as usize).inverse(),
-        );
-
-    circuit = circuit.call("cmult", 0);
-    circuit = circuit.call("swap", 0);
-    circuit = circuit.call("inv_cmult", 0);
-
-    circuit
-}
-
 /// Runs the Quantum Phase Estimation (QPE) algorithm used for period finding.
 ///
 /// The circuit estimates the phase associated with the unitary operator
@@ -369,37 +209,8 @@ where
 {
     let n_bits: usize = ((n as f32) + 1.0).log2().ceil() as usize;
 
-    let mut circuit = Circuit::new(2 * n_bits + 3).new_reg("res", 2 * n_bits);
-
-    circuit = circuit.h(0);
-    circuit = circuit.ccall_new("u_a0", create_u_a(n, a), 1, &[0]);
-    circuit = circuit.h(0);
-    circuit = circuit.measure_bit(0, ("res", 0));
-
-    for i in 0..(2 * n_bits - 1) {
-        // Check previous bit and apply X if 1
-        circuit = circuit.apply_if(rb("res", i).eq(1)).x(0);
-
-        circuit = circuit.h(0);
-        circuit = circuit.ccall_new(
-            format!("u_a{}", i + 1),
-            create_u_a(n, modpow(a, 1 << (i + 1), n)),
-            1,
-            &[0],
-        );
-
-        // R gates based on previous bits
-        for j in 0..i {
-            let theta = -2.0 * PI / (1 << (i - j + 1)) as f32;
-            circuit = circuit.apply_if(rb("res", j).eq(1)).rz(theta, 0);
-        }
-
-        // Measure the next bit and store it in the result register
-        circuit = circuit.measure_bit(0, ("res", i + 1));
-    }
-
     //let r = StateVectorSimulator::sample_once(circuit, RegisterSampler::new("res")).unwrap();
-    let r = S::sample_once(circuit, RegisterSampler::new("res")).unwrap();
+    let r = S::sample_once(circuit(n, a), RegisterSampler::new("res")).unwrap();
 
     extract_period(a, n, r, 2 * n_bits)
 }
@@ -427,6 +238,18 @@ where
     let g = gcd(a, n);
     if g > 1 {
         return Some(vec![g, n / g]);
+    }
+
+    for p in PRIMES {
+        if p.sqrt() > n {
+            break;
+        }
+
+        let g = gcd(p, n);
+
+        if g > 1 {
+            return Some(vec![g, n / g]);
+        }
     }
 
     let Some(r) = qpe::<S>(n, a) else {
@@ -497,190 +320,9 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use quasim::{
-        circuit::Circuit, sampler::RegisterSampler, simulator::Sampleable,
-        sv_simulator::StateVectorSimulator,
-    };
+    use quasim::sv_simulator::StateVectorSimulator;
 
-    use crate::{
-        create_adder, create_cmult, create_mod_adder, create_swap, create_u_a, mod_inv, qpe, shors,
-        shors_random,
-    };
-
-    #[test]
-    fn test_adder() {
-        let n = 14;
-
-        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-        for a in 0..=n {
-            let mut c = Circuit::new(n_bits + 1).new_reg("res", n_bits + 1);
-
-            c = c.call_new("qft", Circuit::new_qft(n_bits + 1), 0);
-
-            c = c.call_new("mod-adder", create_adder(n, a), 0);
-
-            c = c.call_new("qft-inv", Circuit::new_qft(n_bits + 1).inverse(), 0);
-
-            c = c.measure("res");
-
-            let res = StateVectorSimulator::sample_once(c, RegisterSampler::new("res")).unwrap();
-
-            // Constrained to the size of the number n
-            assert_eq!(res, a % (1 << n_bits));
-        }
-    }
-
-    #[test]
-    fn test_mod_adder() {
-        let n = 14;
-
-        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-        for a in 0..=n {
-            let mut c = Circuit::new(n_bits + 2).new_reg("res", n_bits + 2);
-            c = c.call_new("qft", Circuit::new_qft(n_bits + 1), 0);
-
-            c = c.call_new("mod-adder", create_mod_adder(n, a), 0);
-
-            c = c.call_new("qft-inv", Circuit::new_qft(n_bits + 1).inverse(), 0);
-
-            c = c.measure("res");
-
-            let res = StateVectorSimulator::sample_once(c, RegisterSampler::new("res")).unwrap();
-
-            assert_eq!(res, a % n);
-        }
-    }
-
-    #[test]
-    fn test_cmult() {
-        let n = 13;
-        let x = [0, 1, 1];
-
-        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-        let c_array = (n_bits..=2 * n_bits).collect::<Vec<usize>>();
-
-        for a in 2..n {
-            let mut c = Circuit::new(2 * n_bits + 2).new_reg("res", n_bits + 1);
-
-            for i in 0..x.len() {
-                if x[i] == 1 {
-                    c = c.x(i);
-                }
-            }
-
-            c = c.call_new("cmult", create_cmult(n, a), 0);
-
-            c = c.measure_bits(&c_array, "res");
-
-            let res = StateVectorSimulator::sample_once(c, RegisterSampler::new("res")).unwrap();
-
-            let x_tot: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
-
-            assert_eq!(res, (a * x_tot) % n);
-        }
-    }
-
-    #[test]
-    fn test_swap() {
-        let n = 13;
-        let x = [1, 1, 1];
-
-        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-        let mut c = Circuit::new(2 * n_bits)
-            .new_reg("top", n_bits)
-            .new_reg("bott", n_bits);
-
-        for i in 0..x.len() {
-            if x[i] == 1 {
-                c = c.x(i);
-            }
-        }
-
-        c = c.call_new("swap", create_swap(n), 0);
-
-        c = c.measure_bits(&(0..n_bits).collect::<Vec<usize>>(), "top");
-        c = c.measure_bits(&(n_bits..2 * n_bits).collect::<Vec<usize>>(), "bott");
-
-        let top =
-            StateVectorSimulator::sample_once(c.clone(), RegisterSampler::new("top")).unwrap();
-        let bott = StateVectorSimulator::sample_once(c, RegisterSampler::new("bott")).unwrap();
-
-        let x_tot: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
-
-        assert_eq!(top, 0);
-        assert_eq!(bott, x_tot);
-    }
-
-    #[test]
-    fn test_cmult_inv() {
-        let n = 13;
-        let y = [0, 1, 0];
-
-        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-        let c_array = (n_bits..2 * n_bits).collect::<Vec<usize>>();
-
-        for a in 2..n {
-            let a_inv = mod_inv(a as isize, n as isize) as usize;
-
-            let mut c = Circuit::new(2 * n_bits + 2).new_reg("res", n_bits);
-
-            for i in 0..y.len() {
-                if y[i] == 1 {
-                    c = c.x(i);
-                }
-            }
-
-            c = c.call_new("cmult_inv", create_cmult(n, a_inv).inverse(), 0);
-
-            c = c.measure_bits(&c_array, "res");
-
-            let res = StateVectorSimulator::sample_once(c, RegisterSampler::new("res")).unwrap();
-
-            let y_tot: usize = y.iter().enumerate().map(|(i, &b)| b << i).sum();
-
-            let x = (a_inv * y_tot) % n;
-            assert_eq!(res, (n - x) % n);
-        }
-    }
-
-    #[test]
-    fn test_u_a() {
-        let n = 13;
-        let x = [1, 1, 0];
-
-        let n_bits = ((n as f32) + 1.0).log2().ceil() as usize;
-
-        for a in 2..n {
-            let mut c = Circuit::new(2 * n_bits + 2)
-                .new_reg("top", n_bits)
-                .new_reg("bott", n_bits);
-
-            for i in 0..x.len() {
-                if x[i] == 1 {
-                    c = c.x(i);
-                }
-            }
-
-            c = c.call_new("u_a", create_u_a(n, a), 0);
-
-            c = c.measure_bits(&(0..n_bits).collect::<Vec<usize>>(), "top");
-            c = c.measure_bits(&(n_bits..2 * n_bits).collect::<Vec<usize>>(), "bott");
-
-            let top =
-                StateVectorSimulator::sample_once(c.clone(), RegisterSampler::new("top")).unwrap();
-            let bott = StateVectorSimulator::sample_once(c, RegisterSampler::new("bott")).unwrap();
-
-            let x_t: usize = x.iter().enumerate().map(|(i, &b)| b << i).sum();
-
-            assert_eq!(top, (x_t * a) % n);
-            assert_eq!(bott, 0);
-        }
-    }
+    use crate::{qpe, shors, shors_random};
 
     #[test]
     fn test_quantum() {

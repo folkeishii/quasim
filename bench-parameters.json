@@ -1,0 +1,166 @@
+{
+  "simulators": [
+    "state_vector_simulator",
+    "gpu_accelerated_wgpu",
+    "gpu_accelerated_cuda",
+    "gpu_accelerated_cpu",
+    "gpu_accelerated_hip",
+    "full_mat_mul_simulator",
+    "product_state_simulator",
+    "cube_simulator",
+    "syntax_simulator"
+  ],
+  "benchmarks": [
+    "bernstein-vazirani-benchmark",
+    "deutsch-jozsa-benchmark",
+    "grovers-benchmark",
+    "shors-benchmark",
+    "mid-measurements",
+    "mid-measure-all",
+    "num-gates",
+    "qft",
+    "system-size",
+    "system-size-entanglement"
+  ],
+  "parameters": {
+    "qubits": [1,2,3,4,5,6],
+    "args": [1],
+    "benchmarks": [
+      {
+        "name": "mid-measure-all",
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        "simulators": [
+          {
+            "name": "cube_simulator",
+            "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18]
+          },
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [2, 4, 6, 8]
+          },
+          {
+            "name": "syntax_simulator",
+            "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18]
+          }
+        ]
+      },
+      {
+        "name": "mid-measurements",
+        "qubits": [8, 16],
+        "args": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        "simulators": [
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [4, 8]
+          }
+        ]
+      },
+      {
+        "name": "num-gates",
+        "qubits": [8, 16],
+        "args": [250, 500, 1000, 2000],
+        "simulators": [
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [4, 8]
+          }
+        ]
+      },
+      {
+        "name": "qft",
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        "simulators": [
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [2, 4, 6, 8]
+          }
+        ]
+      },
+      {
+        "name": "system-size",
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        "simulators": [
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [2, 4, 6, 8, 10]
+          }
+        ]
+      },
+      {
+        "name": "system-size-entanglement",
+        "qubits": [8, 16],
+        "args": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        "simulators": [
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [4, 8]
+          }
+        ]
+      },
+      {
+        "name": "bernstein-vazirani-benchmark",
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        "simulators": [
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [2, 4, 6, 8, 10]
+          },
+          {
+            "name": "syntax_simulator",
+            "qubits": [2, 4, 6, 8, 10]
+          }
+        ]
+      },
+      {
+        "name": "deutsch-jozsa-benchmark",
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20],
+        "simulators": [
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [2, 4, 6, 8, 10]
+          }
+        ]
+      },
+      {
+        "name": "grovers-benchmark",
+        "qubits": [2, 4, 6, 8, 10, 12, 14, 16],
+        "simulators": [
+          {
+            "name": "cube_simulator",
+            "qubits": [2, 4, 6, 8, 10, 12, 14]
+          },
+          {
+            "name": "gpu_accelerated_cuda",
+            "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+          },
+          {
+            "name": "gpu_accelerated_wgpu",
+            "qubits": [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+          },
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [2, 4, 6, 8]
+          },
+          {
+            "name": "syntax_simulator",
+            "qubits": [2, 4]
+          }
+        ]
+      },
+      {
+        "name": "shors-benchmark",
+        "qubits": [2, 3, 4, 5, 6, 7, 8],
+        "simulators": [
+          {
+            "name": "full_mat_mul_simulator",
+            "qubits": [2, 3]
+          },
+          {
+            "name": "syntax_simulator",
+            "run": false
+          }
+        ]
+      }
+    ]
+  }
+}

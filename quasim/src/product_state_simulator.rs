@@ -21,6 +21,7 @@ impl Simulator for ProductStateSimulator {
     type State = ProductState;
     type BasisValue = Complex<f32>;
     fn run(&mut self) {
+        self.reset();
         while self.next() {}
     }
 
@@ -237,6 +238,12 @@ where
 impl Debuggable for ProductStateSimulator {
     fn next(&mut self) -> bool {
         let Some(inst) = self.circuit.instruction(self.pc()) else {
+            // End of (sub) circuit: Try to return
+            if self.pc_mut().ret() {
+                return true;
+            }
+
+            // Could not return: End of circuit
             return false;
         };
 

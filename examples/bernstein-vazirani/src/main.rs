@@ -1,61 +1,47 @@
-use quasim::circuit::Circuit;
-use quasim::sampler::RegisterSampler;
-use quasim::simulator::Sampleable;
-use quasim::sv_simulator::StateVectorSimulator;
+use bernstein_vazirani::circuit;
+use quasim::{
+    circuit::PureCircuit,
+    sampler::CircuitSampler,
+    simulator::{Buildable, Sampleable, StoredRegisters},
+    sv_simulator::StateVectorSimulator,
+};
 
-const N: usize = 5;
+pub fn find_secret_string_classical(n: usize, f: impl Fn(usize) -> usize) -> usize {
+    let mut res = 0;
 
-fn f(x: u8, secret: u8) -> u8 {
-    let mut sum = 0u8;
-
-    for i in 0..N {
-        sum += ((secret >> i) & 1) * ((x >> i) & 1);
-    }
-
-    sum % 2
-}
-
-fn find_secret_string_classical(f: impl Fn(u8) -> u8) -> u8 {
-    let mut res = 0u8;
-
-    for i in 0..N {
+    for i in 0..n {
         res |= (f(1 << i) & 1) << i
     }
 
     res
 }
 
-fn find_secret_string_quantum(secret: u8) -> u8 {
-    let mut circuit = Circuit::new(N + 1).new_reg("res", N);
-    circuit = circuit.x(N);
+pub fn find_secret_string_quantum<S>(n: usize, secret: usize) -> usize
+where
+    S: Buildable<PureCircuit> + Sampleable<PureCircuit> + StoredRegisters,
+{
+    let res = S::sample_once(circuit(n, secret), CircuitSampler).unwrap();
+    // Output is reversed and ancilla discarded
+    (res).reverse_bits() >> (size_of::<usize>() * 8 - n)
+}
 
-    for i in 0..=N {
-        circuit = circuit.h(i);
+fn f(n: usize, x: usize, secret: usize) -> usize {
+    let mut sum = 0;
+
+    for i in 0..n {
+        sum += ((secret >> i) & 1) * ((x >> i) & 1);
     }
 
-    for i in 0..N {
-        if (secret >> (N - (i + 1)) & 1) == 1 {
-            circuit = circuit.cx(&[i], N);
-        }
-    }
-
-    for i in 0..N {
-        circuit = circuit.h(i);
-    }
-
-    circuit = circuit.measure_bits(&[0, 1, 2, 3, 4], "res");
-
-    let res = StateVectorSimulator::sample_once(circuit, RegisterSampler::new("res")).unwrap();
-    // Output is reversed
-    (res as u8).reverse_bits() >> (8 - N)
+    sum % 2
 }
 
 fn main() {
-    for i in 0..32u8 {
+    const N: usize = 5;
+    for i in 0..(1 << N) {
         println!(
             "{:b} - {:b}",
-            find_secret_string_classical(|c| f(c, i)),
-            find_secret_string_quantum(i)
+            find_secret_string_classical(N, |c| f(N, c, i)),
+            find_secret_string_quantum::<StateVectorSimulator>(N, i)
         );
     }
 }
@@ -66,11 +52,13 @@ mod tests {
 
     #[test]
     fn test_bernstein_vazirani() {
-        for i in 0..32u8 {
-            assert_eq!(
-                find_secret_string_classical(|c| f(c, i)),
-                find_secret_string_quantum(i),
-            )
+        for n in 1..5 {
+            for i in 0..(1 << n) {
+                assert_eq!(
+                    find_secret_string_classical(n, |c| f(n, c, i)),
+                    find_secret_string_quantum::<StateVectorSimulator>(n, i),
+                )
+            }
         }
     }
 }

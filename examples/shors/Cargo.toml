@@ -3,8 +3,24 @@ name = "shors"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+gpu = ["quasim/gpu"]
+wgpu = ["gpu", "quasim/wgpu"]
+cuda = ["gpu", "quasim/cuda"]
+cpu = ["gpu", "quasim/cpu"]
+hip = ["gpu", "quasim/hip"]
+
 [dependencies]
 quasim = { path = "../../quasim" }
 gcd = "2.3.0"
 rand = "0.10.0"
 num-integer = "0.1.46"
+
+[dev-dependencies]
+divan = "0.1.21"
+bench_utils = { path = "../../bench_utils" }
+
+[[bench]]
+name = "shors-benchmark"
+harness = false
